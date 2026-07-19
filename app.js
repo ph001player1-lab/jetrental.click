@@ -29,7 +29,7 @@
 const APP_CONFIG = {
   // URL веб-приложения Apps Script (Deploy → New deployment → Web app).
   // ЗАМЕНИТЕ на реальный URL вашего развёрнутого Apps Script перед публикацией.
-  API_URL: 'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec',
+  API_URL: 'https://script.google.com/macros/s/AKfycbwH3Chyr08nakPzCPd8dxz46xJLYCKY2GElih0Dz7A462AlabYMP2q7vzYcyntycoBj/exec',
 
   // Список неисправностей, доступных для выбора при обновлении состояния
   FAULT_OPTIONS: [
