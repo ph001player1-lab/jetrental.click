@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<!--
+  ============================================================================
+  KOKON CARS & BIKE SERVICE — Telegram Mini App
+  ============================================================================
+  Единая страница (SPA) без сторонних библиотек: чистый HTML + CSS + JS.
+  Вся навигация между экранами (Dashboard, Список техники, Карточка,
+  Обновление состояния, Инвентаризация) реализована через показ/скрытие
+  секций <section data-screen="..."> в app.js.
+
+  Подключение Telegram Web App SDK — единственный внешний скрипт, он
+  предоставляется официально Telegram и необходим для работы Mini App
+  (получение initData, тема, кнопки, вибрация и т.д.).
+  ============================================================================
+-->
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Kokon Cars &amp; Bike Service</title>
+
+  <!-- Telegram Mini App SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ==========================================================================
+       ЭКРАН ЗАГРУЗКИ
+       Показывается сразу при открытии, пока идёт проверка авторизации.
+       ========================================================================== -->
+  <section id="screen-loading" class="screen screen--active">
+    <div class="loading-box">
+      <div class="spinner"></div>
+      <p>Проверка доступа…</p>
+    </div>
+  </section>
+
+  <!-- ==========================================================================
+       ЭКРАН "НЕТ ДОСТУПА"
+       Показывается, если Telegram ID пользователя не найден в листе Users.
+       ========================================================================== -->
+  <section id="screen-no-access" class="screen">
+    <div class="no-access-box">
+      <div class="no-access-icon">🚫</div>
+      <h2>У вас нет доступа к системе</h2>
+      <p>Обратитесь к администратору Kokon Cars, чтобы получить доступ.</p>
+    </div>
+  </section>
+
+  <!-- ==========================================================================
+       ЭКРАН ОШИБКИ (сетевой сбой / ошибка сервера)
+       ========================================================================== -->
+  <section id="screen-error" class="screen">
+    <div class="no-access-box">
+      <div class="no-access-icon">⚠️</div>
+      <h2>Не удалось загрузить данные</h2>
+      <p id="error-message-text">Проверьте соединение и попробуйте снова.</p>
+      <button class="btn btn--primary" id="btn-retry">Повторить</button>
+    </div>
+  </section>
+
+  <!-- ==========================================================================
+       ГЛАВНЫЙ ЭКРАН (Dashboard + список техники)
+       ========================================================================== -->
+  <section id="screen-dashboard" class="screen">
+
+    <header class="app-header">
+      <div class="app-header__title">
+        <span class="app-header__logo">🚗</span>
+        <span>Kokon Service</span>
+      </div>
+      <div class="app-header__role" id="user-role-badge">Viewer</div>
+    </header>
+
+    <!-- Карточки статистики -->
+    <div class="stats-grid" id="stats-grid">
+      <!-- Заполняется динамически в app.js: renderDashboardStats() -->
+    </div>
+
+    <!-- Кнопка инвентаризации (видна только Editor) -->
+    <button class="btn btn--primary btn--block hidden" id="btn-start-inspection">
+      📋 Провести инвентаризацию
+    </button>
+
+    <!-- Поиск и фильтр -->
+    <div class="toolbar">
+      <input
+        type="search"
+        id="search-input"
+        class="search-input"
+        placeholder="Поиск: марка, модель, номер, VIN…"
+        autocomplete="off"
+      />
+      <select id="filter-select" class="filter-select">
+        <option value="all">Все статусы</option>
+        <option value="Свободно">Свободно</option>
+        <option value="В аренде">В аренде</option>
+        <option value="На ремонте">На ремонте</option>
+        <option value="Требует ремонта">Требует ремонта</option>
+        <option value="__overdue">Просрочено ТО</option>
+        <option value="__due_soon">Скоро ТО</option>
+      </select>
+    </div>
+
+    <!-- Список техники -->
+    <div class="vehicle-list" id="vehicle-list">
+      <!-- Заполняется динамически в app.js: renderVehicleList() -->
+    </div>
+
+  </section>
+
+  <!-- ==========================================================================
+       ЭКРАН КАРТОЧКИ ТЕХНИКИ
+       ========================================================================== -->
+  <section id="screen-vehicle-card" class="screen">
+
+    <header class="app-header app-header--sub">
+      <button class="btn-icon" id="btn-back-to-dashboard" aria-label="Назад">←</button>
+      <div class="app-header__title" id="card-header-title">Карточка техники</div>
+      <div style="width:32px;"></div>
+    </header>
+
+    <div class="card-scroll" id="card-content">
+      <!-- Заполняется динамически в app.js: renderVehicleCard() -->
+    </div>
+
+    <!-- Плавающая кнопка для Editor -->
+    <button class="btn btn--primary btn--block btn--sticky hidden" id="btn-update-state">
+      🔧 Обновить состояние
+    </button>
+
+  </section>
+
+  <!-- ==========================================================================
+       ЭКРАН ОБНОВЛЕНИЯ СОСТОЯНИЯ (форма для Editor)
+       ========================================================================== -->
+  <section id="screen-update-state" class="screen">
+
+    <header class="app-header app-header--sub">
+      <button class="btn-icon" id="btn-back-from-update" aria-label="Назад">←</button>
+      <div class="app-header__title">Обновить состояние</div>
+      <div style="width:32px;"></div>
+    </header>
+
+    <form class="form-scroll" id="form-update-state">
+
+      <label class="form-label">Текущий пробег (км)</label>
+      <input type="number" inputmode="numeric" id="input-mileage" class="form-input" placeholder="Например, 45210" />
+
+      <label class="form-label">Статус техники</label>
+      <select id="input-status" class="form-input">
+        <option value="">Не менять</option>
+        <option value="Свободно">Свободно</option>
+        <option value="В аренде">В аренде</option>
+        <option value="На ремонте">На ремонте</option>
+        <option value="Требует ремонта">Требует ремонта</option>
+      </select>
+
+      <label class="form-label">Замечания / комментарий</label>
+      <textarea id="input-comment" class="form-input form-textarea" placeholder="Опишите замечания…"></textarea>
+
+      <label class="form-label">Неисправности</label>
+      <div class="faults-grid" id="faults-grid">
+        <!-- Заполняется динамически в app.js: FAULT_OPTIONS -->
+      </div>
+
+      <label class="form-label">Фотографии</label>
+      <input type="file" id="input-photos" accept="image/*" capture="environment" multiple class="form-file" />
+      <div class="photo-preview" id="photo-preview"></div>
+
+      <button type="submit" class="btn btn--primary btn--block" id="btn-save-update">
+        💾 Сохранить
+      </button>
+
+    </form>
+
+  </section>
+
+  <!-- ==========================================================================
+       ЭКРАН ИНВЕНТАРИЗАЦИИ (список для последовательного прохода по машинам)
+       ========================================================================== -->
+  <section id="screen-inspection-list" class="screen">
+
+    <header class="app-header app-header--sub">
+      <button class="btn-icon" id="btn-back-from-inspection-list" aria-label="Назад">←</button>
+      <div class="app-header__title">Инвентаризация</div>
+      <div style="width:32px;"></div>
+    </header>
+
+    <div class="card-scroll" id="inspection-vehicle-list">
+      <!-- Заполняется динамически в app.js: renderInspectionList() -->
+    </div>
+
+  </section>
+
+  <!-- ==========================================================================
+       ЭКРАН ФОРМЫ ИНВЕНТАРИЗАЦИИ ОДНОЙ ЕДИНИЦЫ ТЕХНИКИ
+       ========================================================================== -->
+  <section id="screen-inspection-form" class="screen">
+
+    <header class="app-header app-header--sub">
+      <button class="btn-icon" id="btn-back-from-inspection-form" aria-label="Назад">←</button>
+      <div class="app-header__title" id="inspection-form-title">Инвентаризация</div>
+      <div style="width:32px;"></div>
+    </header>
+
+    <form class="form-scroll" id="form-inspection">
+
+      <label class="form-label">Пробег на момент проверки (км)</label>
+      <input type="number" inputmode="numeric" id="inspection-mileage" class="form-input" placeholder="Например, 45210" />
+
+      <label class="form-label">Фотографии</label>
+      <input type="file" id="inspection-photos" accept="image/*" capture="environment" multiple class="form-file" />
+      <div class="photo-preview" id="inspection-photo-preview"></div>
+
+      <label class="form-label">Замечания</label>
+      <textarea id="inspection-notes" class="form-input form-textarea" placeholder="Состояние, повреждения, комментарии…"></textarea>
+
+      <button type="submit" class="btn btn--primary btn--block" id="btn-save-inspection">
+        ✅ Зафиксировать
+      </button>
+
+    </form>
+
+  </section>
+
+  <!-- ==========================================================================
+       ТОСТ-УВЕДОМЛЕНИЯ (ошибки/успех)
+       ========================================================================== -->
+  <div id="toast" class="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
