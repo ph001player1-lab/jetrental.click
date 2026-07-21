@@ -2,57 +2,193 @@
  * ============================================================================
  * KOKON CARS & BIKE SERVICE — FRONTEND LOGIC (app.js)
  * ============================================================================
- * Чистый JavaScript без сторонних библиотек. Работает как SPA поверх
- * index.html, переключая видимость <section class="screen"> и заполняя их
- * данными, полученными от Google Apps Script API (Code.gs).
+ * Plain JavaScript, no external UI libraries. Works as an SPA on top of
+ * index.html, toggling visibility of <section class="screen"> elements and
+ * filling them with data from the Google Apps Script API (Code.gs).
  *
- * СТРУКТУРА ФАЙЛА:
- *   1. КОНФИГУРАЦИЯ (все константы вынесены сюда)
- *   2. ГЛОБАЛЬНОЕ СОСТОЯНИЕ ПРИЛОЖЕНИЯ
- *   3. ИНИЦИАЛИЗАЦИЯ И АВТОРИЗАЦИЯ
- *   4. РАБОТА С API (fetch-обёртка, обработка ошибок)
- *   5. НАВИГАЦИЯ МЕЖДУ ЭКРАНАМИ
- *   6. DASHBOARD (статистика + список техники)
- *   7. ПОИСК И ФИЛЬТРАЦИЯ
- *   8. КАРТОЧКА ТЕХНИКИ
- *   9. ОБНОВЛЕНИЕ СОСТОЯНИЯ (форма Editor)
- *   10. ИНВЕНТАРИЗАЦИЯ
- *   11. РАБОТА С ФОТОГРАФИЯМИ
- *   12. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (тост, форматирование, цвета статусов)
+ * FILE STRUCTURE:
+ *   1. CONFIGURATION (all constants live here)
+ *   2. I18N DICTIONARY + TRANSLATION HELPER
+ *   3. APPLICATION STATE
+ *   4. INITIALIZATION AND AUTHORIZATION
+ *   5. API LAYER (fetch wrapper, error handling)
+ *   6. SCREEN NAVIGATION
+ *   7. DASHBOARD (stats + vehicle list)
+ *   8. SEARCH AND FILTERING
+ *   9. VEHICLE CARD
+ *   10. UPDATE STATE (Editor form, incl. rental fields)
+ *   11. INSPECTION
+ *   12. RENTAL CALENDAR
+ *   13. PHOTO HANDLING
+ *   14. HELPERS (toast, formatting, status colors)
  * ============================================================================
  */
 
 /* ============================================================================
- * 1. КОНФИГУРАЦИЯ
+ * 1. CONFIGURATION
  * ========================================================================== */
 
 const APP_CONFIG = {
-  // URL веб-приложения Apps Script (Deploy → New deployment → Web app).
-  // ЗАМЕНИТЕ на реальный URL вашего развёрнутого Apps Script перед публикацией.
-  API_URL: 'https://script.google.com/macros/s/AKfycbwH3Chyr08nakPzCPd8dxz46xJLYCKY2GElih0Dz7A462AlabYMP2q7vzYcyntycoBj/exec',
+  // Apps Script web app URL (Deploy → New deployment → Web app).
+  // REPLACE this with your actual deployed Apps Script URL before publishing.
+  API_URL: 'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec',
 
-  // Список неисправностей, доступных для выбора при обновлении состояния
+  // Faults selectable when updating vehicle state
   FAULT_OPTIONS: [
-    { id: 'oil', label: 'Масло', icon: '🛢️' },
-    { id: 'brakes', label: 'Тормоза', icon: '🛑' },
-    { id: 'battery', label: 'Аккумулятор', icon: '🔋' },
-    { id: 'tires', label: 'Шины', icon: '🛞' },
-    { id: 'turn_signal', label: 'Поворотник', icon: '↩️' },
-    { id: 'headlight', label: 'Фара', icon: '💡' },
-    { id: 'other', label: 'Другое', icon: '⚠️' }
+    { id: 'oil', label: 'Oil', icon: '🛢️' },
+    { id: 'brakes', label: 'Brakes', icon: '🛑' },
+    { id: 'battery', label: 'Battery', icon: '🔋' },
+    { id: 'tires', label: 'Tires', icon: '🛞' },
+    { id: 'turn_signal', label: 'Turn signal', icon: '↩️' },
+    { id: 'headlight', label: 'Headlight', icon: '💡' },
+    { id: 'other', label: 'Other', icon: '⚠️' }
   ],
 
-  // Максимальный размер стороны фото при сжатии перед загрузкой (в пикселях)
+  // Max dimension (px) for photo compression before upload
   PHOTO_MAX_DIMENSION: 1280,
   PHOTO_JPEG_QUALITY: 0.75,
 
-  // Длительность показа тост-уведомлений (мс)
-  TOAST_DURATION: 2600
+  // Toast display duration (ms)
+  TOAST_DURATION: 2600,
+
+  // Status values as stored in the Vehicles sheet (must match CONFIG.VEHICLE_STATUS in Code.gs)
+  STATUS: {
+    FREE: 'Free',
+    RENTED: 'Rented',
+    REPAIR: 'In Repair',
+    NEEDS_REPAIR: 'Needs Repair'
+  }
 };
 
 
 /* ============================================================================
- * 2. ГЛОБАЛЬНОЕ СОСТОЯНИЕ ПРИЛОЖЕНИЯ
+ * 2. I18N DICTIONARY + TRANSLATION HELPER
+ * ========================================================================== */
+
+/**
+ * I18N — dictionary of all user-facing strings. English is the only active
+ * language today, but keeping every string in one place makes it simple to
+ * add more languages later (just add another top-level key and switch
+ * CURRENT_LANG).
+ */
+const I18N = {
+  en: {
+    'loading.checkingAccess': 'Checking access…',
+    'noAccess.title': "You don't have access to this system",
+    'noAccess.body': 'Please contact your Kokon Cars administrator to request access.',
+    'error.title': "Couldn't load data",
+    'error.body': 'Check your connection and try again.',
+    'error.retry': 'Retry',
+
+    'dashboard.rentalCalendar': 'Rental Calendar',
+    'dashboard.startInspection': 'Start Inspection',
+    'dashboard.searchPlaceholder': 'Search: brand, model, plate, VIN…',
+
+    'filter.all': 'All statuses',
+    'filter.overdue': 'Maintenance Overdue',
+    'filter.dueSoon': 'Maintenance Due Soon',
+    'filter.rentalEnding': 'Rental Ending Soon',
+
+    'status.free': 'Free',
+    'status.rented': 'Rented',
+    'status.repair': 'In Repair',
+    'status.needsRepair': 'Needs Repair',
+
+    'card.updateState': 'Update State',
+    'card.mileage': 'Mileage',
+    'card.type': 'Type',
+    'card.lastMaintenance': 'Last Maintenance',
+    'card.nextMaintenance': 'Next Maintenance',
+    'card.year': 'Year',
+    'card.vin': 'VIN',
+    'card.responsible': 'Responsible',
+    'card.inspection': 'Last Inspection',
+    'card.inspectionNone': 'not performed',
+    'card.rentalPeriod': 'Rental Period',
+    'card.rentalTenant': 'Tenant',
+    'card.rentalDaysLeft': 'days left',
+    'card.rentalExpired': 'Rental period has ended',
+    'card.maintenanceHistory': 'Maintenance History',
+    'card.damageHistory': 'Damage History',
+    'card.inspectionHistory': 'Inspection History',
+    'card.noRecords': 'No records yet',
+
+    'updateForm.title': 'Update State',
+    'updateForm.mileage': 'Current Mileage (km)',
+    'updateForm.status': 'Vehicle Status',
+    'updateForm.statusNoChange': "Don't change",
+    'updateForm.rentalTenant': 'Tenant / Renter',
+    'updateForm.rentalTenantPlaceholder': 'Name or company',
+    'updateForm.rentalStart': 'Rental Start Date',
+    'updateForm.rentalEnd': 'Rental End Date',
+    'updateForm.comment': 'Notes / Comment',
+    'updateForm.commentPlaceholder': 'Describe any notes…',
+    'updateForm.faults': 'Faults',
+    'updateForm.photos': 'Photos',
+    'updateForm.save': 'Save',
+
+    'inspection.title': 'Inspection',
+    'inspectionForm.mileage': 'Mileage at Inspection (km)',
+    'inspectionForm.notes': 'Notes',
+    'inspectionForm.notesPlaceholder': 'Condition, damage, comments…',
+    'inspectionForm.save': 'Confirm',
+
+    'calendar.title': 'Rental Calendar',
+    'calendar.noRentals': 'No active or scheduled rentals',
+    'calendar.endingSoon': 'Ending soon',
+    'calendar.expired': 'Rental ended',
+    'calendar.active': 'Active',
+    'calendar.upcoming': 'Upcoming',
+
+    'toast.saved': 'Saved',
+    'toast.stateUpdated': 'State updated',
+    'toast.inspectionRecorded': 'Inspection recorded',
+    'toast.noEditPermission': "You don't have edit permission",
+    'toast.noInspectionPermission': "You don't have permission to run inspections",
+    'toast.photoError': 'Could not process photo',
+    'toast.connectionError': 'Connection error with the server',
+    'toast.nothingFound': 'Nothing found'
+  }
+};
+
+/** Active language. Only 'en' is populated today; kept as a variable so more
+ * languages can be added to I18N and switched here without touching the rest
+ * of the code. */
+const CURRENT_LANG = 'en';
+
+/**
+ * t — looks up a translation key in the active language dictionary.
+ * Falls back to the key itself if not found, so missing translations are
+ * visible during development instead of silently breaking the UI.
+ *
+ * @param {string} key
+ * @return {string}
+ */
+function t(key) {
+  const dict = I18N[CURRENT_LANG] || I18N.en;
+  return dict[key] !== undefined ? dict[key] : key;
+}
+
+/**
+ * applyTranslations — walks the DOM once on startup and fills every element
+ * carrying data-i18n / data-i18n-placeholder with the matching translation.
+ * Called once after DOMContentLoaded, before any screen is shown.
+ */
+function applyTranslations() {
+  document.querySelectorAll('[data-i18n]').forEach(function (el) {
+    const key = el.getAttribute('data-i18n');
+    el.textContent = t(key);
+  });
+
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(function (el) {
+    const key = el.getAttribute('data-i18n-placeholder');
+    el.setAttribute('placeholder', t(key));
+  });
+}
+
+
+/* ============================================================================
+ * 3. APPLICATION STATE
  * ========================================================================== */
 
 const AppState = {
@@ -62,21 +198,25 @@ const AppState = {
   role: null,        // 'Viewer' | 'Editor'
   canEdit: false,
 
-  vehicles: [],       // полный список техники (кэш последнего getVehicles)
+  vehicles: [],       // full vehicle list cache (last getVehicles result)
   dashboardStats: null,
+  rentalCalendarData: null,
 
-  currentVehicleId: null,   // ID открытой карточки
-  currentVehicleData: null, // полные данные открытой карточки (с историями)
+  currentVehicleId: null,   // ID of the currently open card
+  currentVehicleData: null, // full data of the open card (with histories)
 
-  // Временное состояние формы обновления/инвентаризации
-  pendingPhotos: [],        // массив base64 фото, готовых к отправке
-  pendingFaults: [],        // выбранные неисправности
+  // Transient form state for update/inspection
+  pendingPhotos: [],
+  pendingFaults: [],
   pendingInspectionPhotos: [],
 
-  // Состояние процесса инвентаризации (для последовательного прохода по машинам)
+  // Inspection flow state (sequential walk-through of all vehicles)
   inspectionQueue: [],
   inspectionDoneIds: new Set(),
   inspectionCurrentVehicleId: null,
+
+  // Rental calendar: which month is currently displayed
+  calendarViewDate: new Date(),
 
   searchQuery: '',
   filterValue: 'all'
@@ -84,22 +224,23 @@ const AppState = {
 
 
 /* ============================================================================
- * 3. ИНИЦИАЛИЗАЦИЯ И АВТОРИЗАЦИЯ
+ * 4. INITIALIZATION AND AUTHORIZATION
  * ========================================================================== */
 
 /**
- * Точка входа приложения. Вызывается после загрузки DOM.
+ * Application entry point. Runs after the DOM has loaded.
  */
 document.addEventListener('DOMContentLoaded', function () {
+  applyTranslations();
   initTelegramWebApp();
   bindGlobalEventListeners();
   authorizeAndStart();
 });
 
 /**
- * initTelegramWebApp — инициализирует Telegram Web App SDK: сообщает
- * Telegram, что приложение готово, разворачивает его на весь экран и
- * применяет цветовую тему клиента Telegram.
+ * initTelegramWebApp — initializes the Telegram Web App SDK: tells Telegram
+ * the app is ready, expands it to full height, and applies the Telegram
+ * client's color theme.
  */
 function initTelegramWebApp() {
   if (window.Telegram && window.Telegram.WebApp) {
@@ -107,7 +248,6 @@ function initTelegramWebApp() {
     tg.ready();
     tg.expand();
 
-    // Применяем тему Telegram к CSS-переменным, если она доступна
     if (tg.themeParams) {
       const root = document.documentElement;
       if (tg.themeParams.bg_color) root.style.setProperty('--tg-theme-bg-color', tg.themeParams.bg_color);
@@ -122,12 +262,12 @@ function initTelegramWebApp() {
 }
 
 /**
- * getTelegramUser — извлекает данные пользователя Telegram из initDataUnsafe.
- * В продакшене реальная проверка подлинности initData должна выполняться
- * на сервере (см. комментарий verifyTelegramAuth в Code.gs); здесь мы лишь
- * читаем поля для отображения и передачи telegramId в API.
+ * getTelegramUser — extracts Telegram user data from initDataUnsafe.
+ * In production, real verification of initData's authenticity should happen
+ * server-side (see the verifyTelegramAuth comment in Code.gs); here we only
+ * read fields for display and to pass telegramId to the API.
  *
- * @return {Object|null} { id, username, firstName, lastName } или null
+ * @return {Object|null} { id, username, firstName, lastName } or null
  */
 function getTelegramUser() {
   if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe) {
@@ -145,9 +285,9 @@ function getTelegramUser() {
 }
 
 /**
- * authorizeAndStart — главный сценарий запуска: получает Telegram ID,
- * проверяет его через API (action: 'authorize'), и в зависимости от
- * результата показывает либо Dashboard, либо экран "Нет доступа".
+ * authorizeAndStart — main startup flow: gets the Telegram ID, verifies it
+ * through the API (action: 'authorize'), and shows either the Dashboard or
+ * the "No access" screen depending on the result.
  */
 async function authorizeAndStart() {
   showScreen('screen-loading');
@@ -155,8 +295,8 @@ async function authorizeAndStart() {
   const telegramUser = getTelegramUser();
 
   if (!telegramUser) {
-    // Если приложение открыто вне Telegram (например, для локальной отладки в браузере),
-    // всё равно пытаемся продолжить с пустым ID — сервер вернёт "нет доступа".
+    // If opened outside Telegram (e.g. local debugging in a browser), still
+    // attempt to proceed with an empty ID — the server will return "no access".
     showScreen('screen-no-access');
     return;
   }
@@ -171,7 +311,7 @@ async function authorizeAndStart() {
     });
 
     if (!result.success) {
-      showError(result.error || 'Ошибка авторизации');
+      showError(result.error || 'Authorization error');
       return;
     }
 
@@ -189,18 +329,18 @@ async function authorizeAndStart() {
     showScreen('screen-dashboard');
 
   } catch (err) {
-    showError('Не удалось связаться с сервером. Проверьте интернет-соединение.');
+    showError('Could not reach the server. Check your internet connection.');
   }
 }
 
 /**
- * applyRoleToUI — показывает/скрывает элементы интерфейса, доступные только
- * редакторам (Editor), в соответствии с ролью текущего пользователя.
- * Это лишь UX-слой: реальная защита всегда выполняется на сервере.
+ * applyRoleToUI — shows/hides UI elements available only to editors, based
+ * on the current user's role. This is a UX layer only: real enforcement
+ * always happens server-side.
  */
 function applyRoleToUI() {
   const roleBadge = document.getElementById('user-role-badge');
-  roleBadge.textContent = AppState.role === 'Editor' ? 'Редактор' : 'Наблюдатель';
+  roleBadge.textContent = AppState.role === 'Editor' ? 'Editor' : 'Viewer';
 
   const editorOnlyElements = [
     document.getElementById('btn-start-inspection'),
@@ -219,16 +359,16 @@ function applyRoleToUI() {
 
 
 /* ============================================================================
- * 4. РАБОТА С API
+ * 5. API LAYER
  * ========================================================================== */
 
 /**
- * callApi — универсальная обёртка над fetch() для вызова методов Apps Script.
- * Отправляет POST-запрос с JSON-телом { action, telegramId, data }.
+ * callApi — generic wrapper over fetch() for calling Apps Script methods.
+ * Sends a POST request with a JSON body { action, telegramId, data }.
  *
- * @param {string} action - имя действия (должно соответствовать case в Code.gs)
- * @param {Object} data - произвольные данные запроса
- * @return {Promise<Object>} разобранный JSON-ответ сервера
+ * @param {string} action - action name (must match a case in Code.gs)
+ * @param {Object} data - arbitrary request data
+ * @return {Promise<Object>} parsed JSON server response
  */
 async function callApi(action, data) {
   data = data || {};
@@ -242,15 +382,15 @@ async function callApi(action, data) {
   const response = await fetch(APP_CONFIG.API_URL, {
     method: 'POST',
     headers: {
-      // Используем text/plain, чтобы избежать preflight-запроса CORS,
-      // который Apps Script Web App не поддерживает "из коробки".
+      // Using text/plain to avoid a CORS preflight request, which the
+      // Apps Script Web App doesn't support out of the box.
       'Content-Type': 'text/plain;charset=utf-8'
     },
     body: JSON.stringify(body)
   });
 
   if (!response.ok) {
-    throw new Error('Сервер вернул код ' + response.status);
+    throw new Error('Server returned status ' + response.status);
   }
 
   const json = await response.json();
@@ -258,35 +398,35 @@ async function callApi(action, data) {
 }
 
 /**
- * callApiSafe — обёртка над callApi с автоматическим показом тоста при ошибке.
- * Используется в местах, где не нужно останавливать весь экран из-за сбоя
- * одного действия (например, при сохранении формы).
+ * callApiSafe — wrapper over callApi that automatically shows a toast on
+ * error. Used where a single action's failure shouldn't halt the whole
+ * screen (e.g. saving a form).
  *
  * @param {string} action
  * @param {Object} data
- * @return {Promise<Object|null>} результат или null при ошибке
+ * @return {Promise<Object|null>} result, or null on error
  */
 async function callApiSafe(action, data) {
   try {
     const result = await callApi(action, data);
     if (!result.success) {
-      showToast(result.error || 'Произошла ошибка', 'error');
+      showToast(result.error || 'An error occurred', 'error');
       return null;
     }
     return result;
   } catch (err) {
-    showToast('Ошибка соединения с сервером', 'error');
+    showToast(t('toast.connectionError'), 'error');
     return null;
   }
 }
 
 
 /* ============================================================================
- * 5. НАВИГАЦИЯ МЕЖДУ ЭКРАНАМИ
+ * 6. SCREEN NAVIGATION
  * ========================================================================== */
 
 /**
- * showScreen — показывает экран с указанным ID, скрывая все остальные.
+ * showScreen — shows the screen with the given ID, hiding all others.
  *
  * @param {string} screenId
  */
@@ -300,7 +440,7 @@ function showScreen(screenId) {
 }
 
 /**
- * showError — показывает экран ошибки с заданным текстом.
+ * showError — shows the error screen with the given message.
  *
  * @param {string} message
  */
@@ -310,8 +450,8 @@ function showError(message) {
 }
 
 /**
- * bindGlobalEventListeners — навешивает все обработчики событий,
- * которые не зависят от динамически создаваемого контента.
+ * bindGlobalEventListeners — attaches all event handlers that don't depend
+ * on dynamically-generated content.
  */
 function bindGlobalEventListeners() {
   document.getElementById('btn-retry').addEventListener('click', authorizeAndStart);
@@ -333,6 +473,11 @@ function bindGlobalEventListeners() {
     showScreen('screen-inspection-list');
   });
 
+  document.getElementById('btn-open-calendar').addEventListener('click', openRentalCalendar);
+  document.getElementById('btn-back-from-calendar').addEventListener('click', function () {
+    showScreen('screen-dashboard');
+  });
+
   document.getElementById('search-input').addEventListener('input', function (e) {
     AppState.searchQuery = e.target.value.trim().toLowerCase();
     renderVehicleList();
@@ -347,6 +492,9 @@ function bindGlobalEventListeners() {
   document.getElementById('input-photos').addEventListener('change', function (e) {
     handlePhotoSelection(e, 'photo-preview', AppState.pendingPhotos);
   });
+  document.getElementById('input-status').addEventListener('change', function (e) {
+    toggleRentalFieldsVisibility(e.target.value);
+  });
 
   document.getElementById('form-inspection').addEventListener('submit', handleInspectionSubmit);
   document.getElementById('inspection-photos').addEventListener('change', function (e) {
@@ -356,12 +504,12 @@ function bindGlobalEventListeners() {
 
 
 /* ============================================================================
- * 6. DASHBOARD (статистика + список техники)
+ * 7. DASHBOARD (stats + vehicle list)
  * ========================================================================== */
 
 /**
- * loadDashboard — загружает статистику Dashboard и список техники параллельно,
- * затем отрисовывает оба блока.
+ * loadDashboard — loads dashboard stats and the vehicle list in parallel,
+ * then renders both blocks.
  */
 async function loadDashboard() {
   const [statsResult, vehiclesResult] = await Promise.all([
@@ -381,20 +529,20 @@ async function loadDashboard() {
 }
 
 /**
- * renderDashboardStats — заполняет сетку карточек статистики на главном экране.
+ * renderDashboardStats — fills the stats card grid on the main screen.
  *
- * @param {Object} stats - результат getDashboardStats() с сервера
+ * @param {Object} stats - result of getDashboardStats() from the server
  */
 function renderDashboardStats(stats) {
   const grid = document.getElementById('stats-grid');
 
   const cards = [
-    { value: stats.total, label: 'Всего техники', color: 'blue' },
-    { value: stats.free, label: 'Свободно', color: 'green' },
-    { value: stats.rented, label: 'В аренде', color: 'blue' },
-    { value: stats.repair, label: 'На ремонте', color: 'yellow' },
-    { value: stats.needsRepair, label: 'Требует ремонта', color: 'red' },
-    { value: stats.overdueMaintenance.length, label: 'Просрочено ТО', color: 'red' }
+    { value: stats.total, label: 'Total Vehicles', color: 'blue' },
+    { value: stats.free, label: 'Free', color: 'green' },
+    { value: stats.rented, label: 'Rented', color: 'blue' },
+    { value: stats.repair, label: 'In Repair', color: 'yellow' },
+    { value: stats.needsRepair, label: 'Needs Repair', color: 'red' },
+    { value: stats.overdueMaintenance.length, label: 'Maintenance Overdue', color: 'red' }
   ];
 
   grid.innerHTML = cards.map(function (c) {
@@ -409,12 +557,19 @@ function renderDashboardStats(stats) {
 
 
 /* ============================================================================
- * 7. ПОИСК И ФИЛЬТРАЦИЯ
+ * 8. SEARCH AND FILTERING
  * ========================================================================== */
 
 /**
- * getFilteredVehicles — применяет текущий поисковый запрос и фильтр статуса
- * к полному списку техники в состоянии приложения.
+ * getFilteredVehicles — applies the current search query and status filter
+ * to the full vehicle list in application state.
+ *
+ * All fields are explicitly coerced with String(... || '') before calling
+ * .toLowerCase(). This matters: if a field is null/undefined/a number (e.g.
+ * a plate number stored as a number in Sheets), calling .toLowerCase()
+ * directly on it throws a TypeError inside the filter() callback, which
+ * silently breaks the entire list (search/filter appear "dead"). Coercing
+ * to a string first makes this robust regardless of how the data is typed.
  *
  * @return {Array}
  */
@@ -425,11 +580,11 @@ function getFilteredVehicles() {
     const q = AppState.searchQuery;
     list = list.filter(function (v) {
       return (
-        (v.brand && v.brand.toLowerCase().includes(q)) ||
-        (v.model && v.model.toLowerCase().includes(q)) ||
-        (v.plateNumber && String(v.plateNumber).toLowerCase().includes(q)) ||
-        (v.vin && String(v.vin).toLowerCase().includes(q)) ||
-        (v.id && String(v.id).toLowerCase().includes(q))
+        String(v.brand || '').toLowerCase().includes(q) ||
+        String(v.model || '').toLowerCase().includes(q) ||
+        String(v.plateNumber || '').toLowerCase().includes(q) ||
+        String(v.vin || '').toLowerCase().includes(q) ||
+        String(v.id || '').toLowerCase().includes(q)
       );
     });
   }
@@ -438,6 +593,8 @@ function getFilteredVehicles() {
     list = list.filter(function (v) { return v.maintenanceOverdue; });
   } else if (AppState.filterValue === '__due_soon') {
     list = list.filter(function (v) { return v.maintenanceDueSoon; });
+  } else if (AppState.filterValue === '__rental_ending') {
+    list = list.filter(function (v) { return v.rentalEndingSoon; });
   } else if (AppState.filterValue !== 'all') {
     list = list.filter(function (v) { return v.status === AppState.filterValue; });
   }
@@ -446,45 +603,48 @@ function getFilteredVehicles() {
 }
 
 /**
- * renderVehicleList — отрисовывает список карточек техники с учётом
- * текущего поиска/фильтра. Каждая карточка кликабельна и открывает
- * полную карточку техники.
+ * renderVehicleList — renders the vehicle card list honoring the current
+ * search/filter. Each card is clickable and opens the full vehicle card.
  */
 function renderVehicleList() {
   const container = document.getElementById('vehicle-list');
   const list = getFilteredVehicles();
 
   if (list.length === 0) {
-    container.innerHTML = '<div class="empty-state">Ничего не найдено</div>';
+    container.innerHTML = '<div class="empty-state">' + escapeHtml(t('toast.nothingFound')) + '</div>';
     return;
   }
 
   container.innerHTML = list.map(function (v) {
     const statusColor = getStatusColor(v.status);
-    const icon = v.type === 'Мотоцикл' ? '🏍️' : '🚗';
+    const icon = v.type === 'Moto' || v.type === 'Motorcycle' ? '🏍️' : '🚗';
 
     let badge = '';
     if (v.maintenanceOverdue) {
-      badge = '<span class="badge badge--red">ТО просрочено</span>';
+      badge = '<span class="badge badge--red">Overdue TO</span>';
     } else if (v.maintenanceDueSoon) {
-      badge = '<span class="badge badge--yellow">Скоро ТО</span>';
+      badge = '<span class="badge badge--yellow">TO Due Soon</span>';
+    } else if (v.rentalEndingSoon) {
+      badge = '<span class="badge badge--yellow">Rental Ending</span>';
     }
+
+    const thumb = (v.photos && v.photos[0])
+      ? '<img src="' + escapeHtml(v.photos[0]) + '" alt="" loading="lazy" onerror="this.onerror=null;this.replaceWith(document.createTextNode(\'' + icon + '\'));">'
+      : icon;
 
     return (
       '<div class="vehicle-item" data-vehicle-id="' + escapeHtml(v.id) + '">' +
-        '<div class="vehicle-item__thumb">' +
-          (v.photos && v.photos[0] ? '<img src="' + escapeHtml(v.photos[0]) + '" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:10px;">' : icon) +
-        '</div>' +
+        '<div class="vehicle-item__thumb">' + thumb + '</div>' +
         '<div class="vehicle-item__info">' +
           '<div class="vehicle-item__title"><span class="status-dot status-dot--' + statusColor + '"></span>' + escapeHtml(v.brand) + ' ' + escapeHtml(v.model) + '</div>' +
-          '<div class="vehicle-item__meta">' + escapeHtml(v.plateNumber || '') + ' • ' + formatMileage(v.currentMileage) + ' км</div>' +
+          '<div class="vehicle-item__meta">' + escapeHtml(v.plateNumber || '') + ' • ' + formatMileage(v.currentMileage) + ' km</div>' +
         '</div>' +
         badge +
       '</div>'
     );
   }).join('');
 
-  // Навешиваем обработчики клика на каждую карточку
+  // Attach click handlers to each card
   container.querySelectorAll('.vehicle-item').forEach(function (el) {
     el.addEventListener('click', function () {
       openVehicleCard(el.getAttribute('data-vehicle-id'));
@@ -494,12 +654,12 @@ function renderVehicleList() {
 
 
 /* ============================================================================
- * 8. КАРТОЧКА ТЕХНИКИ
+ * 9. VEHICLE CARD
  * ========================================================================== */
 
 /**
- * openVehicleCard — загружает полную карточку техники (с историями)
- * и отображает экран карточки.
+ * openVehicleCard — loads the full vehicle card (with histories) and shows
+ * the card screen.
  *
  * @param {string} vehicleId
  */
@@ -520,10 +680,16 @@ async function openVehicleCard(vehicleId) {
 }
 
 /**
- * renderVehicleCard — отрисовывает содержимое карточки техники: фото, основные
- * поля, комментарий и три блока истории (ТО, повреждения, инвентаризация).
+ * renderVehicleCard — renders the vehicle card contents: photos, main
+ * fields, rental period, comment, and three history blocks (maintenance,
+ * damage, inspection).
  *
- * @param {Object} data - результат getVehicleCard() { vehicle, maintenanceHistory, damageHistory, inspectionHistory }
+ * Photo <img> tags include an onerror handler that swaps a broken image for
+ * a placeholder icon instead of showing the browser's broken-image glyph,
+ * so a single bad URL (e.g. from an old-format Drive link, or a file whose
+ * sharing permissions changed) doesn't visually break the whole strip.
+ *
+ * @param {Object} data - result of getVehicleCard() { vehicle, maintenanceHistory, damageHistory, inspectionHistory }
  */
 function renderVehicleCard(data) {
   const v = data.vehicle;
@@ -533,10 +699,17 @@ function renderVehicleCard(data) {
 
   let html = '';
 
-  // Фотографии
+  // Photos
   if (v.photos && v.photos.length > 0) {
     html += '<div class="card-photo-strip">' +
-      v.photos.map(function (p) { return '<img src="' + escapeHtml(p) + '" alt="">'; }).join('') +
+      v.photos.map(function (p) {
+        return '<img src="' + escapeHtml(p) + '" alt="" loading="lazy" ' +
+          'onerror="this.onerror=null;this.src=\'data:image/svg+xml;utf8,' +
+          '<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2296%22 height=%2296%22>' +
+          '<rect width=%22100%25%22 height=%22100%25%22 fill=%22%23222%22/>' +
+          '<text x=%2250%25%22 y=%2250%25%22 fill=%22%23888%22 font-size=%2214%22 text-anchor=%22middle%22 dy=%22.3em%22>N/A</text>' +
+          '</svg>\';">' ;
+      }).join('') +
       '</div>';
   }
 
@@ -544,42 +717,59 @@ function renderVehicleCard(data) {
   html += '<div class="card-subtitle"><span class="status-dot status-dot--' + statusColor + '"></span>' + escapeHtml(v.status) + ' • ' + escapeHtml(v.plateNumber || '') + '</div>';
 
   html += '<div class="info-grid">' +
-    infoTile('Пробег', formatMileage(v.currentMileage) + ' км') +
-    infoTile('Тип', v.type || '—') +
-    infoTile('Последнее ТО', v.lastMaintenanceDate || '—') +
-    infoTile('Следующее ТО', (v.nextMaintenanceKm ? v.nextMaintenanceKm + ' км' : '—') + (v.nextMaintenanceDate ? ' / ' + v.nextMaintenanceDate : '')) +
-    infoTile('Год выпуска', v.year || '—') +
-    infoTile('VIN', v.vin || '—') +
-    infoTile('Ответственный', v.responsible || '—') +
-    infoTile('Инвентаризация', v.lastInspectionDate || 'не проводилась') +
+    infoTile(t('card.mileage'), formatMileage(v.currentMileage) + ' km') +
+    infoTile(t('card.type'), v.type || '—') +
+    infoTile(t('card.lastMaintenance'), v.lastMaintenanceDate || '—') +
+    infoTile(t('card.nextMaintenance'), (v.nextMaintenanceKm ? v.nextMaintenanceKm + ' km' : '—') + (v.nextMaintenanceDate ? ' / ' + v.nextMaintenanceDate : '')) +
+    infoTile(t('card.year'), v.year || '—') +
+    infoTile(t('card.vin'), v.vin || '—') +
+    infoTile(t('card.responsible'), v.responsible || '—') +
+    infoTile(t('card.inspection'), v.lastInspectionDate || t('card.inspectionNone')) +
   '</div>';
+
+  // Rental info block — only shown if rental dates are set
+  if (v.rentalStartDate || v.rentalEndDate) {
+    const rentalClass = v.rentalExpired ? 'rental-summary--expired' : (v.rentalEndingSoon ? 'rental-summary--ending-soon' : '');
+    html += '<div class="rental-summary ' + rentalClass + '">';
+    html += '<div class="rental-summary__vehicle">📅 ' + escapeHtml(t('card.rentalPeriod')) + '</div>';
+    html += '<div class="rental-summary__dates">' + escapeHtml(v.rentalStartDate || '—') + ' → ' + escapeHtml(v.rentalEndDate || '—') + '</div>';
+    if (v.rentalTenant) {
+      html += '<div class="rental-summary__tenant">' + escapeHtml(t('card.rentalTenant')) + ': ' + escapeHtml(v.rentalTenant) + '</div>';
+    }
+    if (v.rentalExpired) {
+      html += '<div class="rental-summary__tenant">⚠️ ' + escapeHtml(t('card.rentalExpired')) + '</div>';
+    } else if (v.rentalDaysRemaining !== null && v.rentalDaysRemaining !== undefined) {
+      html += '<div class="rental-summary__tenant">' + v.rentalDaysRemaining + ' ' + escapeHtml(t('card.rentalDaysLeft')) + '</div>';
+    }
+    html += '</div>';
+  }
 
   if (v.comment) {
     html += '<div class="comment-box">💬 ' + escapeHtml(v.comment) + '</div>';
   }
 
-  // История ТО
-  html += '<div class="section-title">🔧 История обслуживания</div>';
+  // Maintenance history
+  html += '<div class="section-title">🔧 ' + escapeHtml(t('card.maintenanceHistory')) + '</div>';
   html += renderHistoryList(data.maintenanceHistory, function (item) {
-    return escapeHtml(item.work || '—') + (item.cost ? ' · ' + escapeHtml(String(item.cost)) : '') + '<br><small>' + escapeHtml(item.executor || '') + ' · ' + formatMileage(item.mileage) + ' км</small>';
+    return escapeHtml(item.work || '—') + (item.cost ? ' · ' + escapeHtml(String(item.cost)) : '') + '<br><small>' + escapeHtml(item.executor || '') + ' · ' + formatMileage(item.mileage) + ' km</small>';
   });
 
-  // История повреждений
-  html += '<div class="section-title">⚠️ История повреждений</div>';
+  // Damage history
+  html += '<div class="section-title">⚠️ ' + escapeHtml(t('card.damageHistory')) + '</div>';
   html += renderHistoryList(data.damageHistory, function (item) {
-    return escapeHtml(item.description || '—') + ' <span class="badge badge--' + (item.severity === 'Критическая' || item.severity === 'Высокая' ? 'red' : 'yellow') + '">' + escapeHtml(item.severity || '') + '</span>' +
+    return escapeHtml(item.description || '—') + ' <span class="badge badge--' + (item.severity === 'Critical' || item.severity === 'High' ? 'red' : 'yellow') + '">' + escapeHtml(item.severity || '') + '</span>' +
       '<br><small>' + escapeHtml(item.author || '') + ' · ' + escapeHtml(item.fixStatus || '') + '</small>';
   });
 
-  // История инвентаризаций
-  html += '<div class="section-title">📋 История инвентаризаций</div>';
+  // Inspection history
+  html += '<div class="section-title">📋 ' + escapeHtml(t('card.inspectionHistory')) + '</div>';
   html += renderHistoryList(data.inspectionHistory, function (item) {
-    return escapeHtml(item.notes || 'Без замечаний') + '<br><small>' + escapeHtml(item.author || '') + ' · ' + formatMileage(item.mileage) + ' км</small>';
+    return escapeHtml(item.notes || 'No remarks') + '<br><small>' + escapeHtml(item.author || '') + ' · ' + formatMileage(item.mileage) + ' km</small>';
   });
 
   document.getElementById('card-content').innerHTML = html;
 
-  // Кнопка "Обновить состояние" видна только Editor
+  // "Update State" button is visible only to Editors
   const updateBtn = document.getElementById('btn-update-state');
   if (AppState.canEdit) {
     updateBtn.classList.remove('hidden');
@@ -589,7 +779,7 @@ function renderVehicleCard(data) {
 }
 
 /**
- * infoTile — вспомогательная функция для генерации HTML одной плитки в info-grid.
+ * infoTile — helper that generates the HTML for one info-grid tile.
  *
  * @param {string} label
  * @param {string} value
@@ -600,16 +790,16 @@ function infoTile(label, value) {
 }
 
 /**
- * renderHistoryList — генерирует HTML списка записей истории (ТО/повреждения/инвентаризация).
- * Если список пуст, показывает заглушку "Записей нет".
+ * renderHistoryList — generates the HTML for a history list (maintenance /
+ * damage / inspection). Shows a placeholder if the list is empty.
  *
  * @param {Array} items
- * @param {Function} renderItemContent - функция (item) => innerHTML содержимого записи
+ * @param {Function} renderItemContent - function (item) => innerHTML of the record
  * @return {string}
  */
 function renderHistoryList(items, renderItemContent) {
   if (!items || items.length === 0) {
-    return '<div class="empty-state" style="padding:16px;">Записей нет</div>';
+    return '<div class="empty-state" style="padding:16px;">' + escapeHtml(t('card.noRecords')) + '</div>';
   }
 
   return items.map(function (item) {
@@ -619,16 +809,17 @@ function renderHistoryList(items, renderItemContent) {
 
 
 /* ============================================================================
- * 9. ОБНОВЛЕНИЕ СОСТОЯНИЯ (форма Editor)
+ * 10. UPDATE STATE (Editor form, incl. rental fields)
  * ========================================================================== */
 
 /**
- * openUpdateStateForm — открывает форму обновления состояния для текущей
- * открытой единицы техники, предзаполняя поле пробега текущим значением.
+ * openUpdateStateForm — opens the update-state form for the currently open
+ * vehicle, pre-filling the mileage field with the current value and the
+ * rental fields with any existing rental data.
  */
 function openUpdateStateForm() {
   if (!AppState.canEdit) {
-    showToast('У вас нет прав на редактирование', 'error');
+    showToast(t('toast.noEditPermission'), 'error');
     return;
   }
 
@@ -640,15 +831,62 @@ function openUpdateStateForm() {
   document.getElementById('input-photos').value = '';
   document.getElementById('photo-preview').innerHTML = '';
 
+  document.getElementById('input-rental-tenant').value = v.rentalTenant || '';
+  document.getElementById('input-rental-start').value = toDateInputValue(v.rentalStartDate);
+  document.getElementById('input-rental-end').value = toDateInputValue(v.rentalEndDate);
+
   AppState.pendingPhotos = [];
   AppState.pendingFaults = [];
+
+  // Show rental fields immediately if the vehicle is currently rented or
+  // already has rental dates set; otherwise hide them until "Rented" is picked.
+  const shouldShowRental = v.status === APP_CONFIG.STATUS.RENTED || !!(v.rentalStartDate || v.rentalEndDate);
+  setRentalFieldsVisible(shouldShowRental);
 
   renderFaultsGrid();
   showScreen('screen-update-state');
 }
 
 /**
- * renderFaultsGrid — отрисовывает сетку чекбоксов неисправностей на основе
+ * toggleRentalFieldsVisibility — shows the rental fields block only when
+ * the selected status is "Rented"; called on the status <select> change event.
+ *
+ * @param {string} statusValue
+ */
+function toggleRentalFieldsVisibility(statusValue) {
+  setRentalFieldsVisible(statusValue === APP_CONFIG.STATUS.RENTED);
+}
+
+/**
+ * setRentalFieldsVisible — shows/hides the rental fields block.
+ *
+ * @param {boolean} visible
+ */
+function setRentalFieldsVisible(visible) {
+  const block = document.getElementById('rental-fields-block');
+  if (visible) {
+    block.classList.remove('hidden');
+  } else {
+    block.classList.add('hidden');
+  }
+}
+
+/**
+ * toDateInputValue — converts a "YYYY-MM-DD HH:mm" or similar date string
+ * (as returned by the server) into the "YYYY-MM-DD" format required by
+ * <input type="date">.
+ *
+ * @param {string} dateStr
+ * @return {string}
+ */
+function toDateInputValue(dateStr) {
+  if (!dateStr) return '';
+  const match = String(dateStr).match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : '';
+}
+
+/**
+ * renderFaultsGrid — renders the fault checkbox grid based on
  * APP_CONFIG.FAULT_OPTIONS.
  */
 function renderFaultsGrid() {
@@ -681,8 +919,10 @@ function renderFaultsGrid() {
 }
 
 /**
- * handleUpdateStateSubmit — обрабатывает отправку формы обновления состояния:
- * сначала загружает фотографии (если есть), затем вызывает updateVehicleCard.
+ * handleUpdateStateSubmit — handles submission of the update-state form:
+ * uploads photos first (if any), then calls updateVehicleCard with all
+ * changed fields, including rental dates/tenant when the "Rented" status
+ * is selected.
  *
  * @param {Event} e
  */
@@ -691,46 +931,60 @@ async function handleUpdateStateSubmit(e) {
 
   const saveBtn = document.getElementById('btn-save-update');
   saveBtn.disabled = true;
-  saveBtn.textContent = 'Сохранение…';
+  saveBtn.textContent = 'Saving…';
 
   try {
     const uploadedUrls = await uploadPendingPhotos(AppState.pendingPhotos);
 
+    const statusValue = document.getElementById('input-status').value || undefined;
+
     const payload = {
       vehicleId: AppState.currentVehicleId,
       mileage: document.getElementById('input-mileage').value || undefined,
-      status: document.getElementById('input-status').value || undefined,
+      status: statusValue,
       comment: document.getElementById('input-comment').value || undefined,
       photos: uploadedUrls,
       faults: AppState.pendingFaults
     };
 
+    // Only send rental fields if the rental block is visible (i.e. relevant)
+    const rentalBlockVisible = !document.getElementById('rental-fields-block').classList.contains('hidden');
+    if (rentalBlockVisible) {
+      const tenant = document.getElementById('input-rental-tenant').value;
+      const startDate = document.getElementById('input-rental-start').value;
+      const endDate = document.getElementById('input-rental-end').value;
+
+      if (tenant) payload.rentalTenant = tenant;
+      if (startDate) payload.rentalStartDate = startDate;
+      if (endDate) payload.rentalEndDate = endDate;
+    }
+
     const result = await callApiSafe('updateVehicleCard', payload);
 
     if (result) {
-      showToast('Состояние обновлено', 'success');
+      showToast(t('toast.stateUpdated'), 'success');
       await openVehicleCard(AppState.currentVehicleId);
-      await loadDashboard(); // обновляем счётчики на главном экране в фоне
+      await loadDashboard(); // refresh dashboard counters in the background
       showScreen('screen-vehicle-card');
     }
   } finally {
     saveBtn.disabled = false;
-    saveBtn.textContent = '💾 Сохранить';
+    saveBtn.textContent = '💾 ' + t('updateForm.save');
   }
 }
 
 
 /* ============================================================================
- * 10. ИНВЕНТАРИЗАЦИЯ
+ * 11. INSPECTION
  * ========================================================================== */
 
 /**
- * startInspectionFlow — запускает процесс инвентаризации: показывает список
- * всей техники, которую нужно последовательно проверить.
+ * startInspectionFlow — starts the inspection process: shows the list of
+ * all vehicles that need to be checked one by one.
  */
 function startInspectionFlow() {
   if (!AppState.canEdit) {
-    showToast('У вас нет прав на проведение инвентаризации', 'error');
+    showToast(t('toast.noInspectionPermission'), 'error');
     return;
   }
 
@@ -742,14 +996,14 @@ function startInspectionFlow() {
 }
 
 /**
- * renderInspectionList — отрисовывает список техники для инвентаризации,
- * отмечая уже проверенные единицы.
+ * renderInspectionList — renders the vehicle list for inspection, marking
+ * already-checked vehicles.
  */
 function renderInspectionList() {
   const container = document.getElementById('inspection-vehicle-list');
 
   if (AppState.inspectionQueue.length === 0) {
-    container.innerHTML = '<div class="empty-state">Список техники пуст</div>';
+    container.innerHTML = '<div class="empty-state">No vehicles to inspect</div>';
     return;
   }
 
@@ -774,7 +1028,7 @@ function renderInspectionList() {
 }
 
 /**
- * openInspectionForm — открывает форму инвентаризации для конкретной единицы техники.
+ * openInspectionForm — opens the inspection form for a specific vehicle.
  *
  * @param {string} vehicleId
  */
@@ -796,9 +1050,9 @@ function openInspectionForm(vehicleId) {
 }
 
 /**
- * handleInspectionSubmit — обрабатывает отправку формы инвентаризации:
- * загружает фото, отправляет addInspection, помечает машину как проверенную
- * и возвращает пользователя к списку для следующей единицы техники.
+ * handleInspectionSubmit — handles submission of the inspection form:
+ * uploads photos, sends addInspection, marks the vehicle as checked, and
+ * returns the user to the list for the next vehicle.
  *
  * @param {Event} e
  */
@@ -807,7 +1061,7 @@ async function handleInspectionSubmit(e) {
 
   const saveBtn = document.getElementById('btn-save-inspection');
   saveBtn.disabled = true;
-  saveBtn.textContent = 'Сохранение…';
+  saveBtn.textContent = 'Saving…';
 
   try {
     const uploadedUrls = await uploadPendingPhotos(AppState.pendingInspectionPhotos || []);
@@ -823,30 +1077,212 @@ async function handleInspectionSubmit(e) {
 
     if (result) {
       AppState.inspectionDoneIds.add(AppState.inspectionCurrentVehicleId);
-      showToast('Инвентаризация зафиксирована', 'success');
+      showToast(t('toast.inspectionRecorded'), 'success');
       renderInspectionList();
       showScreen('screen-inspection-list');
-      loadDashboard(); // обновляем статистику в фоне, не дожидаясь
+      loadDashboard(); // refresh stats in the background, don't await
     }
   } finally {
     saveBtn.disabled = false;
-    saveBtn.textContent = '✅ Зафиксировать';
+    saveBtn.textContent = '✅ ' + t('inspectionForm.save');
   }
 }
 
 
 /* ============================================================================
- * 11. РАБОТА С ФОТОГРАФИЯМИ
+ * 12. RENTAL CALENDAR
  * ========================================================================== */
 
 /**
- * handlePhotoSelection — обрабатывает выбор файлов через <input type="file">:
- * сжимает каждое изображение и добавляет его base64-представление в
- * переданный массив состояния, а также отрисовывает превью.
+ * openRentalCalendar — loads rental data from the server and shows the
+ * rental calendar screen.
+ */
+async function openRentalCalendar() {
+  showScreen('screen-rental-calendar');
+  document.getElementById('calendar-content').innerHTML = '<div class="loading-box"><div class="spinner"></div></div>';
+
+  const result = await callApiSafe('getRentalCalendar', {});
+  if (!result) {
+    showScreen('screen-dashboard');
+    return;
+  }
+
+  AppState.rentalCalendarData = result.rentals;
+  AppState.calendarViewDate = new Date(); // always start on the current month
+  renderRentalCalendar();
+}
+
+/**
+ * renderRentalCalendar — renders a month grid highlighting days covered by
+ * an active rental, followed by a list of rental summary cards sorted by
+ * soonest end date (as returned by the server).
+ */
+function renderRentalCalendar() {
+  const container = document.getElementById('calendar-content');
+  const rentals = AppState.rentalCalendarData || [];
+
+  let html = renderCalendarMonthGrid(AppState.calendarViewDate, rentals);
+
+  html += '<div class="section-title">📋 Rentals</div>';
+
+  if (rentals.length === 0) {
+    html += '<div class="empty-state">' + escapeHtml(t('calendar.noRentals')) + '</div>';
+  } else {
+    html += rentals.map(function (r) {
+      const cls = r.rentalExpired ? 'rental-summary--expired' : (r.rentalEndingSoon ? 'rental-summary--ending-soon' : '');
+      let statusLabel = t('calendar.upcoming');
+      if (r.rentalExpired) {
+        statusLabel = t('calendar.expired');
+      } else if (r.rentalEndingSoon) {
+        statusLabel = t('calendar.endingSoon');
+      } else if (r.rentalDaysRemaining !== null && r.rentalDaysRemaining !== undefined) {
+        statusLabel = t('calendar.active');
+      }
+
+      return (
+        '<div class="rental-summary ' + cls + '" data-vehicle-id="' + escapeHtml(r.vehicleId) + '">' +
+          '<div class="rental-summary__vehicle">' + escapeHtml(r.brand) + ' ' + escapeHtml(r.model) + ' (' + escapeHtml(r.plateNumber || '') + ')</div>' +
+          '<div class="rental-summary__dates">' + escapeHtml(r.rentalStartDate || '—') + ' → ' + escapeHtml(r.rentalEndDate || '—') + ' · ' + escapeHtml(statusLabel) + '</div>' +
+          (r.rentalTenant ? '<div class="rental-summary__tenant">' + escapeHtml(t('card.rentalTenant')) + ': ' + escapeHtml(r.rentalTenant) + '</div>' : '') +
+        '</div>'
+      );
+    }).join('');
+  }
+
+  container.innerHTML = html;
+
+  container.querySelectorAll('.rental-summary[data-vehicle-id]').forEach(function (el) {
+    el.addEventListener('click', function () {
+      openVehicleCard(el.getAttribute('data-vehicle-id'));
+    });
+  });
+}
+
+/**
+ * renderCalendarMonthGrid — builds a simple month-view calendar grid for
+ * the given date, highlighting days that fall within any rental's
+ * start/end range.
+ *
+ * @param {Date} viewDate - any date within the month to display
+ * @param {Array} rentals - result of getRentalCalendar()
+ * @return {string} HTML
+ */
+function renderCalendarMonthGrid(viewDate, rentals) {
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const weekdayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  const firstDay = new Date(year, month, 1);
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const startWeekday = firstDay.getDay();
+
+  const today = new Date();
+  const todayKey = dateKey(today);
+
+  // Pre-compute a set of "day keys" (YYYY-MM-DD) covered by any rental, plus
+  // a separate set for days covered by a rental that's ending soon, so each
+  // calendar cell can be colored correctly.
+  const rentalDays = new Set();
+  const endingSoonDays = new Set();
+
+  rentals.forEach(function (r) {
+    if (!r.rentalStartDate && !r.rentalEndDate) return;
+    const start = r.rentalStartDate ? new Date(r.rentalStartDate) : null;
+    const end = r.rentalEndDate ? new Date(r.rentalEndDate) : null;
+    if (!start && !end) return;
+
+    const rangeStart = start || end;
+    const rangeEnd = end || start;
+
+    for (let d = new Date(rangeStart); d <= rangeEnd; d.setDate(d.getDate() + 1)) {
+      const key = dateKey(d);
+      rentalDays.add(key);
+      if (r.rentalEndingSoon) endingSoonDays.add(key);
+    }
+  });
+
+  let html = '<div class="calendar-month-nav">' +
+    '<button class="btn-icon" id="btn-calendar-prev-month">←</button>' +
+    '<div class="calendar-month-nav__title">' + monthNames[month] + ' ' + year + '</div>' +
+    '<button class="btn-icon" id="btn-calendar-next-month">→</button>' +
+  '</div>';
+
+  html += '<div class="calendar-grid">';
+  weekdayNames.forEach(function (wd) {
+    html += '<div class="calendar-weekday">' + wd + '</div>';
+  });
+
+  for (let i = 0; i < startWeekday; i++) {
+    html += '<div class="calendar-day calendar-day--empty"></div>';
+  }
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const cellDate = new Date(year, month, day);
+    const key = dateKey(cellDate);
+
+    let cellClass = 'calendar-day';
+    if (key === todayKey) cellClass += ' calendar-day--today';
+    if (endingSoonDays.has(key)) {
+      cellClass += ' calendar-day--ending-soon';
+    } else if (rentalDays.has(key)) {
+      cellClass += ' calendar-day--has-rental';
+    }
+
+    html += '<div class="' + cellClass + '">' + day + '</div>';
+  }
+
+  html += '</div>';
+
+  // Defer binding month-nav buttons until after this HTML is inserted into the DOM
+  setTimeout(function () {
+    const prevBtn = document.getElementById('btn-calendar-prev-month');
+    const nextBtn = document.getElementById('btn-calendar-next-month');
+    if (prevBtn) {
+      prevBtn.addEventListener('click', function () {
+        AppState.calendarViewDate = new Date(year, month - 1, 1);
+        renderRentalCalendar();
+      });
+    }
+    if (nextBtn) {
+      nextBtn.addEventListener('click', function () {
+        AppState.calendarViewDate = new Date(year, month + 1, 1);
+        renderRentalCalendar();
+      });
+    }
+  }, 0);
+
+  return html;
+}
+
+/**
+ * dateKey — formats a Date as a "YYYY-MM-DD" string using local time
+ * components (not UTC), so calendar day comparisons match what the user sees.
+ *
+ * @param {Date} date
+ * @return {string}
+ */
+function dateKey(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + d;
+}
+
+
+/* ============================================================================
+ * 13. PHOTO HANDLING
+ * ========================================================================== */
+
+/**
+ * handlePhotoSelection — handles file selection via <input type="file">:
+ * compresses each image and appends its base64 representation to the given
+ * state array, and renders a preview thumbnail.
  *
  * @param {Event} e
- * @param {string} previewContainerId - ID контейнера для превью
- * @param {Array} targetArray - массив AppState, куда добавлять base64 данные
+ * @param {string} previewContainerId - ID of the preview container
+ * @param {Array} targetArray - AppState array to push base64 data into
  */
 async function handlePhotoSelection(e, previewContainerId, targetArray) {
   const files = Array.from(e.target.files || []);
@@ -861,15 +1297,16 @@ async function handlePhotoSelection(e, previewContainerId, targetArray) {
       img.src = 'data:' + compressed.mimeType + ';base64,' + compressed.base64Data;
       previewContainer.appendChild(img);
     } catch (err) {
-      showToast('Не удалось обработать фото', 'error');
+      showToast(t('toast.photoError'), 'error');
     }
   }
 }
 
 /**
- * compressImage — сжимает изображение до APP_CONFIG.PHOTO_MAX_DIMENSION по
- * длинной стороне и кодирует в JPEG с заданным качеством, чтобы уменьшить
- * объём передаваемых данных (важно для мобильного интернета механика в поле).
+ * compressImage — compresses an image down to APP_CONFIG.PHOTO_MAX_DIMENSION
+ * on its longest side and encodes it as JPEG at the configured quality, to
+ * reduce the amount of data transferred (important for a mechanic's mobile
+ * connection out in the field).
  *
  * @param {File} file
  * @return {Promise<Object>} { fileName, mimeType, base64Data }
@@ -911,22 +1348,22 @@ function compressImage(file) {
         });
       };
 
-      img.onerror = function () { reject(new Error('Не удалось загрузить изображение')); };
+      img.onerror = function () { reject(new Error('Could not load the image')); };
       img.src = event.target.result;
     };
 
-    reader.onerror = function () { reject(new Error('Не удалось прочитать файл')); };
+    reader.onerror = function () { reject(new Error('Could not read the file')); };
     reader.readAsDataURL(file);
   });
 }
 
 /**
- * uploadPendingPhotos — последовательно загружает массив подготовленных фото
- * (base64) на сервер через action 'uploadPhoto' и возвращает массив
- * итоговых URL, готовых для сохранения в таблице.
+ * uploadPendingPhotos — sequentially uploads an array of prepared photos
+ * (base64) to the server via the 'uploadPhoto' action and returns the array
+ * of resulting URLs, ready to be saved in the spreadsheet.
  *
- * @param {Array} photos - массив { fileName, mimeType, base64Data }
- * @return {Promise<Array<string>>} массив URL
+ * @param {Array} photos - array of { fileName, mimeType, base64Data }
+ * @return {Promise<Array<string>>} array of URLs
  */
 async function uploadPendingPhotos(photos) {
   const urls = [];
@@ -943,28 +1380,29 @@ async function uploadPendingPhotos(photos) {
 
 
 /* ============================================================================
- * 12. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+ * 14. HELPERS
  * ========================================================================== */
 
 /**
- * getStatusColor — сопоставляет статус техники с цветовым индикатором
- * (green / blue / yellow / red), как того требует ТЗ.
+ * getStatusColor — maps a vehicle status to a color indicator
+ * (green / blue / yellow / red), matching the values stored in
+ * CONFIG.VEHICLE_STATUS on the server (English strings).
  *
  * @param {string} status
  * @return {string} 'green' | 'blue' | 'yellow' | 'red'
  */
 function getStatusColor(status) {
   switch (status) {
-    case 'Свободно': return 'green';
-    case 'В аренде': return 'blue';
-    case 'На ремонте': return 'yellow';
-    case 'Требует ремонта': return 'red';
+    case APP_CONFIG.STATUS.FREE: return 'green';
+    case APP_CONFIG.STATUS.RENTED: return 'blue';
+    case APP_CONFIG.STATUS.REPAIR: return 'yellow';
+    case APP_CONFIG.STATUS.NEEDS_REPAIR: return 'red';
     default: return 'blue';
   }
 }
 
 /**
- * formatMileage — форматирует число пробега с разделителями разрядов.
+ * formatMileage — formats a mileage number with thousands separators.
  *
  * @param {number|string} value
  * @return {string}
@@ -972,12 +1410,12 @@ function getStatusColor(status) {
 function formatMileage(value) {
   const num = Number(value);
   if (isNaN(num)) return '0';
-  return num.toLocaleString('ru-RU');
+  return num.toLocaleString('en-US');
 }
 
 /**
- * escapeHtml — экранирует спецсимволы HTML, чтобы избежать XSS при выводе
- * данных, введённых пользователями (комментарии, замечания и т.д.).
+ * escapeHtml — escapes HTML special characters to avoid XSS when rendering
+ * user-entered data (comments, notes, etc).
  *
  * @param {string} str
  * @return {string}
@@ -993,10 +1431,10 @@ function escapeHtml(str) {
 }
 
 /**
- * showToast — показывает всплывающее уведомление внизу экрана.
+ * showToast — shows a toast notification at the bottom of the screen.
  *
  * @param {string} message
- * @param {string} [type] - 'success' | 'error' | undefined (нейтральный)
+ * @param {string} [type] - 'success' | 'error' | undefined (neutral)
  */
 function showToast(message, type) {
   const toast = document.getElementById('toast');

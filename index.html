@@ -3,17 +3,23 @@
   ============================================================================
   KOKON CARS & BIKE SERVICE — Telegram Mini App
   ============================================================================
-  Единая страница (SPA) без сторонних библиотек: чистый HTML + CSS + JS.
-  Вся навигация между экранами (Dashboard, Список техники, Карточка,
-  Обновление состояния, Инвентаризация) реализована через показ/скрытие
-  секций <section data-screen="..."> в app.js.
+  Single-page app (SPA), no external UI libraries: plain HTML + CSS + JS.
+  Navigation between screens (Dashboard, Vehicle list, Vehicle card, Update
+  state, Inspection, Rental calendar) is handled by showing/hiding
+  <section class="screen"> elements in app.js.
 
-  Подключение Telegram Web App SDK — единственный внешний скрипт, он
-  предоставляется официально Telegram и необходим для работы Mini App
-  (получение initData, тема, кнопки, вибрация и т.д.).
+  All user-facing text lives in the I18N dictionary at the top of app.js.
+  Elements that display translatable text carry a data-i18n attribute; app.js
+  fills them in on load via applyTranslations(). The interface language is
+  English by default (per current requirements) but the structure supports
+  adding more languages later by extending the I18N dictionary.
+
+  The Telegram Web App SDK is the only external script — it's provided
+  officially by Telegram and required for Mini App functionality (initData,
+  theme, haptics, etc).
   ============================================================================
 -->
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
@@ -27,42 +33,42 @@
 <body>
 
   <!-- ==========================================================================
-       ЭКРАН ЗАГРУЗКИ
-       Показывается сразу при открытии, пока идёт проверка авторизации.
+       LOADING SCREEN
+       Shown immediately on open while authorization is being checked.
        ========================================================================== -->
   <section id="screen-loading" class="screen screen--active">
     <div class="loading-box">
       <div class="spinner"></div>
-      <p>Проверка доступа…</p>
+      <p data-i18n="loading.checkingAccess">Checking access…</p>
     </div>
   </section>
 
   <!-- ==========================================================================
-       ЭКРАН "НЕТ ДОСТУПА"
-       Показывается, если Telegram ID пользователя не найден в листе Users.
+       "NO ACCESS" SCREEN
+       Shown when the user's Telegram ID is not found in the Users sheet.
        ========================================================================== -->
   <section id="screen-no-access" class="screen">
     <div class="no-access-box">
       <div class="no-access-icon">🚫</div>
-      <h2>У вас нет доступа к системе</h2>
-      <p>Обратитесь к администратору Kokon Cars, чтобы получить доступ.</p>
+      <h2 data-i18n="noAccess.title">You don't have access to this system</h2>
+      <p data-i18n="noAccess.body">Please contact your Kokon Cars administrator to request access.</p>
     </div>
   </section>
 
   <!-- ==========================================================================
-       ЭКРАН ОШИБКИ (сетевой сбой / ошибка сервера)
+       ERROR SCREEN (network failure / server error)
        ========================================================================== -->
   <section id="screen-error" class="screen">
     <div class="no-access-box">
       <div class="no-access-icon">⚠️</div>
-      <h2>Не удалось загрузить данные</h2>
-      <p id="error-message-text">Проверьте соединение и попробуйте снова.</p>
-      <button class="btn btn--primary" id="btn-retry">Повторить</button>
+      <h2 data-i18n="error.title">Couldn't load data</h2>
+      <p id="error-message-text" data-i18n="error.body">Check your connection and try again.</p>
+      <button class="btn btn--primary" id="btn-retry" data-i18n="error.retry">Retry</button>
     </div>
   </section>
 
   <!-- ==========================================================================
-       ГЛАВНЫЙ ЭКРАН (Dashboard + список техники)
+       MAIN SCREEN (Dashboard + vehicle list)
        ========================================================================== -->
   <section id="screen-dashboard" class="screen">
 
@@ -74,104 +80,125 @@
       <div class="app-header__role" id="user-role-badge">Viewer</div>
     </header>
 
-    <!-- Карточки статистики -->
+    <!-- Stats cards -->
     <div class="stats-grid" id="stats-grid">
-      <!-- Заполняется динамически в app.js: renderDashboardStats() -->
+      <!-- Filled dynamically in app.js: renderDashboardStats() -->
     </div>
 
-    <!-- Кнопка инвентаризации (видна только Editor) -->
+    <!-- Secondary navigation row -->
+    <div class="nav-row">
+      <button class="btn btn--secondary btn--block" id="btn-open-calendar">
+        📅 <span data-i18n="dashboard.rentalCalendar">Rental Calendar</span>
+      </button>
+    </div>
+
+    <!-- Inspection button (Editor only) -->
     <button class="btn btn--primary btn--block hidden" id="btn-start-inspection">
-      📋 Провести инвентаризацию
+      📋 <span data-i18n="dashboard.startInspection">Start Inspection</span>
     </button>
 
-    <!-- Поиск и фильтр -->
+    <!-- Search and filter -->
     <div class="toolbar">
       <input
         type="search"
         id="search-input"
         class="search-input"
-        placeholder="Поиск: марка, модель, номер, VIN…"
+        data-i18n-placeholder="dashboard.searchPlaceholder"
+        placeholder="Search: brand, model, plate, VIN…"
         autocomplete="off"
       />
       <select id="filter-select" class="filter-select">
-        <option value="all">Все статусы</option>
-        <option value="Свободно">Свободно</option>
-        <option value="В аренде">В аренде</option>
-        <option value="На ремонте">На ремонте</option>
-        <option value="Требует ремонта">Требует ремонта</option>
-        <option value="__overdue">Просрочено ТО</option>
-        <option value="__due_soon">Скоро ТО</option>
+        <option value="all" data-i18n="filter.all">All statuses</option>
+        <option value="Free" data-i18n="status.free">Free</option>
+        <option value="Rented" data-i18n="status.rented">Rented</option>
+        <option value="In Repair" data-i18n="status.repair">In Repair</option>
+        <option value="Needs Repair" data-i18n="status.needsRepair">Needs Repair</option>
+        <option value="__overdue" data-i18n="filter.overdue">Maintenance Overdue</option>
+        <option value="__due_soon" data-i18n="filter.dueSoon">Maintenance Due Soon</option>
+        <option value="__rental_ending" data-i18n="filter.rentalEnding">Rental Ending Soon</option>
       </select>
     </div>
 
-    <!-- Список техники -->
+    <!-- Vehicle list -->
     <div class="vehicle-list" id="vehicle-list">
-      <!-- Заполняется динамически в app.js: renderVehicleList() -->
+      <!-- Filled dynamically in app.js: renderVehicleList() -->
     </div>
 
   </section>
 
   <!-- ==========================================================================
-       ЭКРАН КАРТОЧКИ ТЕХНИКИ
+       VEHICLE CARD SCREEN
        ========================================================================== -->
   <section id="screen-vehicle-card" class="screen">
 
     <header class="app-header app-header--sub">
-      <button class="btn-icon" id="btn-back-to-dashboard" aria-label="Назад">←</button>
-      <div class="app-header__title" id="card-header-title">Карточка техники</div>
+      <button class="btn-icon" id="btn-back-to-dashboard" aria-label="Back">←</button>
+      <div class="app-header__title" id="card-header-title">Vehicle Card</div>
       <div style="width:32px;"></div>
     </header>
 
     <div class="card-scroll" id="card-content">
-      <!-- Заполняется динамически в app.js: renderVehicleCard() -->
+      <!-- Filled dynamically in app.js: renderVehicleCard() -->
     </div>
 
-    <!-- Плавающая кнопка для Editor -->
+    <!-- Floating button for Editor -->
     <button class="btn btn--primary btn--block btn--sticky hidden" id="btn-update-state">
-      🔧 Обновить состояние
+      🔧 <span data-i18n="card.updateState">Update State</span>
     </button>
 
   </section>
 
   <!-- ==========================================================================
-       ЭКРАН ОБНОВЛЕНИЯ СОСТОЯНИЯ (форма для Editor)
+       UPDATE STATE SCREEN (Editor form)
        ========================================================================== -->
   <section id="screen-update-state" class="screen">
 
     <header class="app-header app-header--sub">
-      <button class="btn-icon" id="btn-back-from-update" aria-label="Назад">←</button>
-      <div class="app-header__title">Обновить состояние</div>
+      <button class="btn-icon" id="btn-back-from-update" aria-label="Back">←</button>
+      <div class="app-header__title" data-i18n="updateForm.title">Update State</div>
       <div style="width:32px;"></div>
     </header>
 
     <form class="form-scroll" id="form-update-state">
 
-      <label class="form-label">Текущий пробег (км)</label>
-      <input type="number" inputmode="numeric" id="input-mileage" class="form-input" placeholder="Например, 45210" />
+      <label class="form-label" data-i18n="updateForm.mileage">Current Mileage (km)</label>
+      <input type="number" inputmode="numeric" id="input-mileage" class="form-input" placeholder="e.g. 45210" />
 
-      <label class="form-label">Статус техники</label>
+      <label class="form-label" data-i18n="updateForm.status">Vehicle Status</label>
       <select id="input-status" class="form-input">
-        <option value="">Не менять</option>
-        <option value="Свободно">Свободно</option>
-        <option value="В аренде">В аренде</option>
-        <option value="На ремонте">На ремонте</option>
-        <option value="Требует ремонта">Требует ремонта</option>
+        <option value="" data-i18n="updateForm.statusNoChange">Don't change</option>
+        <option value="Free" data-i18n="status.free">Free</option>
+        <option value="Rented" data-i18n="status.rented">Rented</option>
+        <option value="In Repair" data-i18n="status.repair">In Repair</option>
+        <option value="Needs Repair" data-i18n="status.needsRepair">Needs Repair</option>
       </select>
 
-      <label class="form-label">Замечания / комментарий</label>
-      <textarea id="input-comment" class="form-input form-textarea" placeholder="Опишите замечания…"></textarea>
+      <!-- Rental fields — shown/hidden dynamically based on selected status -->
+      <div id="rental-fields-block">
+        <label class="form-label" data-i18n="updateForm.rentalTenant">Tenant / Renter</label>
+        <input type="text" id="input-rental-tenant" class="form-input" data-i18n-placeholder="updateForm.rentalTenantPlaceholder" placeholder="Name or company" />
 
-      <label class="form-label">Неисправности</label>
-      <div class="faults-grid" id="faults-grid">
-        <!-- Заполняется динамически в app.js: FAULT_OPTIONS -->
+        <label class="form-label" data-i18n="updateForm.rentalStart">Rental Start Date</label>
+        <input type="date" id="input-rental-start" class="form-input" />
+
+        <label class="form-label" data-i18n="updateForm.rentalEnd">Rental End Date</label>
+        <input type="date" id="input-rental-end" class="form-input" />
       </div>
 
-      <label class="form-label">Фотографии</label>
+      <label class="form-label" data-i18n="updateForm.comment">Notes / Comment</label>
+      <textarea id="input-comment" class="form-input form-textarea" data-i18n-placeholder="updateForm.commentPlaceholder" placeholder="Describe any notes…"></textarea>
+
+      <label class="form-label" data-i18n="updateForm.faults">Faults</label>
+      <div class="faults-grid" id="faults-grid">
+        <!-- Filled dynamically in app.js: FAULT_OPTIONS -->
+      </div>
+
+      <label class="form-label" data-i18n="updateForm.photos">Photos</label>
       <input type="file" id="input-photos" accept="image/*" capture="environment" multiple class="form-file" />
       <div class="photo-preview" id="photo-preview"></div>
 
       <button type="submit" class="btn btn--primary btn--block" id="btn-save-update">
-        💾 Сохранить
+        💾 <span data-i18n="updateForm.save">Save</span>
       </button>
 
     </form>
@@ -179,47 +206,47 @@
   </section>
 
   <!-- ==========================================================================
-       ЭКРАН ИНВЕНТАРИЗАЦИИ (список для последовательного прохода по машинам)
+       INSPECTION LIST SCREEN (sequential walk-through of all vehicles)
        ========================================================================== -->
   <section id="screen-inspection-list" class="screen">
 
     <header class="app-header app-header--sub">
-      <button class="btn-icon" id="btn-back-from-inspection-list" aria-label="Назад">←</button>
-      <div class="app-header__title">Инвентаризация</div>
+      <button class="btn-icon" id="btn-back-from-inspection-list" aria-label="Back">←</button>
+      <div class="app-header__title" data-i18n="inspection.title">Inspection</div>
       <div style="width:32px;"></div>
     </header>
 
     <div class="card-scroll" id="inspection-vehicle-list">
-      <!-- Заполняется динамически в app.js: renderInspectionList() -->
+      <!-- Filled dynamically in app.js: renderInspectionList() -->
     </div>
 
   </section>
 
   <!-- ==========================================================================
-       ЭКРАН ФОРМЫ ИНВЕНТАРИЗАЦИИ ОДНОЙ ЕДИНИЦЫ ТЕХНИКИ
+       SINGLE-VEHICLE INSPECTION FORM SCREEN
        ========================================================================== -->
   <section id="screen-inspection-form" class="screen">
 
     <header class="app-header app-header--sub">
-      <button class="btn-icon" id="btn-back-from-inspection-form" aria-label="Назад">←</button>
-      <div class="app-header__title" id="inspection-form-title">Инвентаризация</div>
+      <button class="btn-icon" id="btn-back-from-inspection-form" aria-label="Back">←</button>
+      <div class="app-header__title" id="inspection-form-title">Inspection</div>
       <div style="width:32px;"></div>
     </header>
 
     <form class="form-scroll" id="form-inspection">
 
-      <label class="form-label">Пробег на момент проверки (км)</label>
-      <input type="number" inputmode="numeric" id="inspection-mileage" class="form-input" placeholder="Например, 45210" />
+      <label class="form-label" data-i18n="inspectionForm.mileage">Mileage at Inspection (km)</label>
+      <input type="number" inputmode="numeric" id="inspection-mileage" class="form-input" placeholder="e.g. 45210" />
 
-      <label class="form-label">Фотографии</label>
+      <label class="form-label" data-i18n="updateForm.photos">Photos</label>
       <input type="file" id="inspection-photos" accept="image/*" capture="environment" multiple class="form-file" />
       <div class="photo-preview" id="inspection-photo-preview"></div>
 
-      <label class="form-label">Замечания</label>
-      <textarea id="inspection-notes" class="form-input form-textarea" placeholder="Состояние, повреждения, комментарии…"></textarea>
+      <label class="form-label" data-i18n="inspectionForm.notes">Notes</label>
+      <textarea id="inspection-notes" class="form-input form-textarea" data-i18n-placeholder="inspectionForm.notesPlaceholder" placeholder="Condition, damage, comments…"></textarea>
 
       <button type="submit" class="btn btn--primary btn--block" id="btn-save-inspection">
-        ✅ Зафиксировать
+        ✅ <span data-i18n="inspectionForm.save">Confirm</span>
       </button>
 
     </form>
@@ -227,7 +254,26 @@
   </section>
 
   <!-- ==========================================================================
-       ТОСТ-УВЕДОМЛЕНИЯ (ошибки/успех)
+       RENTAL CALENDAR SCREEN
+       Shows every vehicle that has rental dates set, sorted by soonest
+       end date, with a simple month calendar highlighting rental days.
+       ========================================================================== -->
+  <section id="screen-rental-calendar" class="screen">
+
+    <header class="app-header app-header--sub">
+      <button class="btn-icon" id="btn-back-from-calendar" aria-label="Back">←</button>
+      <div class="app-header__title" data-i18n="calendar.title">Rental Calendar</div>
+      <div style="width:32px;"></div>
+    </header>
+
+    <div class="card-scroll" id="calendar-content">
+      <!-- Filled dynamically in app.js: renderRentalCalendar() -->
+    </div>
+
+  </section>
+
+  <!-- ==========================================================================
+       TOAST NOTIFICATIONS (errors/success)
        ========================================================================== -->
   <div id="toast" class="toast"></div>
 

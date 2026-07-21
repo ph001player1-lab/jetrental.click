@@ -359,6 +359,10 @@ ul, p, h1, h2, h3, h4 {
 .stat-card--yellow { border-left-color: var(--color-yellow); }
 .stat-card--red { border-left-color: var(--color-red); }
 
+.nav-row {
+  padding: 0 var(--spacing) 10px;
+}
+
 #btn-start-inspection {
   margin: 0 var(--spacing) 12px;
   width: calc(100% - 32px);
@@ -636,6 +640,112 @@ ul, p, h1, h2, h3, h4 {
 
 .inspection-item__check {
   font-size: 20px;
+}
+
+
+/* ==========================================================================
+   8.5. RENTAL FIELDS (update form) & RENTAL CALENDAR SCREEN
+   ========================================================================== */
+
+#rental-fields-block {
+  border-left: 3px solid var(--color-blue);
+  padding-left: 12px;
+  margin: 4px 0;
+}
+
+#rental-fields-block.hidden {
+  display: none;
+}
+
+.rental-summary {
+  background: var(--color-bg-secondary);
+  border-radius: var(--border-radius-sm);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  box-shadow: var(--shadow-card);
+  font-size: 13px;
+  border-left: 4px solid var(--color-blue);
+}
+
+.rental-summary--ending-soon {
+  border-left-color: var(--color-yellow);
+}
+
+.rental-summary--expired {
+  border-left-color: var(--color-red);
+}
+
+.rental-summary__vehicle {
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.rental-summary__dates {
+  color: var(--color-hint);
+  font-size: 12px;
+}
+
+.rental-summary__tenant {
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.calendar-month-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.calendar-month-nav__title {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-bottom: 20px;
+}
+
+.calendar-weekday {
+  text-align: center;
+  font-size: 10px;
+  color: var(--color-hint);
+  font-weight: 700;
+  padding-bottom: 4px;
+}
+
+.calendar-day {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-size: 12px;
+  background: var(--color-bg-secondary);
+  position: relative;
+}
+
+.calendar-day--empty {
+  background: transparent;
+}
+
+.calendar-day--has-rental {
+  background: var(--color-blue-bg);
+  color: var(--color-blue);
+  font-weight: 700;
+}
+
+.calendar-day--ending-soon {
+  background: var(--color-yellow-bg);
+  color: var(--color-yellow);
+}
+
+.calendar-day--today {
+  box-shadow: inset 0 0 0 2px var(--color-button);
 }
 
 
