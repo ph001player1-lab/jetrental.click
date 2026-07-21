@@ -31,7 +31,7 @@
 const APP_CONFIG = {
   // Apps Script web app URL (Deploy → New deployment → Web app).
   // REPLACE this with your actual deployed Apps Script URL before publishing.
-  API_URL: 'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec',
+  API_URL: 'https://script.google.com/macros/s/AKfycbwH3Chyr08nakPzCPd8dxz46xJLYCKY2GElih0Dz7A462AlabYMP2q7vzYcyntycoBj/exec',
 
   // Faults selectable when updating vehicle state
   FAULT_OPTIONS: [
