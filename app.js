@@ -31,7 +31,7 @@
 const APP_CONFIG = {
   // Apps Script web app URL (Deploy → New deployment → Web app).
   // REPLACE this with your actual deployed Apps Script URL before publishing.
-  API_URL: 'https://script.google.com/macros/s/AKfycbwH3Chyr08nakPzCPd8dxz46xJLYCKY2GElih0Dz7A462AlabYMP2q7vzYcyntycoBj/exec',
+  API_URL: 'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec',
 
   // Faults selectable when updating vehicle state
   FAULT_OPTIONS: [
@@ -214,9 +214,6 @@ const AppState = {
   inspectionQueue: [],
   inspectionDoneIds: new Set(),
   inspectionCurrentVehicleId: null,
-
-  // Rental calendar: which month is currently displayed
-  calendarViewDate: new Date(),
 
   searchQuery: '',
   filterValue: 'all'
@@ -477,6 +474,9 @@ function bindGlobalEventListeners() {
   document.getElementById('btn-back-from-calendar').addEventListener('click', function () {
     showScreen('screen-dashboard');
   });
+  document.getElementById('btn-calendar-today').addEventListener('click', function () {
+    scrollGanttToToday(true);
+  });
 
   document.getElementById('search-input').addEventListener('input', function (e) {
     AppState.searchQuery = e.target.value.trim().toLowerCase();
@@ -500,6 +500,17 @@ function bindGlobalEventListeners() {
   document.getElementById('inspection-photos').addEventListener('change', function (e) {
     handlePhotoSelection(e, 'inspection-photo-preview', AppState.pendingInspectionPhotos);
   });
+
+  document.getElementById('btn-lightbox-close').addEventListener('click', closeLightbox);
+  document.getElementById('btn-lightbox-prev').addEventListener('click', function (e) {
+    e.stopPropagation();
+    lightboxShowPrev();
+  });
+  document.getElementById('btn-lightbox-next').addEventListener('click', function (e) {
+    e.stopPropagation();
+    lightboxShowNext();
+  });
+  initLightboxGestures();
 }
 
 
@@ -702,8 +713,8 @@ function renderVehicleCard(data) {
   // Photos
   if (v.photos && v.photos.length > 0) {
     html += '<div class="card-photo-strip">' +
-      v.photos.map(function (p) {
-        return '<img src="' + escapeHtml(p) + '" alt="" loading="lazy" ' +
+      v.photos.map(function (p, idx) {
+        return '<img src="' + escapeHtml(p) + '" alt="" loading="lazy" class="card-photo-strip__img" data-photo-index="' + idx + '" ' +
           'onerror="this.onerror=null;this.src=\'data:image/svg+xml;utf8,' +
           '<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2296%22 height=%2296%22>' +
           '<rect width=%22100%25%22 height=%22100%25%22 fill=%22%23222%22/>' +
@@ -768,6 +779,17 @@ function renderVehicleCard(data) {
   });
 
   document.getElementById('card-content').innerHTML = html;
+
+  // Wire up the photo strip: tapping any photo opens the fullscreen lightbox
+  // viewer, starting at the tapped photo, cycling through all of this
+  // vehicle's photos.
+  const photoEls = document.querySelectorAll('.card-photo-strip__img');
+  photoEls.forEach(function (imgEl) {
+    imgEl.addEventListener('click', function () {
+      const startIndex = Number(imgEl.getAttribute('data-photo-index')) || 0;
+      openLightbox(v.photos, startIndex);
+    });
+  });
 
   // "Update State" button is visible only to Editors
   const updateBtn = document.getElementById('btn-update-state');
@@ -1090,68 +1112,352 @@ async function handleInspectionSubmit(e) {
 
 
 /* ============================================================================
- * 12. RENTAL CALENDAR
+ * 12. RENTAL CALENDAR — GANTT TIMELINE
  * ========================================================================== */
 
 /**
+ * GANTT_CONFIG — layout constants shared by every Gantt rendering function.
+ * Kept in sync with the pixel values hard-coded in style.css (.gantt-header__day,
+ * .gantt-label-col, .gantt-row) — if you change one, change both.
+ */
+const GANTT_CONFIG = {
+  DAY_WIDTH: 36,       // px per day column
+  ROW_HEIGHT: 52,       // px per vehicle row
+  LABEL_COL_WIDTH: 148, // px, pinned left column
+  HEADER_HEIGHT: 52,    // px, pinned top row
+
+  // Visible window: how many days before/after today are rendered. Rentals
+  // outside this window simply don't get a bar (their vehicle row still
+  // shows, so nothing is silently hidden — only the bar is clipped to the
+  // rendered range). 60 days back / 120 forward comfortably covers overdue,
+  // active and upcoming bookings without generating an unbounded DOM.
+  DAYS_BEFORE_TODAY: 60,
+  DAYS_AFTER_TODAY: 120
+};
+
+/**
  * openRentalCalendar — loads rental data from the server and shows the
- * rental calendar screen.
+ * Gantt-style rental timeline screen.
  */
 async function openRentalCalendar() {
   showScreen('screen-rental-calendar');
-  document.getElementById('calendar-content').innerHTML = '<div class="loading-box"><div class="spinner"></div></div>';
+  document.getElementById('gantt-inner').innerHTML = '<div class="loading-box"><div class="spinner"></div></div>';
 
-  const result = await callApiSafe('getRentalCalendar', {});
-  if (!result) {
+  // Vehicle list may not be loaded yet if the calendar is opened very early;
+  // Gantt rows need full vehicle records (brand/model/plate), not just the
+  // rental-only fields getRentalCalendar returns, so make sure both are ready.
+  const [rentalResult, vehiclesReady] = await Promise.all([
+    callApiSafe('getRentalCalendar', {}),
+    AppState.vehicles.length > 0 ? Promise.resolve(true) : callApi('getVehicles', {}).then(function (r) {
+      if (r.success) AppState.vehicles = r.vehicles;
+      return true;
+    })
+  ]);
+
+  if (!rentalResult) {
     showScreen('screen-dashboard');
     return;
   }
 
-  AppState.rentalCalendarData = result.rentals;
-  AppState.calendarViewDate = new Date(); // always start on the current month
-  renderRentalCalendar();
+  AppState.rentalCalendarData = rentalResult.rentals;
+  renderRentalGantt();
 }
 
 /**
- * renderRentalCalendar — renders a month grid highlighting days covered by
- * an active rental, followed by a list of rental summary cards sorted by
- * soonest end date (as returned by the server).
+ * renderRentalGantt — builds the full Gantt chart: a pinned corner cell, a
+ * pinned horizontal date header, a pinned vertical vehicle-label column, and
+ * a scrollable body grid with one absolutely-positioned bar per rental.
+ *
+ * Every vehicle is shown as a row (not just ones with rentals) so the chart
+ * reads as a resource-planning view of the whole fleet, matching how
+ * project/production planners typically lay out a Gantt resource calendar.
+ * Vehicles with no rental data simply show an empty row.
  */
-function renderRentalCalendar() {
-  const container = document.getElementById('calendar-content');
-  const rentals = AppState.rentalCalendarData || [];
+function renderRentalGantt() {
+  const container = document.getElementById('gantt-inner');
+  const vehicles = AppState.vehicles;
+  const rentalsByVehicle = groupRentalsByVehicle(AppState.rentalCalendarData || []);
 
-  let html = renderCalendarMonthGrid(AppState.calendarViewDate, rentals);
-
-  html += '<div class="section-title">📋 Rentals</div>';
-
-  if (rentals.length === 0) {
-    html += '<div class="empty-state">' + escapeHtml(t('calendar.noRentals')) + '</div>';
-  } else {
-    html += rentals.map(function (r) {
-      const cls = r.rentalExpired ? 'rental-summary--expired' : (r.rentalEndingSoon ? 'rental-summary--ending-soon' : '');
-      let statusLabel = t('calendar.upcoming');
-      if (r.rentalExpired) {
-        statusLabel = t('calendar.expired');
-      } else if (r.rentalEndingSoon) {
-        statusLabel = t('calendar.endingSoon');
-      } else if (r.rentalDaysRemaining !== null && r.rentalDaysRemaining !== undefined) {
-        statusLabel = t('calendar.active');
-      }
-
-      return (
-        '<div class="rental-summary ' + cls + '" data-vehicle-id="' + escapeHtml(r.vehicleId) + '">' +
-          '<div class="rental-summary__vehicle">' + escapeHtml(r.brand) + ' ' + escapeHtml(r.model) + ' (' + escapeHtml(r.plateNumber || '') + ')</div>' +
-          '<div class="rental-summary__dates">' + escapeHtml(r.rentalStartDate || '—') + ' → ' + escapeHtml(r.rentalEndDate || '—') + ' · ' + escapeHtml(statusLabel) + '</div>' +
-          (r.rentalTenant ? '<div class="rental-summary__tenant">' + escapeHtml(t('card.rentalTenant')) + ': ' + escapeHtml(r.rentalTenant) + '</div>' : '') +
-        '</div>'
-      );
-    }).join('');
+  if (vehicles.length === 0) {
+    container.innerHTML = '<div class="gantt-empty-state">' + escapeHtml(t('calendar.noRentals')) + '</div>';
+    return;
   }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const rangeStart = addDays(today, -GANTT_CONFIG.DAYS_BEFORE_TODAY);
+  const totalDays = GANTT_CONFIG.DAYS_BEFORE_TODAY + GANTT_CONFIG.DAYS_AFTER_TODAY;
+
+  const totalWidth = GANTT_CONFIG.LABEL_COL_WIDTH + totalDays * GANTT_CONFIG.DAY_WIDTH;
+  container.style.width = totalWidth + 'px';
+
+  // Two stacked flex rows: the sticky header row (corner + date header) and
+  // the content row (sticky label column + scrollable body). This mirrors
+  // the CSS structure in .gantt-header-row / .gantt-content-row exactly —
+  // see the comment above .gantt-inner in style.css for why this two-row
+  // scheme is what makes position:sticky work correctly on both axes at once.
+  let html = '<div class="gantt-header-row">';
+  html += renderGanttCorner();
+  html += renderGanttHeader(rangeStart, totalDays, today);
+  html += '</div>';
+
+  html += '<div class="gantt-content-row">';
+  html += renderGanttLabelColumn(vehicles);
+  html += renderGanttBody(vehicles, rentalsByVehicle, rangeStart, totalDays, today);
+  html += '</div>';
 
   container.innerHTML = html;
 
-  container.querySelectorAll('.rental-summary[data-vehicle-id]').forEach(function (el) {
+  bindGanttInteractions();
+  scrollGanttToToday(false);
+}
+
+/**
+ * groupRentalsByVehicle — indexes the flat rentals array from the server by
+ * vehicleId, since a single vehicle can have multiple rentals (past,
+ * present, and future bookings all need their own bar on the same row).
+ *
+ * @param {Array} rentals
+ * @return {Object} { [vehicleId]: Array<rental> }
+ */
+function groupRentalsByVehicle(rentals) {
+  const map = {};
+  rentals.forEach(function (r) {
+    if (!map[r.vehicleId]) map[r.vehicleId] = [];
+    map[r.vehicleId].push(r);
+  });
+  return map;
+}
+
+/**
+ * renderGanttCorner — the small pinned cell in the top-left corner, sitting
+ * above both the date header and the label column.
+ *
+ * @return {string}
+ */
+function renderGanttCorner() {
+  return '<div class="gantt-corner">Vehicle</div>';
+}
+
+/**
+ * renderGanttHeader — the horizontal date header row, pinned to the top,
+ * showing one column per visible day with weekday/weekend and "today"
+ * styling, plus a month label wherever the month changes.
+ *
+ * Positioned with an explicit absolute left offset (rather than a margin
+ * relative to preceding siblings) so its placement never depends on the
+ * render order or box model of the other three Gantt pieces — each piece
+ * places itself independently within the shared .gantt-inner coordinate
+ * space, which is what keeps the layout correct regardless of row count.
+ *
+ * @param {Date} rangeStart
+ * @param {number} totalDays
+ * @param {Date} today
+ * @return {string}
+ */
+function renderGanttHeader(rangeStart, totalDays, today) {
+  const weekdayLetters = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const todayKey = dateKey(today);
+
+  let html = '<div class="gantt-header" style="width:' + (totalDays * GANTT_CONFIG.DAY_WIDTH) + 'px;">';
+
+  for (let i = 0; i < totalDays; i++) {
+    const d = addDays(rangeStart, i);
+    const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+    const isToday = dateKey(d) === todayKey;
+    const isFirstOfMonth = d.getDate() === 1 || i === 0;
+
+    let cls = 'gantt-header__day';
+    if (isWeekend) cls += ' gantt-header__day--weekend';
+    if (isToday) cls += ' gantt-header__day--today';
+
+    html += '<div class="' + cls + '">' +
+      (isFirstOfMonth ? '<span class="gantt-header__month-label">' + monthNames[d.getMonth()] + '</span>' : '<span style="font-size:9px;color:transparent;">.</span>') +
+      '<span class="gantt-header__day-num">' + d.getDate() + '</span>' +
+      '<span style="font-size:9px;">' + weekdayLetters[d.getDay()] + '</span>' +
+    '</div>';
+  }
+
+  html += '</div>';
+  return html;
+}
+
+/**
+ * renderGanttLabelColumn — the vertical vehicle-label column, pinned to the
+ * left within the content row.
+ *
+ * @param {Array} vehicles
+ * @return {string}
+ */
+function renderGanttLabelColumn(vehicles) {
+  let html = '<div class="gantt-label-col">';
+
+  vehicles.forEach(function (v) {
+    html += '<div class="gantt-label" data-vehicle-id="' + escapeHtml(v.id) + '">' +
+      '<div class="gantt-label__title">' + escapeHtml(v.brand) + ' ' + escapeHtml(v.model) + '</div>' +
+      '<div class="gantt-label__meta">' + escapeHtml(v.plateNumber || '') + '</div>' +
+    '</div>';
+  });
+
+  html += '</div>';
+  return html;
+}
+
+/**
+ * renderGanttBody — the scrollable grid of day cells plus one absolutely
+ * positioned bar per rental, plus the vertical "today" indicator line.
+ * Sits next to the label column within the content row (normal flex flow —
+ * no manual offset needed since it's a flex sibling, not an absolutely
+ * positioned element).
+ *
+ * Grid lines and weekend striping are drawn with a single shared CSS
+ * background pattern (see buildGanttGridBackground) applied to every row,
+ * rather than one <div class="gantt-cell"> per day per row. At 300 vehicles
+ * x 180 visible days that's the difference between 0 and 54,000 extra DOM
+ * nodes — the dominant cost at that scale — so this is the key optimization
+ * that keeps scrolling smooth with a large fleet.
+ *
+ * @param {Array} vehicles
+ * @param {Object} rentalsByVehicle
+ * @param {Date} rangeStart
+ * @param {number} totalDays
+ * @param {Date} today
+ * @return {string}
+ */
+function renderGanttBody(vehicles, rentalsByVehicle, rangeStart, totalDays, today) {
+  const bodyWidth = totalDays * GANTT_CONFIG.DAY_WIDTH;
+  const gridBackground = buildGanttGridBackground(rangeStart, totalDays);
+
+  let html = '<div class="gantt-body" style="width:' + bodyWidth + 'px;">';
+
+  vehicles.forEach(function (v) {
+    html += '<div class="gantt-row" style="' + gridBackground + '">';
+
+    const rentals = rentalsByVehicle[v.id] || [];
+    rentals.forEach(function (r) {
+      const bar = buildGanttBar(r, rangeStart, totalDays);
+      if (bar) html += bar;
+    });
+
+    html += '</div>';
+  });
+
+  // Vertical "today" line spanning the full body height
+  const todayOffset = daysBetweenDates(rangeStart, today) * GANTT_CONFIG.DAY_WIDTH;
+  html += '<div class="gantt-today-line" style="left:' + todayOffset + 'px; height:' + (vehicles.length * GANTT_CONFIG.ROW_HEIGHT) + 'px;"></div>';
+
+  html += '</div>';
+  return html;
+}
+
+/**
+ * buildGanttGridBackground — builds a single inline `background` CSS value
+ * (day-separator lines + weekend striping) shared by every row, using
+ * layered CSS gradients. Computed once per render and reused as-is on every
+ * row's style attribute, since the pattern is identical for all rows within
+ * the same visible date range — only each row's own content (rental bars)
+ * differs.
+ *
+ * Three independent, non-repeating-within-themselves layers are stacked
+ * (thin day-separator lines, a Saturday band, a Sunday band), each using
+ * its own repeat unit. Keeping the layers separate — rather than trying to
+ * encode "two 1-day bands inside one 7-day repeating gradient" as a single
+ * gradient — avoids ambiguous/overlapping color-stop math and keeps the
+ * output easy to verify.
+ *
+ * @param {Date} rangeStart
+ * @param {number} totalDays
+ * @return {string} a CSS "background-image / background-size" declaration
+ */
+function buildGanttGridBackground(rangeStart, totalDays) {
+  const dw = GANTT_CONFIG.DAY_WIDTH;
+  const weekWidth = dw * 7;
+  const startWeekday = rangeStart.getDay(); // 0 = Sunday .. 6 = Saturday
+
+  // Day-of-week offset (from rangeStart) of the first Saturday and first
+  // Sunday in the visible range — the weekend bands then repeat every 7 days.
+  const satOffset = (6 - startWeekday + 7) % 7;
+  const sunOffset = (0 - startWeekday + 7) % 7;
+
+  const lineLayer = 'repeating-linear-gradient(90deg, ' +
+    'rgba(0,0,0,0.045) 0, rgba(0,0,0,0.045) 1px, transparent 1px, transparent ' + dw + 'px)';
+
+  const satLayer = 'repeating-linear-gradient(90deg, ' +
+    'transparent 0px, transparent ' + (satOffset * dw) + 'px, ' +
+    'rgba(0,0,0,0.035) ' + (satOffset * dw) + 'px, rgba(0,0,0,0.035) ' + ((satOffset + 1) * dw) + 'px, ' +
+    'transparent ' + ((satOffset + 1) * dw) + 'px, transparent ' + weekWidth + 'px)';
+
+  const sunLayer = 'repeating-linear-gradient(90deg, ' +
+    'transparent 0px, transparent ' + (sunOffset * dw) + 'px, ' +
+    'rgba(0,0,0,0.035) ' + (sunOffset * dw) + 'px, rgba(0,0,0,0.035) ' + ((sunOffset + 1) * dw) + 'px, ' +
+    'transparent ' + ((sunOffset + 1) * dw) + 'px, transparent ' + weekWidth + 'px)';
+
+  return 'background-image: ' + lineLayer + ', ' + satLayer + ', ' + sunLayer + '; ' +
+    'background-size: ' + dw + 'px 100%, ' + weekWidth + 'px 100%, ' + weekWidth + 'px 100%;';
+}
+
+/**
+ * buildGanttBar — computes the left offset and width for a single rental bar
+ * (in days -> pixels, relative to rangeStart) and returns its HTML, or an
+ * empty string if the rental falls entirely outside the rendered window.
+ *
+ * The bar's color category (active / ending soon / upcoming / expired) uses
+ * the flags already computed server-side (rentalExpired, rentalEndingSoon)
+ * plus a simple "starts in the future" check for the upcoming/green case.
+ *
+ * @param {Object} rental - one entry from getRentalCalendar()
+ * @param {Date} rangeStart
+ * @param {number} totalDays
+ * @return {string}
+ */
+function buildGanttBar(rental, rangeStart, totalDays) {
+  if (!rental.rentalStartDate && !rental.rentalEndDate) return '';
+
+  const start = rental.rentalStartDate ? parseDateOnly(rental.rentalStartDate) : parseDateOnly(rental.rentalEndDate);
+  const end = rental.rentalEndDate ? parseDateOnly(rental.rentalEndDate) : parseDateOnly(rental.rentalStartDate);
+
+  const rangeEnd = addDays(rangeStart, totalDays);
+  if (end < rangeStart || start > rangeEnd) return ''; // entirely outside the rendered window
+
+  const clampedStart = start < rangeStart ? rangeStart : start;
+  const clampedEnd = end > rangeEnd ? rangeEnd : end;
+
+  const startOffset = daysBetweenDates(rangeStart, clampedStart);
+  const durationDays = Math.max(1, daysBetweenDates(clampedStart, clampedEnd) + 1);
+
+  const left = startOffset * GANTT_CONFIG.DAY_WIDTH;
+  const width = durationDays * GANTT_CONFIG.DAY_WIDTH - 4; // 4px gap between bars
+
+  let colorClass = 'gantt-bar--upcoming';
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (rental.rentalExpired) {
+    colorClass = 'gantt-bar--expired';
+  } else if (rental.rentalEndingSoon) {
+    colorClass = 'gantt-bar--ending-soon';
+  } else if (start <= today) {
+    colorClass = 'gantt-bar--active';
+  } else {
+    colorClass = 'gantt-bar--upcoming';
+  }
+
+  const label = rental.rentalTenant || rental.plateNumber || '';
+
+  return '<div class="gantt-bar ' + colorClass + '" data-vehicle-id="' + escapeHtml(rental.vehicleId) +
+    '" style="left:' + left + 'px; width:' + width + 'px;" title="' + escapeHtml(label) + '">' +
+    escapeHtml(label) + '</div>';
+}
+
+/**
+ * bindGanttInteractions — attaches click handlers to vehicle labels and
+ * rental bars (both open that vehicle's full card) after the Gantt HTML has
+ * been inserted into the DOM.
+ */
+function bindGanttInteractions() {
+  document.querySelectorAll('.gantt-label[data-vehicle-id], .gantt-bar[data-vehicle-id]').forEach(function (el) {
     el.addEventListener('click', function () {
       openVehicleCard(el.getAttribute('data-vehicle-id'));
     });
@@ -1159,101 +1465,64 @@ function renderRentalCalendar() {
 }
 
 /**
- * renderCalendarMonthGrid — builds a simple month-view calendar grid for
- * the given date, highlighting days that fall within any rental's
- * start/end range.
+ * scrollGanttToToday — scrolls the Gantt chart's horizontal axis so that
+ * today's column sits near the left edge of the visible area (just past
+ * the pinned label column), and resets vertical scroll to the top.
+ * Called on first render and whenever the "jump to today" button is tapped.
  *
- * @param {Date} viewDate - any date within the month to display
- * @param {Array} rentals - result of getRentalCalendar()
- * @return {string} HTML
+ * @param {boolean} smooth - whether to animate the scroll
  */
-function renderCalendarMonthGrid(viewDate, rentals) {
-  const year = viewDate.getFullYear();
-  const month = viewDate.getMonth();
+function scrollGanttToToday(smooth) {
+  const scrollContainer = document.getElementById('gantt-scroll');
+  const targetLeft = GANTT_CONFIG.DAYS_BEFORE_TODAY * GANTT_CONFIG.DAY_WIDTH - 24; // small left margin so "today" isn't flush against the label column
 
-  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-  const weekdayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-  const firstDay = new Date(year, month, 1);
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const startWeekday = firstDay.getDay();
-
-  const today = new Date();
-  const todayKey = dateKey(today);
-
-  // Pre-compute a set of "day keys" (YYYY-MM-DD) covered by any rental, plus
-  // a separate set for days covered by a rental that's ending soon, so each
-  // calendar cell can be colored correctly.
-  const rentalDays = new Set();
-  const endingSoonDays = new Set();
-
-  rentals.forEach(function (r) {
-    if (!r.rentalStartDate && !r.rentalEndDate) return;
-    const start = r.rentalStartDate ? new Date(r.rentalStartDate) : null;
-    const end = r.rentalEndDate ? new Date(r.rentalEndDate) : null;
-    if (!start && !end) return;
-
-    const rangeStart = start || end;
-    const rangeEnd = end || start;
-
-    for (let d = new Date(rangeStart); d <= rangeEnd; d.setDate(d.getDate() + 1)) {
-      const key = dateKey(d);
-      rentalDays.add(key);
-      if (r.rentalEndingSoon) endingSoonDays.add(key);
-    }
+  scrollContainer.scrollTo({
+    left: Math.max(0, targetLeft),
+    top: smooth ? scrollContainer.scrollTop : 0,
+    behavior: smooth ? 'smooth' : 'auto'
   });
+}
 
-  let html = '<div class="calendar-month-nav">' +
-    '<button class="btn-icon" id="btn-calendar-prev-month">←</button>' +
-    '<div class="calendar-month-nav__title">' + monthNames[month] + ' ' + year + '</div>' +
-    '<button class="btn-icon" id="btn-calendar-next-month">→</button>' +
-  '</div>';
+/**
+ * addDays — returns a new Date offset by the given number of days (can be negative).
+ *
+ * @param {Date} date
+ * @param {number} days
+ * @return {Date}
+ */
+function addDays(date, days) {
+  const result = new Date(date);
+  result.setDate(result.getDate() + days);
+  return result;
+}
 
-  html += '<div class="calendar-grid">';
-  weekdayNames.forEach(function (wd) {
-    html += '<div class="calendar-weekday">' + wd + '</div>';
-  });
+/**
+ * daysBetweenDates — whole-day difference between two Date objects (b - a),
+ * ignoring time-of-day. Positive when b is after a.
+ *
+ * @param {Date} a
+ * @param {Date} b
+ * @return {number}
+ */
+function daysBetweenDates(a, b) {
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const utcA = Date.UTC(a.getFullYear(), a.getMonth(), a.getDate());
+  const utcB = Date.UTC(b.getFullYear(), b.getMonth(), b.getDate());
+  return Math.round((utcB - utcA) / msPerDay);
+}
 
-  for (let i = 0; i < startWeekday; i++) {
-    html += '<div class="calendar-day calendar-day--empty"></div>';
-  }
-
-  for (let day = 1; day <= daysInMonth; day++) {
-    const cellDate = new Date(year, month, day);
-    const key = dateKey(cellDate);
-
-    let cellClass = 'calendar-day';
-    if (key === todayKey) cellClass += ' calendar-day--today';
-    if (endingSoonDays.has(key)) {
-      cellClass += ' calendar-day--ending-soon';
-    } else if (rentalDays.has(key)) {
-      cellClass += ' calendar-day--has-rental';
-    }
-
-    html += '<div class="' + cellClass + '">' + day + '</div>';
-  }
-
-  html += '</div>';
-
-  // Defer binding month-nav buttons until after this HTML is inserted into the DOM
-  setTimeout(function () {
-    const prevBtn = document.getElementById('btn-calendar-prev-month');
-    const nextBtn = document.getElementById('btn-calendar-next-month');
-    if (prevBtn) {
-      prevBtn.addEventListener('click', function () {
-        AppState.calendarViewDate = new Date(year, month - 1, 1);
-        renderRentalCalendar();
-      });
-    }
-    if (nextBtn) {
-      nextBtn.addEventListener('click', function () {
-        AppState.calendarViewDate = new Date(year, month + 1, 1);
-        renderRentalCalendar();
-      });
-    }
-  }, 0);
-
-  return html;
+/**
+ * parseDateOnly — parses a "YYYY-MM-DD..." date string from the server into
+ * a Date set to local midnight, so day-difference math in the Gantt chart
+ * isn't thrown off by time-of-day or timezone offsets.
+ *
+ * @param {string} dateStr
+ * @return {Date}
+ */
+function parseDateOnly(dateStr) {
+  const match = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return new Date(dateStr);
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
 }
 
 /**
@@ -1268,6 +1537,282 @@ function dateKey(date) {
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
   return y + '-' + m + '-' + d;
+}
+
+
+/* ============================================================================
+ * 12.5. PHOTO LIGHTBOX (fullscreen viewer with pinch/double-tap zoom + pan)
+ * ========================================================================== */
+
+/**
+ * LightboxState — transient state for the fullscreen photo viewer. Kept
+ * separate from AppState since it's purely UI/gesture state that never
+ * needs to survive a screen change.
+ */
+const LightboxState = {
+  photos: [],
+  currentIndex: 0,
+
+  // Current zoom/pan transform applied to the image
+  scale: 1,
+  minScale: 1,
+  maxScale: 4,
+  translateX: 0,
+  translateY: 0,
+
+  // Pointer tracking for pan and pinch gestures
+  activePointers: new Map(), // pointerId -> {x, y}
+  pinchStartDistance: 0,
+  pinchStartScale: 1,
+  panStart: null, // {x, y, translateX, translateY}
+
+  lastTapTime: 0
+};
+
+/**
+ * openLightbox — opens the fullscreen photo viewer for a given photo array,
+ * starting at startIndex. Called when the user taps any vehicle photo.
+ *
+ * @param {Array<string>} photos - photo URLs (already normalized by the server)
+ * @param {number} startIndex
+ */
+function openLightbox(photos, startIndex) {
+  if (!photos || photos.length === 0) return;
+
+  LightboxState.photos = photos;
+  LightboxState.currentIndex = Math.max(0, Math.min(startIndex || 0, photos.length - 1));
+
+  document.getElementById('lightbox').classList.add('lightbox--visible');
+  showLightboxPhoto(LightboxState.currentIndex);
+}
+
+/**
+ * closeLightbox — hides the fullscreen photo viewer and resets zoom/pan state.
+ */
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('lightbox--visible');
+  LightboxState.photos = [];
+  LightboxState.activePointers.clear();
+}
+
+/**
+ * showLightboxPhoto — displays the photo at the given index, resets zoom/pan
+ * to the default 1:1 view, and updates the counter / nav button visibility.
+ *
+ * @param {number} index
+ */
+function showLightboxPhoto(index) {
+  LightboxState.currentIndex = index;
+
+  const img = document.getElementById('lightbox-image');
+  img.src = LightboxState.photos[index];
+
+  resetLightboxTransform();
+
+  document.getElementById('lightbox-counter').textContent = (index + 1) + ' / ' + LightboxState.photos.length;
+
+  const prevBtn = document.getElementById('btn-lightbox-prev');
+  const nextBtn = document.getElementById('btn-lightbox-next');
+  const multiple = LightboxState.photos.length > 1;
+  prevBtn.classList.toggle('hidden', !multiple);
+  nextBtn.classList.toggle('hidden', !multiple);
+}
+
+/**
+ * lightboxShowPrev / lightboxShowNext — navigate to the adjacent photo,
+ * wrapping around at the ends.
+ */
+function lightboxShowPrev() {
+  const count = LightboxState.photos.length;
+  showLightboxPhoto((LightboxState.currentIndex - 1 + count) % count);
+}
+
+function lightboxShowNext() {
+  const count = LightboxState.photos.length;
+  showLightboxPhoto((LightboxState.currentIndex + 1) % count);
+}
+
+/**
+ * resetLightboxTransform — resets zoom/pan to the default (fit, centered) view.
+ */
+function resetLightboxTransform() {
+  LightboxState.scale = 1;
+  LightboxState.translateX = 0;
+  LightboxState.translateY = 0;
+  applyLightboxTransform();
+}
+
+/**
+ * applyLightboxTransform — writes the current scale/translate state to the
+ * image's CSS transform. Called after every gesture update.
+ */
+function applyLightboxTransform() {
+  const img = document.getElementById('lightbox-image');
+  img.style.transform = 'translate(' + LightboxState.translateX + 'px, ' + LightboxState.translateY + 'px) scale(' + LightboxState.scale + ')';
+}
+
+/**
+ * clampLightboxPan — keeps the pan offset within reasonable bounds so the
+ * image can't be dragged completely off-screen. Uses a generous margin
+ * proportional to the current zoom level rather than exact edge math, which
+ * keeps the gesture code simple while still feeling controlled.
+ */
+function clampLightboxPan() {
+  const viewport = document.getElementById('lightbox-viewport');
+  const maxOffsetX = viewport.clientWidth * (LightboxState.scale - 1) / 2 + viewport.clientWidth * 0.15;
+  const maxOffsetY = viewport.clientHeight * (LightboxState.scale - 1) / 2 + viewport.clientHeight * 0.15;
+
+  LightboxState.translateX = Math.max(-maxOffsetX, Math.min(maxOffsetX, LightboxState.translateX));
+  LightboxState.translateY = Math.max(-maxOffsetY, Math.min(maxOffsetY, LightboxState.translateY));
+}
+
+/**
+ * initLightboxGestures — sets up Pointer Events on the lightbox viewport to
+ * support:
+ *   - one-finger drag: pan (only meaningful once zoomed in)
+ *   - two-finger pinch: zoom in/out, anchored at the pinch midpoint
+ *   - double-tap: toggle between fit (1x) and 2.5x zoom, centered on the tap
+ *
+ * Pointer Events (rather than separate touch/mouse handlers) let the same
+ * code handle both touch devices and desktop mouse dragging for free.
+ * Called once at startup; the viewport element itself never changes.
+ */
+function initLightboxGestures() {
+  const viewport = document.getElementById('lightbox-viewport');
+
+  viewport.addEventListener('pointerdown', function (e) {
+    viewport.setPointerCapture(e.pointerId);
+    LightboxState.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (LightboxState.activePointers.size === 1) {
+      LightboxState.panStart = {
+        x: e.clientX,
+        y: e.clientY,
+        translateX: LightboxState.translateX,
+        translateY: LightboxState.translateY
+      };
+    } else if (LightboxState.activePointers.size === 2) {
+      // A second finger just landed — start a pinch gesture from here.
+      LightboxState.pinchStartDistance = getPointerDistance();
+      LightboxState.pinchStartScale = LightboxState.scale;
+      LightboxState.panStart = null;
+    }
+  });
+
+  viewport.addEventListener('pointermove', function (e) {
+    if (!LightboxState.activePointers.has(e.pointerId)) return;
+    LightboxState.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (LightboxState.activePointers.size === 2) {
+      // Pinch-to-zoom: scale relative to the distance when the second finger touched down.
+      const distance = getPointerDistance();
+      if (LightboxState.pinchStartDistance > 0) {
+        const nextScale = LightboxState.pinchStartScale * (distance / LightboxState.pinchStartDistance);
+        LightboxState.scale = Math.max(LightboxState.minScale, Math.min(LightboxState.maxScale, nextScale));
+        clampLightboxPan();
+        applyLightboxTransform();
+      }
+    } else if (LightboxState.activePointers.size === 1 && LightboxState.panStart && LightboxState.scale > 1) {
+      // Single-finger pan — only active once zoomed in, so a plain swipe at
+      // 1x zoom is free to be interpreted as "next/previous photo" instead.
+      const dx = e.clientX - LightboxState.panStart.x;
+      const dy = e.clientY - LightboxState.panStart.y;
+      LightboxState.translateX = LightboxState.panStart.translateX + dx;
+      LightboxState.translateY = LightboxState.panStart.translateY + dy;
+      clampLightboxPan();
+      applyLightboxTransform();
+    }
+  });
+
+  function endPointer(e) {
+    const wasSinglePointerTap = LightboxState.activePointers.size === 1 && LightboxState.scale === 1;
+    let swipeDeltaX = 0;
+
+    if (wasSinglePointerTap && LightboxState.panStart) {
+      swipeDeltaX = e.clientX - LightboxState.panStart.x;
+    }
+
+    LightboxState.activePointers.delete(e.pointerId);
+
+    if (LightboxState.activePointers.size < 2) {
+      LightboxState.pinchStartDistance = 0;
+    }
+
+    if (LightboxState.activePointers.size === 0) {
+      // At 1x zoom, a horizontal swipe navigates between photos (natural
+      // gallery gesture); a short tap with negligible movement is treated
+      // as a potential double-tap-to-zoom below.
+      if (wasSinglePointerTap && LightboxState.photos.length > 1 && Math.abs(swipeDeltaX) > 60) {
+        if (swipeDeltaX < 0) {
+          lightboxShowNext();
+        } else {
+          lightboxShowPrev();
+        }
+      } else if (wasSinglePointerTap && Math.abs(swipeDeltaX) < 10) {
+        handleLightboxTap(e);
+      }
+
+      LightboxState.panStart = null;
+    }
+  }
+
+  viewport.addEventListener('pointerup', endPointer);
+  viewport.addEventListener('pointercancel', endPointer);
+
+  // Mouse wheel: convenient zoom for desktop testing/usage.
+  viewport.addEventListener('wheel', function (e) {
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 0.15 : -0.15;
+    LightboxState.scale = Math.max(LightboxState.minScale, Math.min(LightboxState.maxScale, LightboxState.scale + delta));
+    clampLightboxPan();
+    applyLightboxTransform();
+  }, { passive: false });
+}
+
+/**
+ * getPointerDistance — Euclidean distance between the two currently active
+ * pointers, used to measure pinch gesture scale changes.
+ *
+ * @return {number}
+ */
+function getPointerDistance() {
+  const points = Array.from(LightboxState.activePointers.values());
+  if (points.length < 2) return 0;
+  const dx = points[0].x - points[1].x;
+  const dy = points[0].y - points[1].y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+/**
+ * handleLightboxTap — implements double-tap-to-zoom: two taps within 300ms
+ * toggle between the fit view (1x) and a fixed 2.5x zoom, centered roughly
+ * on the tap location. A single tap does nothing (navigation happens via
+ * swipe or the prev/next buttons, so a lone tap doesn't accidentally zoom).
+ *
+ * @param {PointerEvent} e
+ */
+function handleLightboxTap(e) {
+  const now = Date.now();
+  const isDoubleTap = (now - LightboxState.lastTapTime) < 300;
+  LightboxState.lastTapTime = now;
+
+  if (!isDoubleTap) return;
+
+  if (LightboxState.scale > 1) {
+    resetLightboxTransform();
+  } else {
+    const viewport = document.getElementById('lightbox-viewport');
+    const rect = viewport.getBoundingClientRect();
+    const offsetX = (e.clientX - rect.left - rect.width / 2);
+    const offsetY = (e.clientY - rect.top - rect.height / 2);
+
+    LightboxState.scale = 2.5;
+    // Shift the image so the tapped point stays roughly under the finger.
+    LightboxState.translateX = -offsetX * (LightboxState.scale - 1);
+    LightboxState.translateY = -offsetY * (LightboxState.scale - 1);
+    clampLightboxPan();
+    applyLightboxTransform();
+  }
 }
 
 

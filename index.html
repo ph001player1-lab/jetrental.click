@@ -254,23 +254,62 @@
   </section>
 
   <!-- ==========================================================================
-       RENTAL CALENDAR SCREEN
-       Shows every vehicle that has rental dates set, sorted by soonest
-       end date, with a simple month calendar highlighting rental days.
+       RENTAL CALENDAR SCREEN — Gantt-style rental timeline
+       One row per vehicle (left column pinned), horizontal day timeline
+       (top row pinned), scrolls both vertically and horizontally like a
+       spreadsheet. Built for 100-300+ vehicles: only a fixed day window is
+       rendered, and rows are plain flex/grid markup (no per-row JS
+       framework overhead) so scrolling stays smooth.
        ========================================================================== -->
   <section id="screen-rental-calendar" class="screen">
 
     <header class="app-header app-header--sub">
       <button class="btn-icon" id="btn-back-from-calendar" aria-label="Back">←</button>
       <div class="app-header__title" data-i18n="calendar.title">Rental Calendar</div>
-      <div style="width:32px;"></div>
+      <button class="btn-icon" id="btn-calendar-today" aria-label="Jump to today">📍</button>
     </header>
 
-    <div class="card-scroll" id="calendar-content">
-      <!-- Filled dynamically in app.js: renderRentalCalendar() -->
+    <!-- Legend + quick stats -->
+    <div class="gantt-toolbar">
+      <div class="gantt-legend">
+        <span class="gantt-legend__item"><span class="gantt-legend__swatch gantt-bar--active"></span><span data-i18n="calendar.active">Active</span></span>
+        <span class="gantt-legend__item"><span class="gantt-legend__swatch gantt-bar--ending-soon"></span><span data-i18n="calendar.endingSoon">Ending soon</span></span>
+        <span class="gantt-legend__item"><span class="gantt-legend__swatch gantt-bar--upcoming"></span><span data-i18n="calendar.upcoming">Upcoming</span></span>
+        <span class="gantt-legend__item"><span class="gantt-legend__swatch gantt-bar--expired"></span><span data-i18n="calendar.expired">Ended</span></span>
+      </div>
+    </div>
+
+    <!-- The Gantt grid itself: a single scroll container holding a sticky
+         header row and a sticky left column, so both axes scroll together
+         in one native touch/scroll surface (this is what gives the
+         Excel-like free 2D panning instead of janky synced scroll-events). -->
+    <div class="gantt-scroll" id="gantt-scroll">
+      <div class="gantt-inner" id="gantt-inner">
+        <!-- Filled dynamically in app.js: renderRentalGantt() -->
+      </div>
     </div>
 
   </section>
+
+  <!-- ==========================================================================
+       PHOTO LIGHTBOX (fullscreen viewer with pinch/double-tap zoom and pan)
+       Hidden by default; opened by app.js when a vehicle photo is tapped.
+       Sits above every screen (fixed, full viewport) via CSS.
+       ========================================================================== -->
+  <div id="lightbox" class="lightbox">
+    <div class="lightbox__header">
+      <button class="btn-icon lightbox__close" id="btn-lightbox-close" aria-label="Close">✕</button>
+      <div class="lightbox__counter" id="lightbox-counter">1 / 1</div>
+      <div style="width:36px;"></div>
+    </div>
+
+    <div class="lightbox__viewport" id="lightbox-viewport">
+      <img id="lightbox-image" class="lightbox__image" src="" alt="" draggable="false" />
+    </div>
+
+    <button class="lightbox__nav lightbox__nav--prev" id="btn-lightbox-prev" aria-label="Previous photo">‹</button>
+    <button class="lightbox__nav lightbox__nav--next" id="btn-lightbox-next" aria-label="Next photo">›</button>
+  </div>
 
   <!-- ==========================================================================
        TOAST NOTIFICATIONS (errors/success)
