@@ -297,8 +297,14 @@
        Sits above every screen (fixed, full viewport) via CSS.
        ========================================================================== -->
   <div id="lightbox" class="lightbox">
+    <!-- Header mirrors the standard app-header--sub "back" pattern used on
+         every other screen (← button, centered title, spacer) for visual
+         consistency. Crucially, it is pushed down by a safe-area inset so
+         it never sits directly under Telegram's own WebView close button —
+         that overlap was the original bug (tapping "back" here would
+         actually hit Telegram's close control and exit the whole app). -->
     <div class="lightbox__header">
-      <button class="btn-icon lightbox__close" id="btn-lightbox-close" aria-label="Close">✕</button>
+      <button class="btn-icon lightbox__close" id="btn-lightbox-close" aria-label="Back to vehicle card">←</button>
       <div class="lightbox__counter" id="lightbox-counter">1 / 1</div>
       <div style="width:36px;"></div>
     </div>
@@ -309,6 +315,13 @@
 
     <button class="lightbox__nav lightbox__nav--prev" id="btn-lightbox-prev" aria-label="Previous photo">‹</button>
     <button class="lightbox__nav lightbox__nav--next" id="btn-lightbox-next" aria-label="Next photo">›</button>
+
+    <!-- Redundant, unmistakable exit control in the bottom safe zone —
+         this is the primary way most users will close the viewer, since
+         it's nowhere near Telegram's own top-of-screen close button. -->
+    <button class="btn btn--secondary btn--block lightbox__close-bottom" id="btn-lightbox-close-bottom">
+      ← <span data-i18n="lightbox.closeButton">Close Photo</span>
+    </button>
   </div>
 
   <!-- ==========================================================================

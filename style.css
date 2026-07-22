@@ -894,14 +894,13 @@ ul, p, h1, h2, h3, h4 {
 .gantt-body {
   position: relative;
   flex: 1;
+  /* background-image / background-size for the day-separator lines and
+     weekend striping are set inline by app.js (buildGanttGridBackground),
+     applied once here rather than duplicated on every .gantt-row — see the
+     comment in renderGanttBody (app.js) for why that single-application
+     approach is what keeps scrolling smooth at 100-300+ vehicle rows. */
 }
 
-/* Grid lines and weekend striping are drawn as a single repeating CSS
-   background per row instead of one <div> per day — at 300 rows x 180
-   days that's the difference between 0 and 54,000 extra DOM nodes, which
-   matters a lot for scroll performance on a phone. The gradient pattern is
-   generated inline by app.js (buildGanttRowBackground) since it depends on
-   which day-of-week the visible range starts on. */
 .gantt-row {
   height: 52px;
   display: flex;
@@ -1006,17 +1005,40 @@ ul, p, h1, h2, h3, h4 {
   align-items: center;
   justify-content: space-between;
   padding: 14px 16px;
+  /* Push the header down out of Telegram's own WebView title bar / close
+     button area. env(safe-area-inset-top) covers notches/rounded corners;
+     the extra fixed offset covers Telegram's own chrome, which isn't
+     reported as a safe-area inset but still occupies the top of the
+     viewport and overlaps anything placed at padding-top:14px alone —
+     that overlap was the original bug (tapping here hit Telegram's own
+     close control instead of ours). */
+  padding-top: calc(env(safe-area-inset-top, 0px) + 56px);
   flex-shrink: 0;
   z-index: 1;
 }
 
 .lightbox__close {
   color: #fff;
-  font-size: 20px;
+  font-size: 22px;
 }
 
 .lightbox__close:active {
   background: rgba(255, 255, 255, 0.12);
+}
+
+/* Redundant bottom exit control — the primary, unmistakable way to leave
+   the viewer. Sits in the bottom safe zone, styled like every other
+   sticky primary action in the app for visual consistency. */
+.lightbox__close-bottom {
+  flex-shrink: 0;
+  margin: 12px 16px calc(env(safe-area-inset-bottom, 0px) + 12px);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.lightbox__close-bottom:active {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .lightbox__counter {

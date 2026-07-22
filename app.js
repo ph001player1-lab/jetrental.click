@@ -31,7 +31,7 @@
 const APP_CONFIG = {
   // Apps Script web app URL (Deploy → New deployment → Web app).
   // REPLACE this with your actual deployed Apps Script URL before publishing.
-  API_URL: 'https://script.google.com/macros/s/AKfycbwH3Chyr08nakPzCPd8dxz46xJLYCKY2GElih0Dz7A462AlabYMP2q7vzYcyntycoBj/exec',
+  API_URL: 'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec',
 
   // Faults selectable when updating vehicle state
   FAULT_OPTIONS: [
@@ -139,6 +139,8 @@ const I18N = {
     'calendar.expired': 'Rental ended',
     'calendar.active': 'Active',
     'calendar.upcoming': 'Upcoming',
+
+    'lightbox.closeButton': 'Close Photo',
 
     'toast.saved': 'Saved',
     'toast.stateUpdated': 'State updated',
@@ -502,6 +504,7 @@ function bindGlobalEventListeners() {
   });
 
   document.getElementById('btn-lightbox-close').addEventListener('click', closeLightbox);
+  document.getElementById('btn-lightbox-close-bottom').addEventListener('click', closeLightbox);
   document.getElementById('btn-lightbox-prev').addEventListener('click', function (e) {
     e.stopPropagation();
     lightboxShowPrev();
@@ -1330,10 +1333,20 @@ function renderGanttBody(vehicles, rentalsByVehicle, rangeStart, totalDays, toda
   const bodyWidth = totalDays * GANTT_CONFIG.DAY_WIDTH;
   const gridBackground = buildGanttGridBackground(rangeStart, totalDays);
 
-  let html = '<div class="gantt-body" style="width:' + bodyWidth + 'px;">';
+  // The grid pattern (day lines + weekend bands) is identical for every row,
+  // so it's applied ONCE here as the background of the whole scrollable
+  // .gantt-body, rather than being duplicated as an inline style on each of
+  // the (potentially 300) .gantt-row elements. That duplication was the
+  // cause of the scroll jank reported on this screen: an inline
+  // background-image forces the browser to treat it as a distinct paint
+  // surface per element, so scrolling had to repaint the same complex
+  // multi-layer gradient hundreds of times per frame. A single shared
+  // background on the container is painted once and simply scrolls with
+  // the rest of the content.
+  let html = '<div class="gantt-body" style="width:' + bodyWidth + 'px; ' + gridBackground + '">';
 
   vehicles.forEach(function (v) {
-    html += '<div class="gantt-row" style="' + gridBackground + '">';
+    html += '<div class="gantt-row">';
 
     const rentals = rentalsByVehicle[v.id] || [];
     rentals.forEach(function (r) {
@@ -1353,12 +1366,14 @@ function renderGanttBody(vehicles, rentalsByVehicle, rangeStart, totalDays, toda
 }
 
 /**
- * buildGanttGridBackground — builds a single inline `background` CSS value
- * (day-separator lines + weekend striping) shared by every row, using
- * layered CSS gradients. Computed once per render and reused as-is on every
- * row's style attribute, since the pattern is identical for all rows within
- * the same visible date range — only each row's own content (rental bars)
- * differs.
+ * buildGanttGridBackground — builds a single CSS `background-image` /
+ * `background-size` declaration (day-separator lines + weekend striping)
+ * applied ONCE to the whole .gantt-body element, using layered CSS
+ * gradients. Because background-size is expressed in day-width units (not
+ * percentages of a row), the same horizontal pattern repeats correctly down
+ * through every row without needing to be attached to each row
+ * individually — see the comment in renderGanttBody for why that matters
+ * for scroll performance at 100-300+ rows.
  *
  * Three independent, non-repeating-within-themselves layers are stacked
  * (thin day-separator lines, a Saturday band, a Sunday band), each using
@@ -1369,7 +1384,7 @@ function renderGanttBody(vehicles, rentalsByVehicle, rangeStart, totalDays, toda
  *
  * @param {Date} rangeStart
  * @param {number} totalDays
- * @return {string} a CSS "background-image / background-size" declaration
+ * @return {string} a CSS "background-image: ...; background-size: ...;" declaration
  */
 function buildGanttGridBackground(rangeStart, totalDays) {
   const dw = GANTT_CONFIG.DAY_WIDTH;
