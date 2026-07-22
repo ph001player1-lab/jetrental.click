@@ -745,6 +745,11 @@ ul, p, h1, h2, h3, h4 {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   background: var(--color-bg);
+  /* Isolates the whole Gantt subtree (which can be 2000+ DOM nodes at
+     300 vehicles) from the rest of the document during layout, so
+     scrolling this container never triggers a layout pass over
+     unrelated parts of the page. */
+  contain: layout style;
 }
 
 /* .gantt-inner holds two stacked flex rows: the sticky header row (corner +
@@ -767,6 +772,23 @@ ul, p, h1, h2, h3, h4 {
   z-index: 30;
   display: flex;
   flex-shrink: 0;
+  /* Promote to its own compositor layer so the browser can reposition it
+     on scroll via GPU transform alone, without repainting its contents
+     (180 date cells). Without this hint, some WebViews (notably the
+     Android WebView Telegram's Mini App runs in) repaint this whole wide
+     row on every vertical scroll frame even though only its position
+     changes — that repaint cost was the actual cause of vertical-scroll
+     jank. Horizontal scrolling never triggers sticky-top repositioning,
+     which is why only the vertical direction was affected. translateZ(0)
+     is added alongside will-change as a fallback: some older
+     Chromium/Android WebView builds honor it more reliably.
+     Note: `contain` is deliberately NOT used here — contain on a
+     position:sticky element itself is inconsistently supported across
+     WebView engines and can interfere with sticky positioning; layer
+     promotion via will-change/transform is the safer, well-supported
+     technique for this specific element. */
+  will-change: transform;
+  transform: translateZ(0);
 }
 
 /* Top-left corner cell: pinned on both axes via double sticky (sticky
@@ -787,6 +809,8 @@ ul, p, h1, h2, h3, h4 {
   font-weight: 700;
   color: var(--color-hint);
   text-transform: uppercase;
+  will-change: transform;
+  transform: translateZ(0);
 }
 
 /* Date header row: part of the sticky header-row, scrolls horizontally
@@ -797,6 +821,7 @@ ul, p, h1, h2, h3, h4 {
   box-shadow: var(--shadow-card);
   height: 52px;
   flex-shrink: 0;
+  contain: layout style paint;
 }
 
 .gantt-header__day {
@@ -846,7 +871,13 @@ ul, p, h1, h2, h3, h4 {
   position: relative;
 }
 
-/* Vehicle label column: pinned to the left, scrolls vertically with the chart */
+/* Vehicle label column: pinned to the left (horizontal axis only — it
+   scrolls normally with the vertical axis, it just re-sticks horizontally).
+   will-change/translateZ here matter because up to 300 text rows live
+   inside this element; without a compositing hint, some WebViews repaint
+   the whole column on every vertical scroll tick even though sticky is
+   only active on the other axis. `contain` is deliberately avoided on this
+   sticky element itself for the same reason noted on .gantt-header-row. */
 .gantt-label-col {
   position: sticky;
   left: 0;
@@ -855,6 +886,8 @@ ul, p, h1, h2, h3, h4 {
   flex-shrink: 0;
   background: var(--color-bg-secondary);
   box-shadow: 2px 0 4px rgba(0, 0, 0, 0.06);
+  will-change: transform;
+  transform: translateZ(0);
 }
 
 .gantt-label {
@@ -894,6 +927,10 @@ ul, p, h1, h2, h3, h4 {
 .gantt-body {
   position: relative;
   flex: 1;
+  /* Isolates this (potentially 300-row) subtree's layout/paint from the
+     rest of the page, so the browser doesn't need to re-evaluate it as
+     part of a larger scroll-driven layout pass. */
+  contain: layout style;
   /* background-image / background-size for the day-separator lines and
      weekend striping are set inline by app.js (buildGanttGridBackground),
      applied once here rather than duplicated on every .gantt-row — see the
@@ -928,7 +965,6 @@ ul, p, h1, h2, h3, h4 {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
   cursor: pointer;
 }
 
