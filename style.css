@@ -229,7 +229,24 @@ ul, p, h1, h2, h3, h4 {
 
 .screen {
   display: none;
-  min-height: 100vh;
+  /* Strict height (not min-height) + overflow:hidden is what makes this a
+     true, fixed-size viewport for its children. Previously this was
+     min-height:100vh with no overflow constraint: if a screen's content
+     was taller than the viewport (e.g. the Gantt chart with 300 rows),
+     the .screen element itself would grow past 100vh and the page/body
+     would become the scrolling element instead of the screen's own inner
+     `flex:1; overflow-y:auto` container (.gantt-scroll, .card-scroll,
+     etc). That's what caused the "only part of the screen is
+     touch-scrollable" bug: the real scrollable area was clipped to
+     whatever portion of the oversized layout happened to still be within
+     the visible viewport, which shifts with orientation/viewport height —
+     exactly the symptom of it working differently in landscape.
+     100dvh (dynamic viewport height) is preferred where supported since it
+     tracks Telegram's WebView chrome show/hide; 100vh is the fallback for
+     older WebViews that don't support dvh. */
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
   flex-direction: column;
   animation: fadeIn 0.15s ease;
 }
@@ -326,6 +343,17 @@ ul, p, h1, h2, h3, h4 {
 /* ==========================================================================
    5. DASHBOARD
    ========================================================================== */
+
+/* Bounds everything below the header to the screen's remaining height and
+   makes it the actual scrolling element (see the .screen height/overflow
+   change: without an inner scroll container like this, a long vehicle list
+   would either get clipped or force the whole page to scroll instead of
+   just this region). */
+.dashboard-scroll {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
 
 .stats-grid {
   display: grid;

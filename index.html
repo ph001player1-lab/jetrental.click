@@ -80,48 +80,56 @@
       <div class="app-header__role" id="user-role-badge">Viewer</div>
     </header>
 
-    <!-- Stats cards -->
-    <div class="stats-grid" id="stats-grid">
-      <!-- Filled dynamically in app.js: renderDashboardStats() -->
-    </div>
+    <!-- Everything below the header scrolls as one unit, bounded to the
+         remaining screen height (see .dashboard-scroll in style.css) —
+         this is what makes the vehicle list scrollable on its own rather
+         than relying on the whole page scrolling. -->
+    <div class="dashboard-scroll">
 
-    <!-- Secondary navigation row -->
-    <div class="nav-row">
-      <button class="btn btn--secondary btn--block" id="btn-open-calendar">
-        📅 <span data-i18n="dashboard.rentalCalendar">Rental Calendar</span>
+      <!-- Stats cards -->
+      <div class="stats-grid" id="stats-grid">
+        <!-- Filled dynamically in app.js: renderDashboardStats() -->
+      </div>
+
+      <!-- Secondary navigation row -->
+      <div class="nav-row">
+        <button class="btn btn--secondary btn--block" id="btn-open-calendar">
+          📅 <span data-i18n="dashboard.rentalCalendar">Rental Calendar</span>
+        </button>
+      </div>
+
+      <!-- Inspection button (Editor only) -->
+      <button class="btn btn--primary btn--block hidden" id="btn-start-inspection">
+        📋 <span data-i18n="dashboard.startInspection">Start Inspection</span>
       </button>
-    </div>
 
-    <!-- Inspection button (Editor only) -->
-    <button class="btn btn--primary btn--block hidden" id="btn-start-inspection">
-      📋 <span data-i18n="dashboard.startInspection">Start Inspection</span>
-    </button>
+      <!-- Search and filter -->
+      <div class="toolbar">
+        <input
+          type="search"
+          id="search-input"
+          class="search-input"
+          data-i18n-placeholder="dashboard.searchPlaceholder"
+          placeholder="Search: brand, model, plate, VIN…"
+          autocomplete="off"
+        />
+        <select id="filter-select" class="filter-select">
+          <option value="all" data-i18n="filter.all">All statuses</option>
+          <option value="Free" data-i18n="status.free">Free</option>
+          <option value="Rented" data-i18n="status.rented">Rented</option>
+          <option value="In Repair" data-i18n="status.repair">In Repair</option>
+          <option value="Needs Repair" data-i18n="status.needsRepair">Needs Repair</option>
+          <option value="__overdue" data-i18n="filter.overdue">Maintenance Overdue</option>
+          <option value="__due_soon" data-i18n="filter.dueSoon">Maintenance Due Soon</option>
+          <option value="__rental_ending" data-i18n="filter.rentalEnding">Rental Ending Soon</option>
+        </select>
+      </div>
 
-    <!-- Search and filter -->
-    <div class="toolbar">
-      <input
-        type="search"
-        id="search-input"
-        class="search-input"
-        data-i18n-placeholder="dashboard.searchPlaceholder"
-        placeholder="Search: brand, model, plate, VIN…"
-        autocomplete="off"
-      />
-      <select id="filter-select" class="filter-select">
-        <option value="all" data-i18n="filter.all">All statuses</option>
-        <option value="Free" data-i18n="status.free">Free</option>
-        <option value="Rented" data-i18n="status.rented">Rented</option>
-        <option value="In Repair" data-i18n="status.repair">In Repair</option>
-        <option value="Needs Repair" data-i18n="status.needsRepair">Needs Repair</option>
-        <option value="__overdue" data-i18n="filter.overdue">Maintenance Overdue</option>
-        <option value="__due_soon" data-i18n="filter.dueSoon">Maintenance Due Soon</option>
-        <option value="__rental_ending" data-i18n="filter.rentalEnding">Rental Ending Soon</option>
-      </select>
-    </div>
+      <!-- Vehicle list -->
+      <div class="vehicle-list" id="vehicle-list">
+        <!-- Filled dynamically in app.js: renderVehicleList() -->
+      </div>
 
-    <!-- Vehicle list -->
-    <div class="vehicle-list" id="vehicle-list">
-      <!-- Filled dynamically in app.js: renderVehicleList() -->
     </div>
 
   </section>
