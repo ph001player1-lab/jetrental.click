@@ -31,7 +31,7 @@
 const APP_CONFIG = {
   // Apps Script web app URL (Deploy → New deployment → Web app).
   // REPLACE this with your actual deployed Apps Script URL before publishing.
-  API_URL: 'https://script.google.com/macros/s/AKfycbwH3Chyr08nakPzCPd8dxz46xJLYCKY2GElih0Dz7A462AlabYMP2q7vzYcyntycoBj/exec',
+  API_URL: 'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec',
 
   // Faults selectable when updating vehicle state
   FAULT_OPTIONS: [
@@ -42,6 +42,13 @@ const APP_CONFIG = {
     { id: 'turn_signal', label: 'Turn signal', icon: '↩️' },
     { id: 'headlight', label: 'Headlight', icon: '💡' },
     { id: 'other', label: 'Other', icon: '⚠️' }
+  ],
+
+  // Body zones selectable when logging a "Body" damage entry — mirrors
+  // CONFIG.BODY_ZONES in Code.gs.
+  BODY_ZONES: [
+    'Front Bumper', 'Rear Bumper', 'Left Side', 'Right Side',
+    'Hood', 'Roof', 'Trunk', 'Windshield', 'Mirror', 'Other'
   ],
 
   // Max dimension (px) for photo compression before upload
@@ -57,6 +64,26 @@ const APP_CONFIG = {
     RENTED: 'Rented',
     REPAIR: 'In Repair',
     NEEDS_REPAIR: 'Needs Repair'
+  },
+
+  // Vehicle type groups (must match CONFIG.VEHICLE_TYPE in Code.gs). Order
+  // here also defines the section order in the grouped vehicle list.
+  VEHICLE_TYPES: ['Car', 'Motorcycle', 'Scooter'],
+
+  // Distinct accent color per vehicle type, used for the type icon/badge in
+  // the list — previously Motorcycle and Scooter both rendered as the same
+  // red-ish icon and were indistinguishable at a glance.
+  TYPE_COLORS: {
+    'Car': 'car',
+    'Motorcycle': 'moto',
+    'Scooter': 'scooter'
+  },
+
+  // Damage status levels (must match CONFIG.DAMAGE_STATUS in Code.gs)
+  DAMAGE_STATUS: {
+    NONE: 'none',
+    MINOR: 'minor',
+    CRITICAL: 'critical'
   }
 };
 
@@ -81,7 +108,6 @@ const I18N = {
     'error.retry': 'Retry',
 
     'dashboard.rentalCalendar': 'Rental Calendar',
-    'dashboard.startInspection': 'Start Inspection',
     'dashboard.searchPlaceholder': 'Search: brand, model, plate, VIN…',
 
     'filter.all': 'All statuses',
@@ -94,7 +120,23 @@ const I18N = {
     'status.repair': 'In Repair',
     'status.needsRepair': 'Needs Repair',
 
-    'card.updateState': 'Update State',
+    // Vehicle type group section headers in the vehicle list
+    'group.car': 'Cars',
+    'group.motorcycle': 'Motorcycles',
+    'group.scooter': 'Scooters',
+    'group.unspecified': 'Other',
+
+    // Damage status levels, used as tooltips/labels for the damage indicator icon
+    'damage.none': 'No damage',
+    'damage.minor': 'Minor damage (rentable)',
+    'damage.critical': 'Critical damage (do not rent out)',
+    'maintenance.overdue': 'Maintenance overdue',
+    'maintenance.dueSoon': 'Maintenance due soon',
+    'maintenance.ok': 'Maintenance up to date',
+
+    'card.updateState': 'Update',
+    'card.inspect': 'Inspect',
+    'card.maintenanceDone': 'TO Done',
     'card.mileage': 'Mileage',
     'card.type': 'Type',
     'card.lastMaintenance': 'Last Maintenance',
@@ -112,18 +154,17 @@ const I18N = {
     'card.damageHistory': 'Damage History',
     'card.inspectionHistory': 'Inspection History',
     'card.noRecords': 'No records yet',
+    'card.bodyZone': 'Body',
 
     'updateForm.title': 'Update State',
     'updateForm.mileage': 'Current Mileage (km)',
     'updateForm.status': 'Vehicle Status',
     'updateForm.statusNoChange': "Don't change",
-    'updateForm.rentalTenant': 'Tenant / Renter',
-    'updateForm.rentalTenantPlaceholder': 'Name or company',
-    'updateForm.rentalStart': 'Rental Start Date',
-    'updateForm.rentalEnd': 'Rental End Date',
     'updateForm.comment': 'Notes / Comment',
     'updateForm.commentPlaceholder': 'Describe any notes…',
     'updateForm.faults': 'Faults',
+    'updateForm.bodyZone': 'Body Damage Location (optional)',
+    'updateForm.bodyZoneNone': 'Not applicable',
     'updateForm.photos': 'Photos',
     'updateForm.save': 'Save',
 
@@ -132,6 +173,12 @@ const I18N = {
     'inspectionForm.notes': 'Notes',
     'inspectionForm.notesPlaceholder': 'Condition, damage, comments…',
     'inspectionForm.save': 'Confirm',
+
+    'maintenanceForm.title': 'Maintenance Done',
+    'maintenanceForm.mileage': 'Current Mileage (km)',
+    'maintenanceForm.notes': 'Notes (optional)',
+    'maintenanceForm.notesPlaceholder': 'Anything worth noting…',
+    'maintenanceForm.save': 'Confirm Maintenance Done',
 
     'calendar.title': 'Rental Calendar',
     'calendar.noRentals': 'No active or scheduled rentals',
@@ -145,6 +192,7 @@ const I18N = {
     'toast.saved': 'Saved',
     'toast.stateUpdated': 'State updated',
     'toast.inspectionRecorded': 'Inspection recorded',
+    'toast.maintenanceRecorded': 'Maintenance recorded',
     'toast.noEditPermission': "You don't have edit permission",
     'toast.noInspectionPermission': "You don't have permission to run inspections",
     'toast.photoError': 'Could not process photo',
@@ -207,14 +255,15 @@ const AppState = {
   currentVehicleId: null,   // ID of the currently open card
   currentVehicleData: null, // full data of the open card (with histories)
 
-  // Transient form state for update/inspection
+  // Transient form state for update/inspection/maintenance
   pendingPhotos: [],
   pendingFaults: [],
+  pendingBodyZone: '',
   pendingInspectionPhotos: [],
 
-  // Inspection flow state (sequential walk-through of all vehicles)
-  inspectionQueue: [],
-  inspectionDoneIds: new Set(),
+  // Vehicle currently being inspected — set when "Inspect" is tapped on a
+  // vehicle's card (inspection is launched per-vehicle now, not as a
+  // fleet-wide walkthrough, so there's no queue to track anymore).
   inspectionCurrentVehicleId: null,
 
   searchQuery: '',
@@ -335,25 +384,14 @@ async function authorizeAndStart() {
 /**
  * applyRoleToUI — shows/hides UI elements available only to editors, based
  * on the current user's role. This is a UX layer only: real enforcement
- * always happens server-side.
+ * always happens server-side. Only the role badge is set here — the vehicle
+ * card's editor action row (Update/Inspect/TO Done) is shown or hidden each
+ * time a card is rendered (see renderVehicleCard), since it doesn't exist in
+ * the DOM until a vehicle is opened.
  */
 function applyRoleToUI() {
   const roleBadge = document.getElementById('user-role-badge');
   roleBadge.textContent = AppState.role === 'Editor' ? 'Editor' : 'Viewer';
-
-  const editorOnlyElements = [
-    document.getElementById('btn-start-inspection'),
-    document.getElementById('btn-update-state')
-  ];
-
-  editorOnlyElements.forEach(function (el) {
-    if (!el) return;
-    if (AppState.canEdit) {
-      el.classList.remove('hidden');
-    } else {
-      el.classList.add('hidden');
-    }
-  });
 }
 
 
@@ -464,12 +502,19 @@ function bindGlobalEventListeners() {
     showScreen('screen-vehicle-card');
   });
 
-  document.getElementById('btn-start-inspection').addEventListener('click', startInspectionFlow);
-  document.getElementById('btn-back-from-inspection-list').addEventListener('click', function () {
-    showScreen('screen-dashboard');
+  // Inspection is launched directly from the vehicle card now — there is no
+  // fleet-wide inspection list screen anymore, so "back" from the
+  // single-vehicle inspection form goes straight back to that card.
+  document.getElementById('btn-start-inspection-single').addEventListener('click', function () {
+    openInspectionForm(AppState.currentVehicleId);
   });
   document.getElementById('btn-back-from-inspection-form').addEventListener('click', function () {
-    showScreen('screen-inspection-list');
+    showScreen('screen-vehicle-card');
+  });
+
+  document.getElementById('btn-mark-maintenance-done').addEventListener('click', openMaintenanceDoneForm);
+  document.getElementById('btn-back-from-maintenance-done').addEventListener('click', function () {
+    showScreen('screen-vehicle-card');
   });
 
   document.getElementById('btn-open-calendar').addEventListener('click', openRentalCalendar);
@@ -494,14 +539,13 @@ function bindGlobalEventListeners() {
   document.getElementById('input-photos').addEventListener('change', function (e) {
     handlePhotoSelection(e, 'photo-preview', AppState.pendingPhotos);
   });
-  document.getElementById('input-status').addEventListener('change', function (e) {
-    toggleRentalFieldsVisibility(e.target.value);
-  });
 
   document.getElementById('form-inspection').addEventListener('submit', handleInspectionSubmit);
   document.getElementById('inspection-photos').addEventListener('change', function (e) {
     handlePhotoSelection(e, 'inspection-photo-preview', AppState.pendingInspectionPhotos);
   });
+
+  document.getElementById('form-maintenance-done').addEventListener('submit', handleMaintenanceDoneSubmit);
 
   document.getElementById('btn-lightbox-close').addEventListener('click', closeLightbox);
   document.getElementById('btn-lightbox-close-bottom').addEventListener('click', closeLightbox);
@@ -543,7 +587,9 @@ async function loadDashboard() {
 }
 
 /**
- * renderDashboardStats — fills the stats card grid on the main screen.
+ * renderDashboardStats — fills the stats card grid on the main screen, plus
+ * a per-vehicle-type breakdown row (Cars / Motorcycles / Scooters) so fleet
+ * utilization can be understood separately for each group.
  *
  * @param {Object} stats - result of getDashboardStats() from the server
  */
@@ -567,6 +613,64 @@ function renderDashboardStats(stats) {
       '</div>'
     );
   }).join('');
+
+  renderTypeBreakdown(stats.byType || []);
+}
+
+/**
+ * renderTypeBreakdown — renders one compact row per vehicle type showing
+ * total/free/rented/repair counts, so utilization can be read at a glance
+ * per group instead of only in aggregate.
+ *
+ * @param {Array} byType - result of getDashboardStats().byType
+ */
+function renderTypeBreakdown(byType) {
+  const container = document.getElementById('type-breakdown');
+  if (!container) return;
+
+  if (byType.length === 0) {
+    container.innerHTML = '';
+    return;
+  }
+
+  // Sort using the canonical VEHICLE_TYPES order first, then anything
+  // unexpected (e.g. a typo'd type value in the sheet) falls at the end.
+  const orderIndex = function (type) {
+    const idx = APP_CONFIG.VEHICLE_TYPES.indexOf(type);
+    return idx === -1 ? APP_CONFIG.VEHICLE_TYPES.length : idx;
+  };
+  const sorted = byType.slice().sort(function (a, b) { return orderIndex(a.type) - orderIndex(b.type); });
+
+  container.innerHTML = sorted.map(function (bucket) {
+    const colorClass = APP_CONFIG.TYPE_COLORS[bucket.type] || 'unspecified';
+    return (
+      '<div class="type-breakdown-row">' +
+        '<span class="type-dot type-dot--' + colorClass + '"></span>' +
+        '<span class="type-breakdown-row__name">' + escapeHtml(translateGroupName(bucket.type)) + '</span>' +
+        '<span class="type-breakdown-row__stat">' + bucket.total + ' total</span>' +
+        '<span class="type-breakdown-row__stat type-breakdown-row__stat--green">' + bucket.free + ' free</span>' +
+        '<span class="type-breakdown-row__stat type-breakdown-row__stat--blue">' + bucket.rented + ' rented</span>' +
+        '<span class="type-breakdown-row__stat type-breakdown-row__stat--red">' + (bucket.repair + bucket.needsRepair) + ' in shop</span>' +
+      '</div>'
+    );
+  }).join('');
+}
+
+/**
+ * translateGroupName — maps a raw vehicle type value to its translated
+ * group label, falling back to the raw value for any type not in the
+ * canonical list (e.g. a typo in the sheet) so nothing silently disappears.
+ *
+ * @param {string} type
+ * @return {string}
+ */
+function translateGroupName(type) {
+  switch (type) {
+    case 'Car': return t('group.car');
+    case 'Motorcycle': return t('group.motorcycle');
+    case 'Scooter': return t('group.scooter');
+    default: return type || t('group.unspecified');
+  }
 }
 
 
@@ -617,8 +721,14 @@ function getFilteredVehicles() {
 }
 
 /**
- * renderVehicleList — renders the vehicle card list honoring the current
- * search/filter. Each card is clickable and opens the full vehicle card.
+ * renderVehicleList — renders the vehicle list grouped by type (Cars /
+ * Motorcycles / Scooters), honoring the current search/filter. Each vehicle
+ * shows two independent status icons — maintenance (green/red) and damage
+ * (green/yellow/red) — so both concerns are visible at a glance without
+ * conflating them into a single color. Within each group, vehicles stay in
+ * the order the server returned them in (critical damage first, then
+ * overdue maintenance, then due-soon, then everything else — see
+ * compareVehiclesByPriority in Code.gs) rather than being re-sorted here.
  */
 function renderVehicleList() {
   const container = document.getElementById('vehicle-list');
@@ -629,33 +739,10 @@ function renderVehicleList() {
     return;
   }
 
-  container.innerHTML = list.map(function (v) {
-    const statusColor = getStatusColor(v.status);
-    const icon = v.type === 'Moto' || v.type === 'Motorcycle' ? '🏍️' : '🚗';
+  const groups = groupVehiclesByType(list);
 
-    let badge = '';
-    if (v.maintenanceOverdue) {
-      badge = '<span class="badge badge--red">Overdue TO</span>';
-    } else if (v.maintenanceDueSoon) {
-      badge = '<span class="badge badge--yellow">TO Due Soon</span>';
-    } else if (v.rentalEndingSoon) {
-      badge = '<span class="badge badge--yellow">Rental Ending</span>';
-    }
-
-    const thumb = (v.photos && v.photos[0])
-      ? '<img src="' + escapeHtml(v.photos[0]) + '" alt="" loading="lazy" onerror="this.onerror=null;this.replaceWith(document.createTextNode(\'' + icon + '\'));">'
-      : icon;
-
-    return (
-      '<div class="vehicle-item" data-vehicle-id="' + escapeHtml(v.id) + '">' +
-        '<div class="vehicle-item__thumb">' + thumb + '</div>' +
-        '<div class="vehicle-item__info">' +
-          '<div class="vehicle-item__title"><span class="status-dot status-dot--' + statusColor + '"></span>' + escapeHtml(v.brand) + ' ' + escapeHtml(v.model) + '</div>' +
-          '<div class="vehicle-item__meta">' + escapeHtml(v.plateNumber || '') + ' • ' + formatMileage(v.currentMileage) + ' km</div>' +
-        '</div>' +
-        badge +
-      '</div>'
-    );
+  container.innerHTML = groups.map(function (group) {
+    return renderVehicleGroupSection(group.type, group.vehicles);
   }).join('');
 
   // Attach click handlers to each card
@@ -664,6 +751,123 @@ function renderVehicleList() {
       openVehicleCard(el.getAttribute('data-vehicle-id'));
     });
   });
+}
+
+/**
+ * groupVehiclesByType — splits the (already filtered, already
+ * priority-ordered) vehicle list into groups by type, in the canonical
+ * order defined by APP_CONFIG.VEHICLE_TYPES, with any unrecognized type
+ * value appended as a final "Other" group so nothing is silently dropped.
+ *
+ * @param {Array} list
+ * @return {Array<{type: string, vehicles: Array}>}
+ */
+function groupVehiclesByType(list) {
+  const buckets = {};
+  const order = [];
+
+  list.forEach(function (v) {
+    const key = APP_CONFIG.VEHICLE_TYPES.indexOf(v.type) !== -1 ? v.type : '__other';
+    if (!buckets[key]) {
+      buckets[key] = [];
+      order.push(key);
+    }
+    buckets[key].push(v);
+  });
+
+  // Present groups in the canonical order first, then any "other" bucket last.
+  const canonicalOrder = APP_CONFIG.VEHICLE_TYPES.filter(function (t) { return buckets[t]; });
+  const finalOrder = canonicalOrder.concat(order.filter(function (k) { return k === '__other'; }));
+
+  return finalOrder.map(function (key) { return { type: key, vehicles: buckets[key] }; });
+}
+
+/**
+ * renderVehicleGroupSection — renders one group's section header (e.g.
+ * "Cars (12)") followed by its vehicle cards.
+ *
+ * @param {string} typeKey - a value from APP_CONFIG.VEHICLE_TYPES, or '__other'
+ * @param {Array} vehicles
+ * @return {string}
+ */
+function renderVehicleGroupSection(typeKey, vehicles) {
+  const label = typeKey === '__other' ? t('group.unspecified') : translateGroupName(typeKey);
+  const colorClass = APP_CONFIG.TYPE_COLORS[typeKey] || 'unspecified';
+
+  let html = '<div class="vehicle-group-header">' +
+    '<span class="type-dot type-dot--' + colorClass + '"></span>' +
+    escapeHtml(label) + ' <span class="vehicle-group-header__count">(' + vehicles.length + ')</span>' +
+  '</div>';
+
+  html += vehicles.map(renderVehicleListItem).join('');
+  return html;
+}
+
+/**
+ * renderVehicleListItem — renders a single vehicle row with its thumbnail,
+ * name/plate, and two independent status icons (maintenance, damage).
+ *
+ * @param {Object} v - a vehicle object from getVehicles(), including the
+ *   server-computed damageStatus field
+ * @return {string}
+ */
+function renderVehicleListItem(v) {
+  const typeIcon = getVehicleTypeIcon(v.type);
+  const typeColorClass = APP_CONFIG.TYPE_COLORS[v.type] || 'unspecified';
+
+  const thumb = (v.photos && v.photos[0])
+    ? '<img src="' + escapeHtml(v.photos[0]) + '" alt="" loading="lazy" onerror="this.onerror=null;this.replaceWith(document.createTextNode(\'' + typeIcon + '\'));">'
+    : typeIcon;
+
+  // Maintenance indicator: green (ok) or red (overdue). "Due soon" still
+  // reads as green (it's not yet a problem) but gets a small badge instead,
+  // so the two-color story stays simple: green = fine, red = overdue.
+  const maintenanceDotClass = v.maintenanceOverdue ? 'red' : 'green';
+  const maintenanceTitle = v.maintenanceOverdue ? t('maintenance.overdue') : (v.maintenanceDueSoon ? t('maintenance.dueSoon') : t('maintenance.ok'));
+
+  // Damage indicator: green (none) / yellow (minor, rentable) / red (critical, do not rent)
+  const damageDotClass = v.damageStatus === APP_CONFIG.DAMAGE_STATUS.CRITICAL ? 'red'
+    : (v.damageStatus === APP_CONFIG.DAMAGE_STATUS.MINOR ? 'yellow' : 'green');
+  const damageTitle = v.damageStatus === APP_CONFIG.DAMAGE_STATUS.CRITICAL ? t('damage.critical')
+    : (v.damageStatus === APP_CONFIG.DAMAGE_STATUS.MINOR ? t('damage.minor') : t('damage.none'));
+
+  let extraBadge = '';
+  if (v.maintenanceDueSoon && !v.maintenanceOverdue) {
+    extraBadge = '<span class="badge badge--yellow">TO Due Soon</span>';
+  } else if (v.rentalEndingSoon) {
+    extraBadge = '<span class="badge badge--yellow">Rental Ending</span>';
+  }
+
+  return (
+    '<div class="vehicle-item" data-vehicle-id="' + escapeHtml(v.id) + '">' +
+      '<div class="vehicle-item__thumb vehicle-item__thumb--' + typeColorClass + '">' + thumb + '</div>' +
+      '<div class="vehicle-item__info">' +
+        '<div class="vehicle-item__title">' + escapeHtml(v.brand) + ' ' + escapeHtml(v.model) + '</div>' +
+        '<div class="vehicle-item__meta">' + escapeHtml(v.plateNumber || '') + ' • ' + formatMileage(v.currentMileage) + ' km</div>' +
+      '</div>' +
+      '<div class="vehicle-item__status-icons">' +
+        '<span class="status-icon-dot status-icon-dot--' + maintenanceDotClass + '" title="' + escapeHtml(maintenanceTitle) + '">🔧</span>' +
+        '<span class="status-icon-dot status-icon-dot--' + damageDotClass + '" title="' + escapeHtml(damageTitle) + '">⚠️</span>' +
+      '</div>' +
+      extraBadge +
+    '</div>'
+  );
+}
+
+/**
+ * getVehicleTypeIcon — returns the emoji used as a thumbnail placeholder
+ * for a given vehicle type when no photo is available.
+ *
+ * @param {string} type
+ * @return {string}
+ */
+function getVehicleTypeIcon(type) {
+  switch (type) {
+    case 'Motorcycle': return '🏍️';
+    case 'Scooter': return '🛵';
+    case 'Car': return '🚗';
+    default: return '🚗';
+  }
 }
 
 
@@ -762,16 +966,20 @@ function renderVehicleCard(data) {
     html += '<div class="comment-box">💬 ' + escapeHtml(v.comment) + '</div>';
   }
 
-  // Maintenance history
+  // Maintenance history — the new model no longer logs work/cost/executor
+  // details (see markMaintenanceDone in Code.gs), so each entry just shows
+  // that service was completed, at what mileage, with any optional note.
   html += '<div class="section-title">🔧 ' + escapeHtml(t('card.maintenanceHistory')) + '</div>';
   html += renderHistoryList(data.maintenanceHistory, function (item) {
-    return escapeHtml(item.work || '—') + (item.cost ? ' · ' + escapeHtml(String(item.cost)) : '') + '<br><small>' + escapeHtml(item.executor || '') + ' · ' + formatMileage(item.mileage) + ' km</small>';
+    const label = item.work || 'Maintenance completed';
+    return escapeHtml(label) + '<br><small>' + formatMileage(item.mileage) + ' km' + (item.comment ? ' · ' + escapeHtml(item.comment) : '') + '</small>';
   });
 
-  // Damage history
+  // Damage history — includes the Body zone when one was recorded
   html += '<div class="section-title">⚠️ ' + escapeHtml(t('card.damageHistory')) + '</div>';
   html += renderHistoryList(data.damageHistory, function (item) {
-    return escapeHtml(item.description || '—') + ' <span class="badge badge--' + (item.severity === 'Critical' || item.severity === 'High' ? 'red' : 'yellow') + '">' + escapeHtml(item.severity || '') + '</span>' +
+    const bodyPrefix = item.bodyZone ? '<strong>' + escapeHtml(item.bodyZone) + ':</strong> ' : '';
+    return bodyPrefix + escapeHtml(item.description || '—') + ' <span class="badge badge--' + (item.severity === 'Critical' || item.severity === 'High' ? 'red' : 'yellow') + '">' + escapeHtml(item.severity || '') + '</span>' +
       '<br><small>' + escapeHtml(item.author || '') + ' · ' + escapeHtml(item.fixStatus || '') + '</small>';
   });
 
@@ -794,12 +1002,13 @@ function renderVehicleCard(data) {
     });
   });
 
-  // "Update State" button is visible only to Editors
-  const updateBtn = document.getElementById('btn-update-state');
+  // The whole editor action row (Update / Inspect / TO Done) is shown or
+  // hidden as one group, since all three are Editor-only actions.
+  const actionRow = document.getElementById('card-action-row');
   if (AppState.canEdit) {
-    updateBtn.classList.remove('hidden');
+    actionRow.classList.remove('hidden');
   } else {
-    updateBtn.classList.add('hidden');
+    actionRow.classList.add('hidden');
   }
 }
 
@@ -834,13 +1043,14 @@ function renderHistoryList(items, renderItemContent) {
 
 
 /* ============================================================================
- * 10. UPDATE STATE (Editor form, incl. rental fields)
+ * 10. UPDATE STATE (Editor form)
  * ========================================================================== */
 
 /**
  * openUpdateStateForm — opens the update-state form for the currently open
- * vehicle, pre-filling the mileage field with the current value and the
- * rental fields with any existing rental data.
+ * vehicle, pre-filling the mileage field with the current value. Rental
+ * status/dates are read-only in this app (see Code.gs) and are not part of
+ * this form at all.
  */
 function openUpdateStateForm() {
   if (!AppState.canEdit) {
@@ -855,59 +1065,38 @@ function openUpdateStateForm() {
   document.getElementById('input-comment').value = '';
   document.getElementById('input-photos').value = '';
   document.getElementById('photo-preview').innerHTML = '';
-
-  document.getElementById('input-rental-tenant').value = v.rentalTenant || '';
-  document.getElementById('input-rental-start').value = toDateInputValue(v.rentalStartDate);
-  document.getElementById('input-rental-end').value = toDateInputValue(v.rentalEndDate);
+  document.getElementById('input-body-zone').value = '';
 
   AppState.pendingPhotos = [];
   AppState.pendingFaults = [];
-
-  // Show rental fields immediately if the vehicle is currently rented or
-  // already has rental dates set; otherwise hide them until "Rented" is picked.
-  const shouldShowRental = v.status === APP_CONFIG.STATUS.RENTED || !!(v.rentalStartDate || v.rentalEndDate);
-  setRentalFieldsVisible(shouldShowRental);
+  AppState.pendingBodyZone = '';
 
   renderFaultsGrid();
+  renderBodyZoneOptions();
   showScreen('screen-update-state');
 }
 
 /**
- * toggleRentalFieldsVisibility — shows the rental fields block only when
- * the selected status is "Rented"; called on the status <select> change event.
- *
- * @param {string} statusValue
+ * renderBodyZoneOptions — populates the Body Damage Location <select> with
+ * APP_CONFIG.BODY_ZONES, appended after the static "Not applicable" option
+ * already in the HTML.
  */
-function toggleRentalFieldsVisibility(statusValue) {
-  setRentalFieldsVisible(statusValue === APP_CONFIG.STATUS.RENTED);
-}
+function renderBodyZoneOptions() {
+  const select = document.getElementById('input-body-zone');
 
-/**
- * setRentalFieldsVisible — shows/hides the rental fields block.
- *
- * @param {boolean} visible
- */
-function setRentalFieldsVisible(visible) {
-  const block = document.getElementById('rental-fields-block');
-  if (visible) {
-    block.classList.remove('hidden');
-  } else {
-    block.classList.add('hidden');
+  // Remove any previously-added zone options (keep only the first, static
+  // "Not applicable" option) before re-adding, so repeated opens of the
+  // form don't duplicate entries.
+  while (select.options.length > 1) {
+    select.remove(1);
   }
-}
 
-/**
- * toDateInputValue — converts a "YYYY-MM-DD HH:mm" or similar date string
- * (as returned by the server) into the "YYYY-MM-DD" format required by
- * <input type="date">.
- *
- * @param {string} dateStr
- * @return {string}
- */
-function toDateInputValue(dateStr) {
-  if (!dateStr) return '';
-  const match = String(dateStr).match(/^(\d{4}-\d{2}-\d{2})/);
-  return match ? match[1] : '';
+  APP_CONFIG.BODY_ZONES.forEach(function (zone) {
+    const option = document.createElement('option');
+    option.value = zone;
+    option.textContent = zone;
+    select.appendChild(option);
+  });
 }
 
 /**
@@ -946,8 +1135,9 @@ function renderFaultsGrid() {
 /**
  * handleUpdateStateSubmit — handles submission of the update-state form:
  * uploads photos first (if any), then calls updateVehicleCard with all
- * changed fields, including rental dates/tenant when the "Rented" status
- * is selected.
+ * changed fields (mileage, status, comment, faults, body zone). Rental
+ * fields are never part of this payload — they're not editable from this
+ * app at all.
  *
  * @param {Event} e
  */
@@ -962,6 +1152,7 @@ async function handleUpdateStateSubmit(e) {
     const uploadedUrls = await uploadPendingPhotos(AppState.pendingPhotos);
 
     const statusValue = document.getElementById('input-status').value || undefined;
+    const bodyZone = document.getElementById('input-body-zone').value || undefined;
 
     const payload = {
       vehicleId: AppState.currentVehicleId,
@@ -969,20 +1160,9 @@ async function handleUpdateStateSubmit(e) {
       status: statusValue,
       comment: document.getElementById('input-comment').value || undefined,
       photos: uploadedUrls,
-      faults: AppState.pendingFaults
+      faults: AppState.pendingFaults,
+      bodyZone: bodyZone
     };
-
-    // Only send rental fields if the rental block is visible (i.e. relevant)
-    const rentalBlockVisible = !document.getElementById('rental-fields-block').classList.contains('hidden');
-    if (rentalBlockVisible) {
-      const tenant = document.getElementById('input-rental-tenant').value;
-      const startDate = document.getElementById('input-rental-start').value;
-      const endDate = document.getElementById('input-rental-end').value;
-
-      if (tenant) payload.rentalTenant = tenant;
-      if (startDate) payload.rentalStartDate = startDate;
-      if (endDate) payload.rentalEndDate = endDate;
-    }
 
     const result = await callApiSafe('updateVehicleCard', payload);
 
@@ -1004,62 +1184,21 @@ async function handleUpdateStateSubmit(e) {
  * ========================================================================== */
 
 /**
- * startInspectionFlow — starts the inspection process: shows the list of
- * all vehicles that need to be checked one by one.
+ * openInspectionForm — opens the inspection form for the given vehicle.
+ * Inspection is launched directly from that vehicle's own card (there is no
+ * fleet-wide inspection screen anymore), so this reads straight from
+ * AppState.currentVehicleData rather than a queue.
+ *
+ * @param {string} vehicleId
  */
-function startInspectionFlow() {
+function openInspectionForm(vehicleId) {
   if (!AppState.canEdit) {
     showToast(t('toast.noInspectionPermission'), 'error');
     return;
   }
 
-  AppState.inspectionQueue = AppState.vehicles.slice();
-  AppState.inspectionDoneIds = new Set();
-
-  renderInspectionList();
-  showScreen('screen-inspection-list');
-}
-
-/**
- * renderInspectionList — renders the vehicle list for inspection, marking
- * already-checked vehicles.
- */
-function renderInspectionList() {
-  const container = document.getElementById('inspection-vehicle-list');
-
-  if (AppState.inspectionQueue.length === 0) {
-    container.innerHTML = '<div class="empty-state">No vehicles to inspect</div>';
-    return;
-  }
-
-  container.innerHTML = AppState.inspectionQueue.map(function (v) {
-    const done = AppState.inspectionDoneIds.has(v.id);
-    return (
-      '<div class="inspection-item ' + (done ? 'inspection-item--done' : '') + '" data-vehicle-id="' + escapeHtml(v.id) + '">' +
-        '<div>' +
-          '<strong>' + escapeHtml(v.brand) + ' ' + escapeHtml(v.model) + '</strong><br>' +
-          '<small>' + escapeHtml(v.plateNumber || '') + '</small>' +
-        '</div>' +
-        '<div class="inspection-item__check">' + (done ? '✅' : '➡️') + '</div>' +
-      '</div>'
-    );
-  }).join('');
-
-  container.querySelectorAll('.inspection-item').forEach(function (el) {
-    el.addEventListener('click', function () {
-      openInspectionForm(el.getAttribute('data-vehicle-id'));
-    });
-  });
-}
-
-/**
- * openInspectionForm — opens the inspection form for a specific vehicle.
- *
- * @param {string} vehicleId
- */
-function openInspectionForm(vehicleId) {
-  const vehicle = AppState.inspectionQueue.find(function (v) { return String(v.id) === String(vehicleId); });
-  if (!vehicle) return;
+  const vehicle = AppState.currentVehicleData && AppState.currentVehicleData.vehicle;
+  if (!vehicle || String(vehicle.id) !== String(vehicleId)) return;
 
   AppState.inspectionCurrentVehicleId = vehicleId;
 
@@ -1076,8 +1215,8 @@ function openInspectionForm(vehicleId) {
 
 /**
  * handleInspectionSubmit — handles submission of the inspection form:
- * uploads photos, sends addInspection, marks the vehicle as checked, and
- * returns the user to the list for the next vehicle.
+ * uploads photos, sends addInspection, then returns to the vehicle's card
+ * (refreshed with the new inspection entry) rather than a fleet-wide list.
  *
  * @param {Event} e
  */
@@ -1101,15 +1240,75 @@ async function handleInspectionSubmit(e) {
     const result = await callApiSafe('addInspection', payload);
 
     if (result) {
-      AppState.inspectionDoneIds.add(AppState.inspectionCurrentVehicleId);
       showToast(t('toast.inspectionRecorded'), 'success');
-      renderInspectionList();
-      showScreen('screen-inspection-list');
+      await openVehicleCard(AppState.inspectionCurrentVehicleId);
       loadDashboard(); // refresh stats in the background, don't await
+      showScreen('screen-vehicle-card');
     }
   } finally {
     saveBtn.disabled = false;
     saveBtn.textContent = '✅ ' + t('inspectionForm.save');
+  }
+}
+
+
+/* ============================================================================
+ * 11.5. MARK MAINTENANCE DONE
+ * ========================================================================== */
+
+/**
+ * openMaintenanceDoneForm — opens the minimal "maintenance done" form for
+ * the currently open vehicle, pre-filling its current mileage.
+ */
+function openMaintenanceDoneForm() {
+  if (!AppState.canEdit) {
+    showToast(t('toast.noEditPermission'), 'error');
+    return;
+  }
+
+  const vehicle = AppState.currentVehicleData && AppState.currentVehicleData.vehicle;
+  if (!vehicle) return;
+
+  document.getElementById('maintenance-mileage').value = vehicle.currentMileage || '';
+  document.getElementById('maintenance-notes').value = '';
+
+  showScreen('screen-maintenance-done');
+}
+
+/**
+ * handleMaintenanceDoneSubmit — confirms maintenance was completed (action:
+ * 'addMaintenance', which now maps server-side to markMaintenanceDone — see
+ * Code.gs). The server recalculates the next-due date/mileage automatically
+ * from the per-vehicle-type interval in Settings; this form only collects
+ * the current mileage and an optional note.
+ *
+ * @param {Event} e
+ */
+async function handleMaintenanceDoneSubmit(e) {
+  e.preventDefault();
+
+  const saveBtn = document.getElementById('btn-save-maintenance-done');
+  saveBtn.disabled = true;
+  saveBtn.textContent = 'Saving…';
+
+  try {
+    const payload = {
+      vehicleId: AppState.currentVehicleId,
+      mileage: document.getElementById('maintenance-mileage').value || undefined,
+      comment: document.getElementById('maintenance-notes').value || undefined
+    };
+
+    const result = await callApiSafe('addMaintenance', payload);
+
+    if (result) {
+      showToast(t('toast.maintenanceRecorded'), 'success');
+      await openVehicleCard(AppState.currentVehicleId);
+      loadDashboard(); // refresh overdue/due-soon counts in the background
+      showScreen('screen-vehicle-card');
+    }
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = '✅ ' + t('maintenanceForm.save');
   }
 }
 

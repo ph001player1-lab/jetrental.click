@@ -91,17 +91,18 @@
         <!-- Filled dynamically in app.js: renderDashboardStats() -->
       </div>
 
+      <!-- Per-vehicle-type breakdown (Cars / Motorcycles / Scooters) so
+           utilization can be read separately for each group -->
+      <div class="type-breakdown" id="type-breakdown">
+        <!-- Filled dynamically in app.js: renderTypeBreakdown() -->
+      </div>
+
       <!-- Secondary navigation row -->
       <div class="nav-row">
         <button class="btn btn--secondary btn--block" id="btn-open-calendar">
           📅 <span data-i18n="dashboard.rentalCalendar">Rental Calendar</span>
         </button>
       </div>
-
-      <!-- Inspection button (Editor only) -->
-      <button class="btn btn--primary btn--block hidden" id="btn-start-inspection">
-        📋 <span data-i18n="dashboard.startInspection">Start Inspection</span>
-      </button>
 
       <!-- Search and filter -->
       <div class="toolbar">
@@ -149,10 +150,23 @@
       <!-- Filled dynamically in app.js: renderVehicleCard() -->
     </div>
 
-    <!-- Floating button for Editor -->
-    <button class="btn btn--primary btn--block btn--sticky hidden" id="btn-update-state">
-      🔧 <span data-i18n="card.updateState">Update State</span>
-    </button>
+    <!-- Editor action row: Update State (mileage/status/faults), Inspect
+         (periodic inspection, launched directly from this card — there is
+         no separate fleet-wide inspection screen anymore), and Mark
+         Maintenance Done (simple confirmation that scheduled service was
+         just completed; the next-due date/mileage is recalculated
+         automatically from the per-type interval in Settings). -->
+    <div class="card-action-row hidden" id="card-action-row">
+      <button class="btn btn--primary" id="btn-update-state">
+        🔧 <span data-i18n="card.updateState">Update</span>
+      </button>
+      <button class="btn btn--secondary" id="btn-start-inspection-single">
+        📋 <span data-i18n="card.inspect">Inspect</span>
+      </button>
+      <button class="btn btn--secondary" id="btn-mark-maintenance-done">
+        ✅ <span data-i18n="card.maintenanceDone">TO Done</span>
+      </button>
+    </div>
 
   </section>
 
@@ -176,22 +190,9 @@
       <select id="input-status" class="form-input">
         <option value="" data-i18n="updateForm.statusNoChange">Don't change</option>
         <option value="Free" data-i18n="status.free">Free</option>
-        <option value="Rented" data-i18n="status.rented">Rented</option>
         <option value="In Repair" data-i18n="status.repair">In Repair</option>
         <option value="Needs Repair" data-i18n="status.needsRepair">Needs Repair</option>
       </select>
-
-      <!-- Rental fields — shown/hidden dynamically based on selected status -->
-      <div id="rental-fields-block">
-        <label class="form-label" data-i18n="updateForm.rentalTenant">Tenant / Renter</label>
-        <input type="text" id="input-rental-tenant" class="form-input" data-i18n-placeholder="updateForm.rentalTenantPlaceholder" placeholder="Name or company" />
-
-        <label class="form-label" data-i18n="updateForm.rentalStart">Rental Start Date</label>
-        <input type="date" id="input-rental-start" class="form-input" />
-
-        <label class="form-label" data-i18n="updateForm.rentalEnd">Rental End Date</label>
-        <input type="date" id="input-rental-end" class="form-input" />
-      </div>
 
       <label class="form-label" data-i18n="updateForm.comment">Notes / Comment</label>
       <textarea id="input-comment" class="form-input form-textarea" data-i18n-placeholder="updateForm.commentPlaceholder" placeholder="Describe any notes…"></textarea>
@@ -200,6 +201,12 @@
       <div class="faults-grid" id="faults-grid">
         <!-- Filled dynamically in app.js: FAULT_OPTIONS -->
       </div>
+
+      <label class="form-label" data-i18n="updateForm.bodyZone">Body Damage Location (optional)</label>
+      <select id="input-body-zone" class="form-input">
+        <option value="" data-i18n="updateForm.bodyZoneNone">Not applicable</option>
+        <!-- Remaining options filled dynamically in app.js: APP_CONFIG.BODY_ZONES -->
+      </select>
 
       <label class="form-label" data-i18n="updateForm.photos">Photos</label>
       <input type="file" id="input-photos" accept="image/*" capture="environment" multiple class="form-file" />
@@ -214,24 +221,10 @@
   </section>
 
   <!-- ==========================================================================
-       INSPECTION LIST SCREEN (sequential walk-through of all vehicles)
-       ========================================================================== -->
-  <section id="screen-inspection-list" class="screen">
-
-    <header class="app-header app-header--sub">
-      <button class="btn-icon" id="btn-back-from-inspection-list" aria-label="Back">←</button>
-      <div class="app-header__title" data-i18n="inspection.title">Inspection</div>
-      <div style="width:32px;"></div>
-    </header>
-
-    <div class="card-scroll" id="inspection-vehicle-list">
-      <!-- Filled dynamically in app.js: renderInspectionList() -->
-    </div>
-
-  </section>
-
-  <!-- ==========================================================================
        SINGLE-VEHICLE INSPECTION FORM SCREEN
+       Launched directly from a vehicle's own card (see the "Inspect" button
+       in screen-vehicle-card) — there is no separate fleet-wide walkthrough
+       screen anymore.
        ========================================================================== -->
   <section id="screen-inspection-form" class="screen">
 
@@ -255,6 +248,39 @@
 
       <button type="submit" class="btn btn--primary btn--block" id="btn-save-inspection">
         ✅ <span data-i18n="inspectionForm.save">Confirm</span>
+      </button>
+
+    </form>
+
+  </section>
+
+  <!-- ==========================================================================
+       MARK MAINTENANCE DONE SCREEN
+       A deliberately minimal form: the mechanic just confirms service was
+       completed (with the current mileage and an optional note) — per the
+       updated requirements, maintenance is no longer logged manually with
+       work/cost/executor details. The next-due date/mileage is
+       recalculated automatically server-side from the per-vehicle-type
+       interval in Settings.
+       ========================================================================== -->
+  <section id="screen-maintenance-done" class="screen">
+
+    <header class="app-header app-header--sub">
+      <button class="btn-icon" id="btn-back-from-maintenance-done" aria-label="Back">←</button>
+      <div class="app-header__title" data-i18n="maintenanceForm.title">Maintenance Done</div>
+      <div style="width:32px;"></div>
+    </header>
+
+    <form class="form-scroll" id="form-maintenance-done">
+
+      <label class="form-label" data-i18n="maintenanceForm.mileage">Current Mileage (km)</label>
+      <input type="number" inputmode="numeric" id="maintenance-mileage" class="form-input" placeholder="e.g. 45210" />
+
+      <label class="form-label" data-i18n="maintenanceForm.notes">Notes (optional)</label>
+      <textarea id="maintenance-notes" class="form-input form-textarea" data-i18n-placeholder="maintenanceForm.notesPlaceholder" placeholder="Anything worth noting…"></textarea>
+
+      <button type="submit" class="btn btn--primary btn--block" id="btn-save-maintenance-done">
+        ✅ <span data-i18n="maintenanceForm.save">Confirm Maintenance Done</span>
       </button>
 
     </form>

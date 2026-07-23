@@ -387,20 +387,88 @@ ul, p, h1, h2, h3, h4 {
 .stat-card--yellow { border-left-color: var(--color-yellow); }
 .stat-card--red { border-left-color: var(--color-red); }
 
-.nav-row {
-  padding: 0 var(--spacing) 10px;
+/* Per-vehicle-type utilization breakdown (Cars / Motorcycles / Scooters) */
+.type-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 var(--spacing) 14px;
 }
 
-#btn-start-inspection {
-  margin: 0 var(--spacing) 12px;
-  width: calc(100% - 32px);
+.type-breakdown-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--color-bg-secondary);
+  border-radius: var(--border-radius-sm);
+  padding: 8px 12px;
+  font-size: 12px;
+  box-shadow: var(--shadow-card);
+  flex-wrap: wrap;
+}
+
+.type-breakdown-row__name {
+  font-weight: 700;
+  margin-right: auto;
+}
+
+.type-breakdown-row__stat {
+  color: var(--color-hint);
+  white-space: nowrap;
+}
+
+.type-breakdown-row__stat--green { color: var(--color-green); }
+.type-breakdown-row__stat--blue { color: var(--color-blue); }
+.type-breakdown-row__stat--red { color: var(--color-red); }
+
+/* Distinct color dot per vehicle type — used both in the type-breakdown row
+   and as the group section header marker in the vehicle list, so Cars /
+   Motorcycles / Scooters are visually distinguishable at a glance (they
+   previously all rendered as the same red icon). */
+.type-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.type-dot--car { background: var(--color-blue); }
+.type-dot--moto { background: #af52de; } /* purple, distinct from any status color */
+.type-dot--scooter { background: #ff9500; } /* orange, distinct from yellow/red status colors */
+.type-dot--unspecified { background: var(--color-hint); }
+
+.nav-row {
+  padding: 0 var(--spacing) 10px;
 }
 
 .vehicle-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
   padding: 0 var(--spacing) 24px;
+}
+
+/* Section header for each vehicle-type group (Cars / Motorcycles / Scooters) */
+.vehicle-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--color-hint);
+  padding: 14px 2px 4px;
+}
+
+.vehicle-group-header:first-child {
+  padding-top: 2px;
+}
+
+.vehicle-group-header__count {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 .vehicle-item {
@@ -412,6 +480,7 @@ ul, p, h1, h2, h3, h4 {
   padding: 12px;
   box-shadow: var(--shadow-card);
   cursor: pointer;
+  margin-bottom: 10px;
 }
 
 .vehicle-item:active {
@@ -429,7 +498,15 @@ ul, p, h1, h2, h3, h4 {
   justify-content: center;
   font-size: 22px;
   overflow: hidden; /* clip any oversized content instead of letting it push the layout */
+  border: 2px solid transparent;
 }
+
+/* Distinct accent border per vehicle type so Cars/Motorcycles/Scooters read
+   apart from each other even before checking the group header — previously
+   both two-wheeler types rendered as the same red thumbnail. */
+.vehicle-item__thumb--car { border-color: var(--color-blue); }
+.vehicle-item__thumb--moto { border-color: #af52de; }
+.vehicle-item__thumb--scooter { border-color: #ff9500; }
 
 /* The thumbnail <img> itself must be explicitly constrained to its parent's
    size — without this rule the image renders at its natural resolution and
@@ -462,6 +539,33 @@ ul, p, h1, h2, h3, h4 {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Two independent status icons (maintenance, damage) shown side by side —
+   deliberately separate from each other so a vehicle needing an oil change
+   but otherwise undamaged doesn't read as "something's wrong" the same way
+   a vehicle with critical body damage does, and vice versa. */
+.vehicle-item__status-icons {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.status-icon-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.status-icon-dot--green { background: var(--color-green-bg); }
+.status-icon-dot--yellow { background: var(--color-yellow-bg); }
+.status-icon-dot--red { background: var(--color-red-bg); }
 
 .status-dot {
   display: inline-block;
@@ -503,7 +607,28 @@ ul, p, h1, h2, h3, h4 {
   flex: 1;
   overflow-y: auto;
   padding: var(--spacing);
-  padding-bottom: 90px; /* место под sticky-кнопку снизу */
+}
+
+/* Editor action row: three equal-width buttons (Update / Inspect / TO Done)
+   sitting below the scrollable card content as a normal flex-column
+   sibling — not an overlay — so it doesn't need to reserve scroll padding
+   the way the old single sticky button did. */
+.card-action-row {
+  display: flex;
+  gap: 8px;
+  padding: 10px var(--spacing);
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+  flex-shrink: 0;
+  background: var(--color-bg-secondary);
+  box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.card-action-row .btn {
+  flex: 1;
+  padding-left: 8px;
+  padding-right: 8px;
+  font-size: 13px;
+  white-space: nowrap;
 }
 
 .card-photo-strip {
@@ -682,18 +807,8 @@ ul, p, h1, h2, h3, h4 {
 
 
 /* ==========================================================================
-   8.5. RENTAL FIELDS (update form) & RENTAL CALENDAR SCREEN
+   8.5. RENTAL CALENDAR SCREEN — read-only rental summary display
    ========================================================================== */
-
-#rental-fields-block {
-  border-left: 3px solid var(--color-blue);
-  padding-left: 12px;
-  margin: 4px 0;
-}
-
-#rental-fields-block.hidden {
-  display: none;
-}
 
 .rental-summary {
   background: var(--color-bg-secondary);
