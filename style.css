@@ -433,9 +433,9 @@ ul, p, h1, h2, h3, h4 {
   flex-shrink: 0;
 }
 
-.type-dot--car { background: var(--color-blue); }
-.type-dot--moto { background: #af52de; } /* purple, distinct from any status color */
-.type-dot--scooter { background: #ff9500; } /* orange, distinct from yellow/red status colors */
+.type-dot--car { background: var(--color-red); }
+.type-dot--moto { background: #1c1c1e; } /* black, distinct from the red car and yellow scooter dots */
+.type-dot--scooter { background: var(--color-yellow); }
 .type-dot--unspecified { background: var(--color-hint); }
 
 .nav-row {
@@ -481,7 +481,17 @@ ul, p, h1, h2, h3, h4 {
   box-shadow: var(--shadow-card);
   cursor: pointer;
   margin-bottom: 10px;
+  border-left: 4px solid transparent;
 }
+
+/* Whole-card accent reflecting the vehicle's rental status, using the same
+   four-color scheme as the Rental Calendar (green/blue/yellow/red). A left
+   border (rather than a filled background) keeps this readable alongside
+   the type-color thumbnail border and the two status-icon dots. */
+.vehicle-item--rental-green { border-left-color: var(--color-green); }
+.vehicle-item--rental-blue { border-left-color: var(--color-blue); }
+.vehicle-item--rental-yellow { border-left-color: var(--color-yellow); background: var(--color-yellow-bg); }
+.vehicle-item--rental-red { border-left-color: var(--color-red); background: var(--color-red-bg); }
 
 .vehicle-item:active {
   transform: scale(0.98);
@@ -504,9 +514,9 @@ ul, p, h1, h2, h3, h4 {
 /* Distinct accent border per vehicle type so Cars/Motorcycles/Scooters read
    apart from each other even before checking the group header — previously
    both two-wheeler types rendered as the same red thumbnail. */
-.vehicle-item__thumb--car { border-color: var(--color-blue); }
-.vehicle-item__thumb--moto { border-color: #af52de; }
-.vehicle-item__thumb--scooter { border-color: #ff9500; }
+.vehicle-item__thumb--car { border-color: var(--color-red); }
+.vehicle-item__thumb--moto { border-color: #1c1c1e; }
+.vehicle-item__thumb--scooter { border-color: var(--color-yellow); }
 
 /* The thumbnail <img> itself must be explicitly constrained to its parent's
    size — without this rule the image renders at its natural resolution and
@@ -535,6 +545,17 @@ ul, p, h1, h2, h3, h4 {
   font-size: 12px;
   color: var(--color-hint);
   margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vehicle-item__rental-status {
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  color: var(--color-hint);
+  margin-top: 3px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1043,6 +1064,33 @@ ul, p, h1, h2, h3, h4 {
   cursor: pointer;
 }
 
+/* Group-header row (Cars / Motorcycles / Scooters) within the label column.
+   Keeps the same 52px height as a regular .gantt-label — this must stay in
+   lockstep with .gantt-row--group-header in the body, since both are built
+   from the same shared rowItems list (see buildGanttRowItems) and any
+   height mismatch here would shift every bar out of alignment with its
+   vehicle's label below this point. */
+.gantt-label--group {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  background: var(--color-bg);
+  cursor: default;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--color-hint);
+}
+
+.gantt-label--group .gantt-label__title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--color-hint);
+}
+
 .gantt-label:active {
   background: rgba(0, 0, 0, 0.04);
 }
@@ -1090,6 +1138,15 @@ ul, p, h1, h2, h3, h4 {
 
 .gantt-row:nth-child(even) {
   background-color: rgba(0, 0, 0, 0.015);
+}
+
+/* Group-header row on the body side — must stay exactly 52px, matching
+   .gantt-label--group, so vehicle rows below it stay aligned with their
+   labels. background-color is opaque so it visually covers the parent
+   .gantt-body's shared grid-line/weekend background for this one row,
+   making the divider read as a flat, distraction-free band. */
+.gantt-row--group-header {
+  background-color: var(--color-bg);
 }
 
 /* Rental bars: absolutely positioned over the row, left/width computed in

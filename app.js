@@ -31,7 +31,7 @@
 const APP_CONFIG = {
   // Apps Script web app URL (Deploy → New deployment → Web app).
   // REPLACE this with your actual deployed Apps Script URL before publishing.
-  API_URL: 'https://script.google.com/macros/s/AKfycbwH3Chyr08nakPzCPd8dxz46xJLYCKY2GElih0Dz7A462AlabYMP2q7vzYcyntycoBj/exec',
+  API_URL: 'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec',
 
   // Faults selectable when updating vehicle state
   FAULT_OPTIONS: [
@@ -114,6 +114,11 @@ const I18N = {
     'filter.overdue': 'Maintenance Overdue',
     'filter.dueSoon': 'Maintenance Due Soon',
     'filter.rentalEnding': 'Rental Ending Soon',
+
+    'rentalStatus.free': 'Free',
+    'rentalStatus.rented': 'Rented until',
+    'rentalStatus.endingSoon': 'Ending Soon',
+    'rentalStatus.overdue': 'Overdue',
 
     'status.free': 'Free',
     'status.rented': 'Rented',
@@ -650,7 +655,7 @@ function renderTypeBreakdown(byType) {
         '<span class="type-breakdown-row__stat">' + bucket.total + ' total</span>' +
         '<span class="type-breakdown-row__stat type-breakdown-row__stat--green">' + bucket.free + ' free</span>' +
         '<span class="type-breakdown-row__stat type-breakdown-row__stat--blue">' + bucket.rented + ' rented</span>' +
-        '<span class="type-breakdown-row__stat type-breakdown-row__stat--red">' + (bucket.repair + bucket.needsRepair) + ' in shop</span>' +
+        '<span class="type-breakdown-row__stat type-breakdown-row__stat--red">' + (bucket.repair + bucket.needsRepair) + ' in service</span>' +
       '</div>'
     );
   }).join('');
@@ -831,19 +836,22 @@ function renderVehicleListItem(v) {
   const damageTitle = v.damageStatus === APP_CONFIG.DAMAGE_STATUS.CRITICAL ? t('damage.critical')
     : (v.damageStatus === APP_CONFIG.DAMAGE_STATUS.MINOR ? t('damage.minor') : t('damage.none'));
 
+  const rentalInfo = getRentalDisplayInfo(v);
+
   let extraBadge = '';
   if (v.maintenanceDueSoon && !v.maintenanceOverdue) {
     extraBadge = '<span class="badge badge--yellow">TO Due Soon</span>';
-  } else if (v.rentalEndingSoon) {
-    extraBadge = '<span class="badge badge--yellow">Rental Ending</span>';
   }
 
   return (
-    '<div class="vehicle-item" data-vehicle-id="' + escapeHtml(v.id) + '">' +
+    '<div class="vehicle-item vehicle-item--rental-' + rentalInfo.colorClass + '" data-vehicle-id="' + escapeHtml(v.id) + '">' +
       '<div class="vehicle-item__thumb vehicle-item__thumb--' + typeColorClass + '">' + thumb + '</div>' +
       '<div class="vehicle-item__info">' +
         '<div class="vehicle-item__title">' + escapeHtml(v.brand) + ' ' + escapeHtml(v.model) + '</div>' +
         '<div class="vehicle-item__meta">' + escapeHtml(v.plateNumber || '') + ' • ' + formatMileage(v.currentMileage) + ' km</div>' +
+        '<div class="vehicle-item__rental-status">' +
+          '<span class="status-dot status-dot--' + rentalInfo.colorClass + '"></span>' + escapeHtml(rentalInfo.label) +
+        '</div>' +
       '</div>' +
       '<div class="vehicle-item__status-icons">' +
         '<span class="status-icon-dot status-icon-dot--' + maintenanceDotClass + '" title="' + escapeHtml(maintenanceTitle) + '">🔧</span>' +
@@ -852,6 +860,35 @@ function renderVehicleListItem(v) {
       extraBadge +
     '</div>'
   );
+}
+
+/**
+ * getRentalDisplayInfo — computes the rental status label and color for a
+ * vehicle, using the same four-way color scheme as the Rental Calendar
+ * (Gantt) view: green = Free, blue = Rented, yellow = Ending Soon, red =
+ * Overdue. Unlike the calendar (which also shows a separate "upcoming"
+ * green bar for future bookings), this reflects the vehicle's current
+ * real-world state: a booking that hasn't started yet means the vehicle is
+ * physically free right now, so it's shown as Free rather than a fifth
+ * category.
+ *
+ * @param {Object} v - a vehicle object from getVehicles()
+ * @return {{colorClass: string, label: string}}
+ */
+function getRentalDisplayInfo(v) {
+  if (v.status !== APP_CONFIG.STATUS.RENTED) {
+    return { colorClass: 'green', label: t('rentalStatus.free') };
+  }
+
+  const dateLabel = formatDateForDisplay(v.rentalEndDate);
+
+  if (v.rentalExpired) {
+    return { colorClass: 'red', label: t('rentalStatus.overdue') + (dateLabel ? ' (' + dateLabel + ')' : '') };
+  }
+  if (v.rentalEndingSoon) {
+    return { colorClass: 'yellow', label: t('rentalStatus.endingSoon') + (dateLabel ? ' ' + dateLabel : '') };
+  }
+  return { colorClass: 'blue', label: t('rentalStatus.rented') + (dateLabel ? ' ' + dateLabel : '') };
 }
 
 /**
@@ -1394,6 +1431,15 @@ function renderRentalGantt() {
   const totalWidth = GANTT_CONFIG.LABEL_COL_WIDTH + totalDays * GANTT_CONFIG.DAY_WIDTH;
   container.style.width = totalWidth + 'px';
 
+  // Build one shared, ordered list of "row items" — group-header rows
+  // (Cars / Motorcycles / Scooters) interleaved with vehicle rows — and
+  // render both the label column and the bar area from this exact same
+  // list. Building it once and sharing it is what keeps the two columns
+  // row-for-row in sync: if they were grouped independently, a mismatch in
+  // group ordering or an edge case (e.g. an unrecognized type) could shift
+  // one column relative to the other and misalign every bar with its label.
+  const rowItems = buildGanttRowItems(vehicles);
+
   // Two stacked flex rows: the sticky header row (corner + date header) and
   // the content row (sticky label column + scrollable body). This mirrors
   // the CSS structure in .gantt-header-row / .gantt-content-row exactly —
@@ -1405,8 +1451,8 @@ function renderRentalGantt() {
   html += '</div>';
 
   html += '<div class="gantt-content-row">';
-  html += renderGanttLabelColumn(vehicles);
-  html += renderGanttBody(vehicles, rentalsByVehicle, rangeStart, totalDays, today);
+  html += renderGanttLabelColumn(rowItems);
+  html += renderGanttBody(rowItems, rentalsByVehicle, rangeStart, totalDays, today);
   html += '</div>';
 
   container.innerHTML = html;
@@ -1487,20 +1533,59 @@ function renderGanttHeader(rangeStart, totalDays, today) {
 }
 
 /**
- * renderGanttLabelColumn — the vertical vehicle-label column, pinned to the
- * left within the content row.
+ * buildGanttRowItems — groups vehicles by type (same grouping as the
+ * dashboard's vehicle list — see groupVehiclesByType) and flattens the
+ * result into a single ordered array mixing group-header rows and vehicle
+ * rows, e.g.: [header:Cars, car1, car2, header:Motorcycles, moto1, ...].
+ * This is the shared source of truth both renderGanttLabelColumn and
+ * renderGanttBody iterate over, so the two columns can never drift out of
+ * row-for-row alignment with each other.
  *
  * @param {Array} vehicles
+ * @return {Array<{kind: 'header', label: string, colorClass: string}|{kind: 'vehicle', vehicle: Object}>}
+ */
+function buildGanttRowItems(vehicles) {
+  const groups = groupVehiclesByType(vehicles);
+  const items = [];
+
+  groups.forEach(function (group) {
+    const label = group.type === '__other' ? t('group.unspecified') : translateGroupName(group.type);
+    const colorClass = APP_CONFIG.TYPE_COLORS[group.type] || 'unspecified';
+
+    items.push({ kind: 'header', label: label, count: group.vehicles.length, colorClass: colorClass });
+    group.vehicles.forEach(function (v) {
+      items.push({ kind: 'vehicle', vehicle: v });
+    });
+  });
+
+  return items;
+}
+
+/**
+ * renderGanttLabelColumn — the vertical vehicle-label column, pinned to the
+ * left within the content row. Renders both group-header rows (Cars /
+ * Motorcycles / Scooters) and vehicle rows from the shared rowItems list —
+ * see buildGanttRowItems.
+ *
+ * @param {Array} rowItems - result of buildGanttRowItems()
  * @return {string}
  */
-function renderGanttLabelColumn(vehicles) {
+function renderGanttLabelColumn(rowItems) {
   let html = '<div class="gantt-label-col">';
 
-  vehicles.forEach(function (v) {
-    html += '<div class="gantt-label" data-vehicle-id="' + escapeHtml(v.id) + '">' +
-      '<div class="gantt-label__title">' + escapeHtml(v.brand) + ' ' + escapeHtml(v.model) + '</div>' +
-      '<div class="gantt-label__meta">' + escapeHtml(v.plateNumber || '') + '</div>' +
-    '</div>';
+  rowItems.forEach(function (item) {
+    if (item.kind === 'header') {
+      html += '<div class="gantt-label gantt-label--group">' +
+        '<span class="type-dot type-dot--' + item.colorClass + '"></span>' +
+        '<span class="gantt-label__title">' + escapeHtml(item.label) + ' (' + item.count + ')</span>' +
+      '</div>';
+    } else {
+      const v = item.vehicle;
+      html += '<div class="gantt-label" data-vehicle-id="' + escapeHtml(v.id) + '">' +
+        '<div class="gantt-label__title">' + escapeHtml(v.brand) + ' ' + escapeHtml(v.model) + '</div>' +
+        '<div class="gantt-label__meta">' + escapeHtml(v.plateNumber || '') + '</div>' +
+      '</div>';
+    }
   });
 
   html += '</div>';
@@ -1512,7 +1597,10 @@ function renderGanttLabelColumn(vehicles) {
  * positioned bar per rental, plus the vertical "today" indicator line.
  * Sits next to the label column within the content row (normal flex flow —
  * no manual offset needed since it's a flex sibling, not an absolutely
- * positioned element).
+ * positioned element). Renders one row per entry in rowItems — group-header
+ * rows get an empty, visually distinct row with no bar; vehicle rows get
+ * their rental bar(s) as before — so vertical position stays in lockstep
+ * with the label column built from the exact same list.
  *
  * Grid lines and weekend striping are drawn with a single shared CSS
  * background pattern (see buildGanttGridBackground) applied to every row,
@@ -1521,14 +1609,14 @@ function renderGanttLabelColumn(vehicles) {
  * nodes — the dominant cost at that scale — so this is the key optimization
  * that keeps scrolling smooth with a large fleet.
  *
- * @param {Array} vehicles
+ * @param {Array} rowItems - result of buildGanttRowItems()
  * @param {Object} rentalsByVehicle
  * @param {Date} rangeStart
  * @param {number} totalDays
  * @param {Date} today
  * @return {string}
  */
-function renderGanttBody(vehicles, rentalsByVehicle, rangeStart, totalDays, today) {
+function renderGanttBody(rowItems, rentalsByVehicle, rangeStart, totalDays, today) {
   const bodyWidth = totalDays * GANTT_CONFIG.DAY_WIDTH;
   const gridBackground = buildGanttGridBackground(rangeStart, totalDays);
 
@@ -1544,10 +1632,17 @@ function renderGanttBody(vehicles, rentalsByVehicle, rangeStart, totalDays, toda
   // the rest of the content.
   let html = '<div class="gantt-body" style="width:' + bodyWidth + 'px; ' + gridBackground + '">';
 
-  vehicles.forEach(function (v) {
+  rowItems.forEach(function (item) {
+    if (item.kind === 'header') {
+      // Group-header row: no grid background, no bar — just a visually
+      // distinct divider so it reads apart from actual vehicle rows.
+      html += '<div class="gantt-row gantt-row--group-header"></div>';
+      return;
+    }
+
     html += '<div class="gantt-row">';
 
-    const rentals = rentalsByVehicle[v.id] || [];
+    const rentals = rentalsByVehicle[item.vehicle.id] || [];
     rentals.forEach(function (r) {
       const bar = buildGanttBar(r, rangeStart, totalDays);
       if (bar) html += bar;
@@ -1558,7 +1653,7 @@ function renderGanttBody(vehicles, rentalsByVehicle, rangeStart, totalDays, toda
 
   // Vertical "today" line spanning the full body height
   const todayOffset = daysBetweenDates(rangeStart, today) * GANTT_CONFIG.DAY_WIDTH;
-  html += '<div class="gantt-today-line" style="left:' + todayOffset + 'px; height:' + (vehicles.length * GANTT_CONFIG.ROW_HEIGHT) + 'px;"></div>';
+  html += '<div class="gantt-today-line" style="left:' + todayOffset + 'px; height:' + (rowItems.length * GANTT_CONFIG.ROW_HEIGHT) + 'px;"></div>';
 
   html += '</div>';
   return html;
@@ -2170,6 +2265,23 @@ function formatMileage(value) {
   const num = Number(value);
   if (isNaN(num)) return '0';
   return num.toLocaleString('en-US');
+}
+
+/**
+ * formatDateForDisplay — converts a server-provided date string (formatted
+ * as "yyyy-MM-dd HH:mm" by formatDateForClient in Code.gs) into "dd/mm/yyyy"
+ * for display in the rental status line, per the requirement's date format.
+ * Returns an empty string for missing/unparseable input rather than
+ * throwing, so a vehicle with no rental end date just omits the date.
+ *
+ * @param {string} dateStr
+ * @return {string}
+ */
+function formatDateForDisplay(dateStr) {
+  if (!dateStr) return '';
+  const match = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return '';
+  return match[3] + '/' + match[2] + '/' + match[1];
 }
 
 /**
