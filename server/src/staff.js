@@ -15,6 +15,7 @@ import * as db from './db.js';
 import { formatStaffRequest, escapeHtml } from './format.js';
 import { todayIso } from './dates.js';
 import { mirrorNewRequest, mirrorRequestStatus } from './sheetsSync.js';
+import { sendText as waSendText } from './whatsapp/api.js';
 import { tg, sendMessage, inlineKeyboard, answerCallback, displayName, parseCommand } from './telegram/api.js';
 
 export function getStaffChatId() {
@@ -68,11 +69,18 @@ async function refreshStaffMessage(request) {
 }
 
 async function notifyClientTaken(request) {
-  if (request.channel !== 'telegram' || !request.client_chat_id) return;
-  await sendMessage(
-    request.client_chat_id,
-    `👋 Вашей заявкой #${request.id} занимается менеджер <b>${escapeHtml(request.taken_by_name)}</b>. Скоро свяжемся с вами!`
-  );
+  if (!request.client_chat_id) return;
+  if (request.channel === 'telegram') {
+    await sendMessage(
+      request.client_chat_id,
+      `👋 Вашей заявкой #${request.id} занимается менеджер <b>${escapeHtml(request.taken_by_name)}</b>. Скоро свяжемся с вами!`
+    );
+  } else if (request.channel === 'whatsapp') {
+    await waSendText(
+      request.client_chat_id,
+      `👋 Вашей заявкой #${request.id} занимается менеджер *${request.taken_by_name}*. Скоро свяжемся с вами!`
+    );
+  }
 }
 
 export async function handleStaffCallback(query, action, requestId) {

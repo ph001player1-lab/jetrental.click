@@ -28,6 +28,20 @@ export const config = {
     syncMinutes: Number(process.env.WS_SYNC_MINUTES) || 10
   },
 
+  // WhatsApp через Kapso (официальный Cloud API Meta, режим coexistence)
+  whatsapp: {
+    apiKey: process.env.KAPSO_API_KEY || '',
+    apiBase: (process.env.KAPSO_API_BASE || 'https://api.kapso.ai/meta/whatsapp/v24.0').replace(/\/+$/, ''),
+    // ID номера в Kapso; если не задан — берём из входящих вебхуков
+    phoneNumberId: process.env.KAPSO_PHONE_NUMBER_ID || '',
+    webhookSecret: process.env.KAPSO_WEBHOOK_SECRET || '',
+    // Тестовый режим: бот отвечает только этим номерам (через запятую). Пусто — всем.
+    allowedNumbers: (process.env.WHATSAPP_ALLOWED_NUMBERS || '')
+      .split(',').map((n) => n.replace(/\D/g, '')).filter(Boolean),
+    // Если менеджер сам написал клиенту из приложения — бот молчит в этом чате N часов
+    pauseHours: Number(process.env.WHATSAPP_PAUSE_HOURS) || 12
+  },
+
   telegram: {
     token: process.env.TELEGRAM_BOT_TOKEN || '',
     apiBase: (process.env.TELEGRAM_API_BASE || 'https://api.telegram.org').replace(/\/+$/, ''),

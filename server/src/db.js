@@ -52,6 +52,14 @@ db.exec(`
   );
 `);
 
+// Уже обработанные вебхуки (защита от повторной доставки)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS processed_events (
+    key          TEXT PRIMARY KEY,
+    processed_at TEXT NOT NULL
+  );
+`);
+
 // Колонки, добавленные после первого запуска: дописываем в существующую базу
 const requestColumns = db.prepare('PRAGMA table_info(requests)').all().map((c) => c.name);
 for (const [name, type] of [['model', 'TEXT'], ['estimate_thb', 'INTEGER'], ['free_units', 'TEXT'], ['sheet_row', 'INTEGER']]) {
@@ -154,6 +162,26 @@ export function setSheetRow(id, row) {
 /** Заявки, которые ещё «держат» технику: новые и взятые в работу */
 export function listActiveRequests() {
   return db.prepare("SELECT * FROM requests WHERE status IN ('new', 'taken') AND channel != 'test'").all();
+}
+
+/** Отмечает событие обработанным. false — если оно уже было (повтор доставки). */
+export function markEventProcessed(key) {
+  const result = db.prepare('INSERT OR IGNORE INTO processed_events (key, processed_at) VALUES (?, ?)').run(String(key), nowIso());
+  if (Math.random() < 0.01) {
+    db.prepare("DELETE FROM processed_events WHERE processed_at < datetime('now', '-3 days')").run();
+  }
+  return result.changes === 1;
+}
+
+/* --- Пауза бота в конкретном чате (менеджер отвечает сам) --- */
+
+export function pauseChat(chatKey, untilIso) {
+  setSetting(`pause:${chatKey}`, untilIso);
+}
+
+export function isChatPaused(chatKey) {
+  const until = getSetting(`pause:${chatKey}`);
+  return Boolean(until) && until > nowIso();
 }
 
 export function moveStaffChat(oldChatId, newChatId) {

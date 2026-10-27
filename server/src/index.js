@@ -6,8 +6,7 @@
  *                              Telegram, рабочая группа, Google-таблица,
  *                              WS.Автопрокат
  *   POST /webhooks/telegram  — обновления от Telegram (проверяется секрет)
- *
- * Сюда же позже придёт вебхук WhatsApp.
+ *   POST /webhooks/whatsapp  — сообщения WhatsApp от Kapso (проверяется подпись)
  * ============================================================================
  */
 
@@ -19,6 +18,8 @@ import { handleUpdate } from './telegram/handler.js';
 import { getStaffChatId } from './staff.js';
 import { fleetStatus, warmUpFleet } from './fleet.js';
 import { startWsSync, wsSyncStatus } from './ws/sync.js';
+import { whatsappEnabled, knownPhoneNumberId } from './whatsapp/api.js';
+import { verifySignature, processWebhook, whatsappStatus } from './whatsapp/webhook.js';
 
 const STARTED_AT = new Date();
 const MAX_BODY_BYTES = 1024 * 1024;
@@ -28,6 +29,7 @@ function sendJson(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
+/** Сырое тело запроса (Buffer) — нужно для проверки подписи вебхука */
 function readBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -41,7 +43,7 @@ function readBody(req) {
       }
       chunks.push(chunk);
     });
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('end', () => resolve(Buffer.concat(chunks)));
     req.on('error', reject);
   });
 }
@@ -59,7 +61,7 @@ async function handleTelegramWebhook(req, res) {
 
   let update;
   try {
-    update = JSON.parse(await readBody(req));
+    update = JSON.parse((await readBody(req)).toString('utf8'));
   } catch {
     return sendJson(res, 400, { error: 'Bad request' });
   }
@@ -70,6 +72,26 @@ async function handleTelegramWebhook(req, res) {
   handleUpdate(update).catch((err) => {
     console.error(`Telegram update ${update.update_id} failed:`, err);
   });
+}
+
+async function handleWhatsAppWebhook(req, res) {
+  if (!whatsappEnabled) return sendJson(res, 404, { error: 'Not found' });
+
+  const rawBody = await readBody(req);
+  if (!verifySignature(rawBody, req.headers['x-webhook-signature'])) {
+    return sendJson(res, 401, { error: 'Invalid signature' });
+  }
+
+  let body;
+  try {
+    body = JSON.parse(rawBody.toString('utf8'));
+  } catch {
+    return sendJson(res, 400, { error: 'Bad request' });
+  }
+
+  // Kapso ждёт ответ в течение 10 секунд — отвечаем сразу, обрабатываем после
+  sendJson(res, 200, { ok: true });
+  processWebhook(req.headers, body).catch((err) => console.error('WhatsApp webhook failed:', err));
 }
 
 const server = http.createServer((req, res) => {
@@ -83,7 +105,20 @@ const server = http.createServer((req, res) => {
       uptimeSeconds: Math.round(process.uptime()),
       telegram: { enabled: telegramEnabled, staffGroupBound: Boolean(getStaffChatId()) },
       sheets: fleetStatus(),
-      avtoprokat: wsSyncStatus()
+      avtoprokat: wsSyncStatus(),
+      whatsapp: {
+        enabled: whatsappEnabled,
+        phoneNumberKnown: Boolean(knownPhoneNumberId()),
+        testMode: config.whatsapp.allowedNumbers.length > 0,
+        ...whatsappStatus()
+      }
+    });
+  }
+
+  if (req.method === 'POST' && pathname === '/webhooks/whatsapp') {
+    return handleWhatsAppWebhook(req, res).catch((err) => {
+      console.error('WhatsApp webhook error:', err);
+      if (!res.headersSent) sendJson(res, 500, { error: 'Internal error' });
     });
   }
 
