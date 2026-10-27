@@ -1,0 +1,6 @@
+# Caddy сам получает и продлевает HTTPS-сертификат (Let's Encrypt)
+# для домена бота и передаёт запросы контейнеру bot.
+{$BOT_DOMAIN} {
+	encode gzip
+	reverse_proxy bot:3000
+}

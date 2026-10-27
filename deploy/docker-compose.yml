@@ -1,0 +1,40 @@
+# ============================================================================
+# KOKON — сервисы на сервере
+# ============================================================================
+#   caddy — HTTPS для bot.jetrental.click, проксирует запросы в bot
+#   bot   — наш Node.js-сервер (папка server/)
+#
+# Секреты (токены, ключи) — только в /opt/kokon/.env на сервере, НЕ в git.
+# Запуск и обновление: bash /opt/kokon/app/deploy/update.sh
+# ============================================================================
+
+name: kokon
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      BOT_DOMAIN: ${BOT_DOMAIN:-bot.jetrental.click}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - bot
+
+  bot:
+    build: ../server
+    restart: unless-stopped
+    environment:
+      PORT: "3000"
+    env_file:
+      - path: /opt/kokon/.env
+        required: false
+
+volumes:
+  caddy_data:
+  caddy_config:
