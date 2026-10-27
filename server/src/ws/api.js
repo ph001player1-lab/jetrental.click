@@ -33,11 +33,20 @@ async function signin() {
       LongToken: true
     })
   });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok || !data.accessToken) {
-    throw new Error(`WS signin failed: HTTP ${response.status}`);
+  const text = await response.text();
+  let data = {};
+  try { data = JSON.parse(text); } catch { /* не JSON — покажем начало ответа ниже */ }
+
+  const token = data.accessToken || data.AccessToken || data.access_token;
+  if (!response.ok || !token) {
+    // Для диагностики — только сообщение сервера и имена полей, без токенов
+    const message = data.error_message || data.errorMessage || data.message || data.error || data.title || '';
+    const detail = typeof data === 'object' && Object.keys(data).length
+      ? `fields: ${Object.keys(data).join(', ')}${message ? `; message: ${String(message).slice(0, 200)}` : ''}`
+      : `body: ${text.slice(0, 200)}`;
+    throw new Error(`WS signin failed: HTTP ${response.status}; ${detail}`);
   }
-  accessToken = data.accessToken;
+  accessToken = token;
   return accessToken;
 }
 
