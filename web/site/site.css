@@ -17,7 +17,8 @@
   --ok: #16a34a;
   --radius: 18px;
   --shadow: 0 1px 2px rgba(11, 31, 51, .05), 0 10px 30px rgba(11, 31, 51, .08);
-  --font: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  --font: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, "Noto Sans Thai", "Leelawadee UI", "Thonburi",
+          "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -26,6 +27,11 @@ body { margin: 0; font: 16px/1.55 var(--font); color: var(--ink); background: va
 img { max-width: 100%; display: block; }
 a { color: var(--sea); }
 h1, h2, h3 { letter-spacing: -.025em; line-height: 1.12; margin: 0; }
+/* Тайским буквам нужны место над и под строкой, китайским — без сжатия межбуквенного */
+:lang(th) h1, :lang(th) h2, :lang(th) h3 { line-height: 1.4; letter-spacing: 0; }
+:lang(th) body, :lang(th) .hero__lead { line-height: 1.7; }
+:lang(zh) h1, :lang(zh) h2, :lang(zh) h3 { letter-spacing: 0; line-height: 1.25; }
+:lang(th) .eyebrow, :lang(zh) .eyebrow, :lang(th) .search__field, :lang(zh) .search__field, :lang(th) .vcard__spec { letter-spacing: .02em; }
 h2 { font-size: clamp(26px, 4vw, 38px); font-weight: 800; }
 h3 { font-size: 19px; font-weight: 700; }
 [hidden] { display: none !important; }
@@ -66,15 +72,36 @@ h3 { font-size: 19px; font-weight: 700; }
 .nav { display: flex; gap: 22px; }
 .nav a { color: var(--ink); text-decoration: none; font-weight: 600; font-size: 15px; }
 .nav a:hover { color: var(--sea); }
-.header__contacts { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; line-height: 1.25; }
-.header__phone { color: var(--navy); text-decoration: none; font-weight: 700; font-size: 14px; }
-.header__wa { min-height: 42px; padding: 0 16px; font-size: 14px; }
+.header__actions { margin-left: auto; display: flex; gap: 8px; }
+.header__msg { min-height: 42px; padding: 0 16px; font-size: 14px; }
+
+/* --- Верхняя полоса: адрес, телефоны, язык, Staff only --- */
+
+.topbar { background: var(--navy); color: #c9d6e3; font-size: 13px; }
+.topbar__inner { display: flex; align-items: center; gap: 18px; min-height: 40px; }
+.topbar__item { color: inherit; text-decoration: none; white-space: nowrap; }
+a.topbar__item:hover { color: var(--white); }
+.topbar__address { margin-right: auto; }
+.lang { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: rgba(255, 255, 255, .08); }
+.lang button {
+  border: 0; background: none; color: #c9d6e3; font: 700 12px var(--font); padding: 4px 10px;
+  border-radius: 999px; cursor: pointer; min-height: 26px;
+}
+.lang button:hover { color: var(--white); }
+.lang button[aria-pressed="true"] { background: var(--white); color: var(--navy); }
+.staff-link {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, .28); color: var(--white); text-decoration: none; font-weight: 700; font-size: 12px; white-space: nowrap;
+}
+.staff-link:hover { background: rgba(255, 255, 255, .1); }
+@media (max-width: 860px) {
+  .topbar__address, .topbar__phone { display: none; }
+  .topbar__inner { justify-content: space-between; gap: 10px; }
+}
 .burger { display: none; width: 44px; height: 44px; border: 0; background: none; padding: 10px; cursor: pointer; }
 .burger span { display: block; height: 2px; background: var(--navy); margin: 5px 0; border-radius: 2px; transition: transform .2s, opacity .2s; }
 
 @media (max-width: 960px) {
-  .header__contacts { display: none; }
-  .header__wa { margin-left: auto; }
   .burger { display: block; }
   .nav {
     position: absolute; top: 68px; left: 0; right: 0; flex-direction: column; gap: 0; padding: 8px 20px 16px;
@@ -87,9 +114,10 @@ h3 { font-size: 19px; font-weight: 700; }
   .burger[aria-expanded="true"] span:nth-child(2) { opacity: 0; }
   .burger[aria-expanded="true"] span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
 }
-@media (max-width: 480px) {
-  .header__wa span { display: none; }
-  .header__wa { width: 44px; padding: 0; }
+@media (max-width: 560px) {
+  .header__msg span { display: none; }
+  .header__msg { width: 42px; padding: 0; }
+  .header__inner { gap: 12px; }
 }
 
 /* --- Первый экран --- */
@@ -108,7 +136,7 @@ h3 { font-size: 19px; font-weight: 700; }
 .hero__waves { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 160px; }
 .hero__inner { position: relative; display: grid; grid-template-columns: 1.05fr 1fr; align-items: center; gap: 32px; }
 .hero h1 { font-size: clamp(38px, 6vw, 68px); font-weight: 800; }
-.hero h1 span { display: block; background: linear-gradient(90deg, var(--sea-light), #a7f3d0); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.hero h1 .hero__accent { display: block; background: linear-gradient(90deg, var(--sea-light), #a7f3d0); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .hero__lead { font-size: 19px; color: #c9d6e3; margin: 20px 0 28px; max-width: 460px; }
 .hero__ctas { display: flex; flex-wrap: wrap; gap: 12px; }
 .hero__facts { list-style: none; padding: 0; margin: 34px 0 0; display: flex; flex-wrap: wrap; gap: 10px 26px; color: #b7c6d6; font-size: 14px; }
@@ -181,8 +209,8 @@ h3 { font-size: 19px; font-weight: 700; }
 .vcard__ask { font-weight: 700; color: var(--navy); font-size: 15px; }
 .vcard__total b { color: var(--ink); }
 .vcard__actions { display: flex; gap: 8px; margin-top: 12px; }
-.vcard__actions .btn { flex: 1; }
-.vcard__actions .btn--wa { flex: none; width: 48px; padding: 0; }
+.vcard__actions .btn { flex: 1; min-width: 0; }
+.vcard__actions .btn--wa, .vcard__actions .btn--tg { flex: none; width: 44px; padding: 0; }
 
 /* --- Преимущества, услуги, отзывы --- */
 
@@ -231,8 +259,13 @@ h3 { font-size: 19px; font-weight: 700; }
 .footer__inner { display: flex; flex-wrap: wrap; align-items: center; gap: 18px 32px; }
 .footer__nav { display: flex; gap: 20px; flex-wrap: wrap; }
 .footer__nav a { color: #d4dfea; text-decoration: none; font-weight: 600; }
-.footer__copy { margin: 0 0 0 auto; font-size: 14px; }
-@media (max-width: 700px) { .footer__copy { margin: 0; } }
+.footer__social { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.icon-btn { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; text-decoration: none; }
+.icon-btn--wa { background: var(--wa); color: #05361a; }
+.icon-btn--tg { background: var(--tg); color: var(--white); }
+.staff-link--footer { margin-left: 6px; padding: 8px 14px; font-size: 13px; }
+.footer__copy { flex-basis: 100%; margin: 0; font-size: 14px; }
+@media (max-width: 700px) { .footer__social { margin-left: 0; } }
 
 /* --- Окно бронирования --- */
 
@@ -244,7 +277,7 @@ h3 { font-size: 19px; font-weight: 700; }
 .dialog__vehicle img { width: 132px; height: 92px; object-fit: contain; flex: none; border-radius: 14px; background: radial-gradient(circle at 50% 70%, #fff, #eef3f7 75%); }
 .dialog__vehicle .eyebrow { margin-bottom: 4px; }
 .dialog__vehicle p.muted { margin: 4px 0 0; }
-.dialog__alt { margin: 0; text-align: center; font-size: 14px; color: var(--muted); }
+.dialog__alt { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; font-size: 14px; color: var(--muted); }
 .dialog__done { text-align: center; padding: 36px 24px 24px; }
 .dialog__done p { margin: 0; color: var(--muted); }
 .done__icon { font-size: 52px; }
@@ -266,9 +299,11 @@ h3 { font-size: 19px; font-weight: 700; }
   .vcard__price { font-size: 13px; padding-top: 6px; }
   .vcard__price b { font-size: 19px; }
   .vcard__total { font-size: 12px; }
-  .vcard__actions { margin-top: 8px; gap: 6px; }
+  /* Кнопка брони на всю ширину, мессенджеры — строкой ниже */
+  .vcard__actions { margin-top: 8px; gap: 6px; flex-wrap: wrap; }
   .vcard__actions .btn { min-height: 38px; }
-  .vcard__actions .btn--wa { width: 38px; }
+  .vcard__actions .btn--primary { flex: 1 1 100%; }
+  .vcard__actions .btn--wa, .vcard__actions .btn--tg { flex: 1 1 0; width: auto; }
   .badge { top: 8px; left: 8px; font-size: 10px; padding: 3px 8px; }
   .skeleton { height: 250px; }
 }

@@ -3,14 +3,15 @@
   JetRental — сайт аренды на jetrental.click (копия kokoncar.com под брендом JetRental).
   Модели, цены и фото — из листа Catalog, «свободно сейчас» и подбор по датам —
   из WS.Автопрокат через /api/public/*. Заявки с сайта приходят в рабочую группу.
-  Контакты ниже — единственное место, где их менять (кроме WhatsApp в data-whatsapp).
+  Языки: EN / RU / TH / ZH — тексты в i18n.js, элементы помечены data-i18n*.
+  Контакты: телефоны ниже, WhatsApp и Telegram — в data-whatsapp / data-telegram.
 -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>JetRental | Motorbike and Car Rental in Phuket</title>
-  <meta name="description" content="Scooter, motorbike and car rental in Phuket, Bang Tao Beach. New vehicles, delivery to your hotel, helmets free of charge, 24/7 support." />
+  <meta name="description" id="meta-description" content="Scooter, motorbike and car rental in Phuket, Bang Tao Beach. New vehicles, delivery to your hotel, helmets free of charge, 24/7 support." />
   <meta name="theme-color" content="#0b1f33" />
   <meta property="og:title" content="JetRental — Motorbike and Car Rental in Phuket" />
   <meta property="og:description" content="Start your adventure in Phuket today. Book your ride now." />
@@ -22,29 +23,55 @@
   <link rel="stylesheet" href="site.css" />
 </head>
 <body data-whatsapp="79037965656" data-telegram="JetRental_bot">
+  <!-- Иконки WhatsApp и Telegram (используются через <use href="#i-wa">) -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-wa" viewBox="0 0 24 24"><path fill="currentColor" d="M17.5 14.4c-.3-.1-1.8-.9-2-1s-.5-.1-.7.1-.8 1-.9 1.2-.3.2-.6.1a8.2 8.2 0 0 1-4-3.5c-.3-.5.3-.5.9-1.6.1-.2 0-.4 0-.5l-.9-2.2c-.2-.6-.5-.5-.7-.5h-.6a1.2 1.2 0 0 0-.8.4 3.5 3.5 0 0 0-1.1 2.6 6 6 0 0 0 1.3 3.2 13.8 13.8 0 0 0 5.3 4.7c2 .9 2.8.9 3.8.8.6-.1 1.8-.8 2.1-1.5s.3-1.3.2-1.5-.3-.2-.6-.3zM12 21.8a9.8 9.8 0 0 1-5-1.4l-.4-.2-3.7 1 1-3.6-.2-.4A9.8 9.8 0 1 1 12 21.8zM20.5 3.5A11.8 11.8 0 0 0 1.9 17.7L.2 24l6.4-1.7A11.8 11.8 0 0 0 24 12a11.7 11.7 0 0 0-3.5-8.5z"/></symbol>
+    <symbol id="i-tg" viewBox="0 0 24 24"><path fill="currentColor" d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/></symbol>
+  </svg>
+
+  <!-- Верхняя полоса: адрес, телефоны, язык, вход для сотрудников -->
+  <div class="topbar">
+    <div class="container topbar__inner">
+      <span class="topbar__item topbar__address">📍 <span data-i18n="top.address">Bang Tao Beach, Phuket</span></span>
+      <a class="topbar__item topbar__phone" href="tel:+79037965656">+7 903 796 56-56</a>
+      <a class="topbar__item topbar__phone" href="tel:+66809908490">+66 80 990 84-90</a>
+      <div class="lang" role="group" aria-label="Language">
+        <button type="button" data-lang="en" lang="en">EN</button>
+        <button type="button" data-lang="ru" lang="ru">RU</button>
+        <button type="button" data-lang="th" lang="th">ไทย</button>
+        <button type="button" data-lang="zh" lang="zh">中文</button>
+      </div>
+      <a class="staff-link" href="https://staff.jetrental.click" rel="nofollow">
+        <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5zm-3 8V7a3 3 0 1 1 6 0v3H9z"/></svg>
+        Staff only
+      </a>
+    </div>
+  </div>
 
   <header class="header" id="top">
     <div class="container header__inner">
-      <a class="logo" href="#top" aria-label="JetRental home">
+      <a class="logo" href="#top" aria-label="JetRental">
         <img src="favicon.svg" alt="" width="36" height="36" />
         <span>Jet<b>Rental</b></span>
       </a>
       <nav class="nav" id="nav" aria-label="Main">
-        <a href="#scooters">Scooters</a>
-        <a href="#motorbikes">Motorbikes</a>
-        <a href="#cars">Cars</a>
-        <a href="#services">Services</a>
-        <a href="#contact">Contact us</a>
+        <a href="#scooters" data-i18n="nav.scooters">Scooters</a>
+        <a href="#motorbikes" data-i18n="nav.motorbikes">Motorbikes</a>
+        <a href="#cars" data-i18n="nav.cars">Cars</a>
+        <a href="#services" data-i18n="nav.services">Services</a>
+        <a href="#contact" data-i18n="nav.contact">Contact us</a>
       </nav>
-      <div class="header__contacts">
-        <a class="header__phone" href="tel:+79037965656">+7 903 796 56-56</a>
-        <a class="header__phone" href="tel:+66809908490">+66 80 990 84-90</a>
+      <div class="header__actions">
+        <a class="btn btn--wa header__msg" data-wa="wa.general" href="https://wa.me/79037965656" target="_blank" rel="noopener" aria-label="WhatsApp">
+          <svg width="18" height="18" aria-hidden="true"><use href="#i-wa"/></svg>
+          <span>WhatsApp</span>
+        </a>
+        <a class="btn btn--tg header__msg" href="https://t.me/JetRental_bot" target="_blank" rel="noopener" aria-label="Telegram">
+          <svg width="18" height="18" aria-hidden="true"><use href="#i-tg"/></svg>
+          <span>Telegram</span>
+        </a>
       </div>
-      <a class="btn btn--wa header__wa" href="https://wa.me/79037965656?text=Hello!%20I%20am%20interested%20in%20renting%20a%20vehicle" target="_blank" rel="noopener">
-        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M17.5 14.4c-.3-.1-1.8-.9-2-1s-.5-.1-.7.1-.8 1-.9 1.2-.3.2-.6.1a8.2 8.2 0 0 1-4-3.5c-.3-.5.3-.5.9-1.6.1-.2 0-.4 0-.5l-.9-2.2c-.2-.6-.5-.5-.7-.5h-.6a1.2 1.2 0 0 0-.8.4 3.5 3.5 0 0 0-1.1 2.6 6 6 0 0 0 1.3 3.2 13.8 13.8 0 0 0 5.3 4.7c2 .9 2.8.9 3.8.8.6-.1 1.8-.8 2.1-1.5s.3-1.3.2-1.5-.3-.2-.6-.3zM12 21.8a9.8 9.8 0 0 1-5-1.4l-.4-.2-3.7 1 1-3.6-.2-.4A9.8 9.8 0 1 1 12 21.8zM20.5 3.5A11.8 11.8 0 0 0 1.9 17.7L.2 24l6.4-1.7A11.8 11.8 0 0 0 24 12a11.7 11.7 0 0 0-3.5-8.5z"/></svg>
-        <span>WhatsApp</span>
-      </a>
-      <button class="burger" type="button" aria-label="Menu" aria-expanded="false" aria-controls="nav"><span></span><span></span><span></span></button>
+      <button class="burger" type="button" data-i18n-aria="nav.menu" aria-label="Menu" aria-expanded="false" aria-controls="nav"><span></span><span></span><span></span></button>
     </div>
   </header>
 
@@ -58,18 +85,18 @@
       </svg>
       <div class="container hero__inner">
         <div class="hero__text">
-          <p class="eyebrow">Phuket · Bang Tao Beach</p>
-          <h1>Car and Motorbike <span>Rent in Phuket</span></h1>
-          <p class="hero__lead">Start your adventure in Phuket today. Book your ride now.</p>
+          <p class="eyebrow" data-i18n="hero.eyebrow">Phuket · Bang Tao Beach</p>
+          <h1><span data-i18n="hero.title1">Car and Motorbike</span> <span class="hero__accent" data-i18n="hero.title2">Rent in Phuket</span></h1>
+          <p class="hero__lead" data-i18n="hero.lead">Start your adventure in Phuket today. Book your ride now.</p>
           <div class="hero__ctas">
-            <a class="btn btn--sun" href="#motorbikes">See motorbikes</a>
-            <a class="btn btn--glass" href="#cars">See cars</a>
-            <a class="btn btn--glass" href="#scooters">See scooters</a>
+            <a class="btn btn--sun" href="#motorbikes" data-i18n="hero.ctaMoto">See motorbikes</a>
+            <a class="btn btn--glass" href="#cars" data-i18n="hero.ctaCars">See cars</a>
+            <a class="btn btn--glass" href="#scooters" data-i18n="hero.ctaScooters">See scooters</a>
           </div>
           <ul class="hero__facts">
-            <li><b>New</b> or nearly new vehicles</li>
-            <li><b>Delivery</b> to your hotel</li>
-            <li><b>24/7</b> support</li>
+            <li data-i18n-html="hero.fact1"><b>New</b> or nearly new vehicles</li>
+            <li data-i18n-html="hero.fact2"><b>Delivery</b> to your hotel</li>
+            <li data-i18n-html="hero.fact3"><b>24/7</b> support</li>
           </ul>
         </div>
         <div class="hero__media">
@@ -82,26 +109,26 @@
     <section class="search-wrap container" aria-label="Check availability">
       <form class="search" id="search-form">
         <div class="search__title">
-          <b>Check availability</b>
-          <span>Live data from our fleet</span>
+          <b data-i18n="search.title">Check availability</b>
+          <span data-i18n="search.live">Live data from our fleet</span>
         </div>
         <label class="search__field">
-          <span>Vehicle</span>
+          <span data-i18n="search.vehicle">Vehicle</span>
           <select name="type" required>
-            <option value="scooter">🛵 Scooter</option>
-            <option value="motorcycle">🏍 Motorbike</option>
-            <option value="car">🚗 Car</option>
+            <option value="scooter" data-type-option="scooter">🛵 Scooter</option>
+            <option value="motorcycle" data-type-option="motorcycle">🏍 Motorbike</option>
+            <option value="car" data-type-option="car">🚗 Car</option>
           </select>
         </label>
         <label class="search__field">
-          <span>Pick-up</span>
+          <span data-i18n="search.pickup">Pick-up</span>
           <input type="date" name="from" required />
         </label>
         <label class="search__field">
-          <span>Return</span>
+          <span data-i18n="search.return">Return</span>
           <input type="date" name="to" required />
         </label>
-        <button class="btn btn--primary search__btn" type="submit">Show available</button>
+        <button class="btn btn--primary search__btn" type="submit" data-i18n="search.submit">Show available</button>
       </form>
     </section>
 
@@ -109,10 +136,10 @@
       <div class="container">
         <div class="section__head">
           <div>
-            <p class="eyebrow eyebrow--dark">Your dates</p>
-            <h2 id="results-title">Available</h2>
+            <p class="eyebrow eyebrow--dark" data-i18n="results.eyebrow">Your dates</p>
+            <h2 id="results-title"></h2>
           </div>
-          <button class="link" type="button" id="results-close">Clear</button>
+          <button class="link" type="button" id="results-close" data-i18n="results.clear">Clear</button>
         </div>
         <p class="error" id="results-error" hidden></p>
         <div class="grid" id="results-grid"></div>
@@ -124,8 +151,8 @@
       <div class="container">
         <div class="section__head">
           <div>
-            <p class="eyebrow eyebrow--dark">Scooters</p>
-            <h2>Scooters for beginners and enjoyers</h2>
+            <p class="eyebrow eyebrow--dark" data-i18n="nav.scooters">Scooters</p>
+            <h2 data-i18n="sec.scooters">Scooters for beginners and enjoyers</h2>
           </div>
         </div>
         <div class="grid" data-catalog="scooter"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
@@ -136,8 +163,8 @@
       <div class="container">
         <div class="section__head">
           <div>
-            <p class="eyebrow eyebrow--dark">Motorbikes</p>
-            <h2>Wide range of motorbikes for beginners, middle and advanced riders</h2>
+            <p class="eyebrow eyebrow--dark" data-i18n="nav.motorbikes">Motorbikes</p>
+            <h2 data-i18n="sec.motorbikes">Wide range of motorbikes for beginners, middle and advanced riders</h2>
           </div>
         </div>
         <div class="grid" data-catalog="motorcycle"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
@@ -148,8 +175,8 @@
       <div class="container">
         <div class="section__head">
           <div>
-            <p class="eyebrow eyebrow--dark">Cars</p>
-            <h2>Wide range of cars and buses for all occasions</h2>
+            <p class="eyebrow eyebrow--dark" data-i18n="nav.cars">Cars</p>
+            <h2 data-i18n="sec.cars">Wide range of cars and buses for all occasions</h2>
           </div>
         </div>
         <div class="grid" data-catalog="car"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
@@ -160,15 +187,15 @@
     <section class="section section--navy">
       <div class="container priority">
         <div>
-          <p class="eyebrow">Our priority</p>
-          <h2>Safety and high level of service</h2>
-          <p class="priority__text">The priority of the JetRental company is safety and a high level of service. Delivery to the client, child seats, protection and all necessary equipment. All the equipment is new or the condition is close to new. The equipment is serviced by an authorized dealer. We provide 24/7 support.</p>
+          <p class="eyebrow" data-i18n="priority.eyebrow">Our priority</p>
+          <h2 data-i18n="priority.title">Safety and high level of service</h2>
+          <p class="priority__text" data-i18n="priority.text">The priority of the JetRental company is safety and a high level of service. Delivery to the client, child seats, protection and all necessary equipment. All the equipment is new or the condition is close to new. The equipment is serviced by an authorized dealer. We provide 24/7 support.</p>
         </div>
         <ul class="priority__list">
-          <li><span>🛡️</span><div><b>Safety first</b><p>Protection and all necessary equipment included</p></div></li>
-          <li><span>✨</span><div><b>New fleet</b><p>New vehicles or condition close to new</p></div></li>
-          <li><span>🔧</span><div><b>Dealer service</b><p>Serviced by an authorized dealer</p></div></li>
-          <li><span>🕐</span><div><b>24/7 support</b><p>We are always in touch while you ride</p></div></li>
+          <li><span>🛡️</span><div><b data-i18n="p1.title">Safety first</b><p data-i18n="p1.text">Protection and all necessary equipment included</p></div></li>
+          <li><span>✨</span><div><b data-i18n="p2.title">New fleet</b><p data-i18n="p2.text">New vehicles or condition close to new</p></div></li>
+          <li><span>🔧</span><div><b data-i18n="p3.title">Dealer service</b><p data-i18n="p3.text">Serviced by an authorized dealer</p></div></li>
+          <li><span>🕐</span><div><b data-i18n="p4.title">24/7 support</b><p data-i18n="p4.text">We are always in touch while you ride</p></div></li>
         </ul>
       </div>
     </section>
@@ -178,58 +205,58 @@
       <div class="container">
         <div class="section__head">
           <div>
-            <p class="eyebrow eyebrow--dark">Services</p>
-            <h2>Everything for a comfortable trip</h2>
+            <p class="eyebrow eyebrow--dark" data-i18n="services.eyebrow">Services</p>
+            <h2 data-i18n="services.title">Everything for a comfortable trip</h2>
           </div>
         </div>
         <div class="services">
           <article class="service">
             <div class="service__icon">👶</div>
-            <h3>Baby seats</h3>
-            <p>We provide baby seats for child safety.</p>
+            <h3 data-i18n="s1.title">Baby seats</h3>
+            <p data-i18n="s1.text">We provide baby seats for child safety.</p>
           </article>
           <article class="service">
             <div class="service__icon">🧑‍✈️</div>
-            <h3>Personal driver</h3>
-            <p>We provide personal drivers who will take you wherever you need to go.</p>
+            <h3 data-i18n="s2.title">Personal driver</h3>
+            <p data-i18n="s2.text">We provide personal drivers who will take you wherever you need to go.</p>
           </article>
           <article class="service">
             <div class="service__icon">⛑️</div>
-            <h3>Helmets</h3>
-            <p>We provide you with high-quality helmets, free of charge.</p>
+            <h3 data-i18n="s3.title">Helmets</h3>
+            <p data-i18n="s3.text">We provide you with high-quality helmets, free of charge.</p>
           </article>
           <article class="service">
             <div class="service__icon">🚚</div>
-            <h3>Delivery</h3>
-            <p>We deliver the vehicle to your hotel or villa and pick it up at the end.</p>
+            <h3 data-i18n="s4.title">Delivery</h3>
+            <p data-i18n="s4.text">We deliver the vehicle to your hotel or villa and pick it up at the end.</p>
           </article>
         </div>
       </div>
     </section>
 
-    <!-- Отзывы -->
+    <!-- Отзывы (оригинальные цитаты клиентов, не переводятся) -->
     <section class="section section--sand">
       <div class="container">
         <div class="section__head">
           <div>
-            <p class="eyebrow eyebrow--dark">Reviews</p>
-            <h2>What our clients say</h2>
+            <p class="eyebrow eyebrow--dark" data-i18n="reviews.eyebrow">Reviews</p>
+            <h2 data-i18n="reviews.title">What our clients say</h2>
           </div>
         </div>
         <div class="reviews">
           <figure class="review">
-            <div class="review__stars" aria-label="5 stars">★★★★★</div>
-            <blockquote>Брал два мото в аренду, супер выгодные условия и шикарный подход к клиенту! Буду обращаться снова, спасибо за быструю доставку!</blockquote>
+            <div class="review__stars" aria-label="5/5">★★★★★</div>
+            <blockquote lang="ru">Брал два мото в аренду, супер выгодные условия и шикарный подход к клиенту! Буду обращаться снова, спасибо за быструю доставку!</blockquote>
             <figcaption>Egor Bobrov</figcaption>
           </figure>
           <figure class="review">
-            <div class="review__stars" aria-label="5 stars">★★★★★</div>
-            <blockquote>Арендовала новенький Filano, очень довольна отношением владельца: всегда на связи, подсказывал всё по байку. Весь залог вернул по окончании аренды. Рекомендую!</blockquote>
+            <div class="review__stars" aria-label="5/5">★★★★★</div>
+            <blockquote lang="ru">Арендовала новенький Filano, очень довольна отношением владельца: всегда на связи, подсказывал всё по байку. Весь залог вернул по окончании аренды. Рекомендую!</blockquote>
             <figcaption>Daniel Lee</figcaption>
           </figure>
           <figure class="review">
-            <div class="review__stars" aria-label="5 stars">★★★★★</div>
-            <blockquote>Было офигительно круто! Мотоциклы в отличном состоянии со всем необходимым, хороший опрятный сервис, всем рекомендую!:)</blockquote>
+            <div class="review__stars" aria-label="5/5">★★★★★</div>
+            <blockquote lang="ru">Было офигительно круто! Мотоциклы в отличном состоянии со всем необходимым, хороший опрятный сервис, всем рекомендую!:)</blockquote>
             <figcaption>Ann Malyisheva</figcaption>
           </figure>
         </div>
@@ -240,27 +267,27 @@
     <section class="section" id="contact">
       <div class="container contact">
         <div class="contact__info">
-          <p class="eyebrow eyebrow--dark">Contact us</p>
-          <h2>Questions? Write to us</h2>
-          <p class="muted">Leave a message and our manager will get back to you shortly — or message us directly.</p>
+          <p class="eyebrow eyebrow--dark" data-i18n="contact.eyebrow">Contact us</p>
+          <h2 data-i18n="contact.title">Questions? Write to us</h2>
+          <p class="muted" data-i18n="contact.lead">Leave a message and our manager will get back to you shortly — or message us directly.</p>
           <ul class="contact__list">
-            <li><span>📍</span><div><b>Bang Tao Beach</b><br>Phuket, Thailand<br><a href="https://www.google.com/maps/dir/?api=1&amp;destination=Bang+Tao+Beach+Phuket" target="_blank" rel="noopener">Make a route →</a></div></li>
+            <li><span>📍</span><div><b data-i18n="contact.beach">Bang Tao Beach</b><br><span data-i18n="contact.country">Phuket, Thailand</span><br><a href="https://www.google.com/maps/dir/?api=1&amp;destination=Bang+Tao+Beach+Phuket" target="_blank" rel="noopener" data-i18n="contact.route">Make a route →</a></div></li>
             <li><span>📞</span><div><a href="tel:+79037965656">+7 (903) 796-56-56</a><br><a href="tel:+66809908490">+66 80 990 84-90</a></div></li>
             <li><span>✉️</span><div><a href="mailto:info@jetrental.click">info@jetrental.click</a></div></li>
           </ul>
           <div class="contact__messengers">
-            <a class="btn btn--wa" href="https://wa.me/79037965656?text=Hello!" target="_blank" rel="noopener">WhatsApp</a>
-            <a class="btn btn--tg" href="https://t.me/JetRental_bot" target="_blank" rel="noopener">Telegram</a>
+            <a class="btn btn--wa" data-wa="wa.general" href="https://wa.me/79037965656" target="_blank" rel="noopener"><svg width="18" height="18" aria-hidden="true"><use href="#i-wa"/></svg>WhatsApp</a>
+            <a class="btn btn--tg" href="https://t.me/JetRental_bot" target="_blank" rel="noopener"><svg width="18" height="18" aria-hidden="true"><use href="#i-tg"/></svg>Telegram</a>
           </div>
         </div>
 
         <form class="form card" id="contact-form" novalidate>
-          <label class="field"><span>First name *</span><input name="name" autocomplete="given-name" required maxlength="80" /></label>
-          <label class="field"><span>Phone *</span><input name="phone" type="tel" autocomplete="tel" required placeholder="+66 …" /></label>
-          <label class="field"><span>Email</span><input name="email" type="email" autocomplete="email" /></label>
-          <label class="field"><span>Message *</span><textarea name="message" rows="4" required maxlength="1000"></textarea></label>
+          <label class="field"><span data-i18n="form.firstName">First name *</span><input name="name" autocomplete="given-name" required maxlength="80" /></label>
+          <label class="field"><span data-i18n="form.phone">Phone *</span><input name="phone" type="tel" autocomplete="tel" required placeholder="+66 …" /></label>
+          <label class="field"><span data-i18n="form.email">Email</span><input name="email" type="email" autocomplete="email" /></label>
+          <label class="field"><span data-i18n="form.message">Message *</span><textarea name="message" rows="4" required maxlength="1000"></textarea></label>
           <label class="hp" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off" /></label>
-          <button class="btn btn--primary" type="submit">Submit</button>
+          <button class="btn btn--primary" type="submit" data-i18n="form.submit">Submit</button>
           <p class="form__status" role="status"></p>
         </form>
       </div>
@@ -271,16 +298,27 @@
     <div class="container footer__inner">
       <a class="logo logo--light" href="#top"><img src="favicon.svg" alt="" width="30" height="30" /><span>Jet<b>Rental</b></span></a>
       <nav class="footer__nav" aria-label="Footer">
-        <a href="#scooters">Scooters</a><a href="#motorbikes">Motorbikes</a><a href="#cars">Cars</a><a href="#contact">Contact us</a>
+        <a href="#scooters" data-i18n="nav.scooters">Scooters</a>
+        <a href="#motorbikes" data-i18n="nav.motorbikes">Motorbikes</a>
+        <a href="#cars" data-i18n="nav.cars">Cars</a>
+        <a href="#contact" data-i18n="nav.contact">Contact us</a>
       </nav>
-      <p class="footer__copy">Bang Tao Beach, Phuket, Thailand · © <span id="year">2026</span> JetRental</p>
+      <div class="footer__social">
+        <a class="icon-btn icon-btn--wa" data-wa="wa.general" href="https://wa.me/79037965656" target="_blank" rel="noopener" aria-label="WhatsApp"><svg width="20" height="20" aria-hidden="true"><use href="#i-wa"/></svg></a>
+        <a class="icon-btn icon-btn--tg" href="https://t.me/JetRental_bot" target="_blank" rel="noopener" aria-label="Telegram"><svg width="20" height="20" aria-hidden="true"><use href="#i-tg"/></svg></a>
+        <a class="staff-link staff-link--footer" href="https://staff.jetrental.click" rel="nofollow">
+          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5zm-3 8V7a3 3 0 1 1 6 0v3H9z"/></svg>
+          Staff only
+        </a>
+      </div>
+      <p class="footer__copy"><span data-i18n="footer.address">Bang Tao Beach, Phuket, Thailand</span> · © <span id="year">2026</span> JetRental</p>
     </div>
   </footer>
 
   <!-- Бронирование -->
   <dialog class="dialog" id="book-dialog">
     <form class="dialog__body" id="book-form" novalidate>
-      <button class="dialog__close" type="button" data-close aria-label="Close">×</button>
+      <button class="dialog__close" type="button" data-close data-i18n-aria="dialog.close" aria-label="Close">×</button>
       <div class="dialog__vehicle">
         <img id="book-photo" alt="" width="160" height="110" />
         <div>
@@ -290,26 +328,31 @@
         </div>
       </div>
       <div class="form__row">
-        <label class="field"><span>Pick-up *</span><input type="date" name="from" required /></label>
-        <label class="field"><span>Return *</span><input type="date" name="to" required /></label>
+        <label class="field"><span data-i18n="dialog.pickup">Pick-up *</span><input type="date" name="from" required /></label>
+        <label class="field"><span data-i18n="dialog.return">Return *</span><input type="date" name="to" required /></label>
       </div>
       <p class="book__estimate" id="book-estimate" hidden></p>
-      <label class="field"><span>Your name *</span><input name="name" autocomplete="name" required maxlength="80" /></label>
-      <label class="field"><span>Phone / WhatsApp *</span><input name="phone" type="tel" autocomplete="tel" required placeholder="+66 …" /></label>
-      <label class="field"><span>Comment</span><textarea name="message" rows="2" maxlength="1000" placeholder="Hotel, delivery time, child seat…"></textarea></label>
+      <label class="field"><span data-i18n="dialog.name">Your name *</span><input name="name" autocomplete="name" required maxlength="80" /></label>
+      <label class="field"><span data-i18n="dialog.phone">Phone / WhatsApp *</span><input name="phone" type="tel" autocomplete="tel" required placeholder="+66 …" /></label>
+      <label class="field"><span data-i18n="dialog.comment">Comment</span><textarea name="message" rows="2" maxlength="1000" data-i18n-ph="dialog.commentPh" placeholder="Hotel, delivery time, child seat…"></textarea></label>
       <label class="hp" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off" /></label>
-      <button class="btn btn--primary btn--block" type="submit">Send request</button>
+      <button class="btn btn--primary btn--block" type="submit" data-i18n="dialog.submit">Send request</button>
       <p class="form__status" role="status"></p>
-      <p class="dialog__alt">or book in <a id="book-wa" target="_blank" rel="noopener">WhatsApp</a> · <a href="https://t.me/JetRental_bot" target="_blank" rel="noopener">Telegram</a></p>
+      <div class="dialog__alt">
+        <span data-i18n="dialog.alt">or book in</span>
+        <a class="btn btn--wa btn--sm" id="book-wa" target="_blank" rel="noopener"><svg width="16" height="16" aria-hidden="true"><use href="#i-wa"/></svg>WhatsApp</a>
+        <a class="btn btn--tg btn--sm" href="https://t.me/JetRental_bot" target="_blank" rel="noopener"><svg width="16" height="16" aria-hidden="true"><use href="#i-tg"/></svg>Telegram</a>
+      </div>
     </form>
     <div class="dialog__body dialog__done" id="book-done" hidden>
       <div class="done__icon">✅</div>
-      <h3 id="done-title">Request received!</h3>
-      <p>Our manager will contact you shortly to confirm the booking.</p>
-      <button class="btn btn--primary btn--block" type="button" data-close>Done</button>
+      <h3 id="done-title" data-i18n="done.titleNoId">Request received!</h3>
+      <p data-i18n="done.text">Our manager will contact you shortly to confirm the booking.</p>
+      <button class="btn btn--primary btn--block" type="button" data-close data-i18n="done.button">Done</button>
     </div>
   </dialog>
 
+  <script src="i18n.js"></script>
   <script src="site.js"></script>
 </body>
 </html>

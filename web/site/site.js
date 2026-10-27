@@ -6,7 +6,9 @@
  *   «свободно сейчас» — Автопрокат);
  * - подбор по датам: GET /api/public/availability;
  * - заявки (бронь и форма «Contact us»): POST /api/public/request → рабочая
- *   группа в Telegram с кнопками Take / Can't.
+ *   группа в Telegram с кнопками Take / Can't (с пометкой языка клиента);
+ * - языки EN / RU / TH / ZH: ?lang=ru в адресе → сохранённый выбор → язык
+ *   браузера → английский. Тексты — в i18n.js.
  * ============================================================================
  */
 (() => {
@@ -15,33 +17,97 @@
   const API = '/api/public';
   const TZ = 'Asia/Bangkok';
   const WHATSAPP = document.body.dataset.whatsapp;
-  const TYPE_LABEL = { scooter: 'Scooter', motorcycle: 'Motorbike', car: 'Car' };
-  const TYPE_ICON = { scooter: '🛵', motorcycle: '🏍️', car: '🚗' };
-  const ERRORS = {
-    name_required: 'Please enter your name.',
-    invalid_phone: 'Please enter a valid phone number with country code.',
-    invalid_email: 'Please check the email address.',
-    message_required: 'Please write a message.',
-    invalid_dates: 'Please choose pick-up and return dates.',
-    date_past: 'The pick-up date has already passed.',
-    date_order: 'The return date must be after the pick-up date.',
-    too_long: 'Maximum rental period is one year.',
-    too_many_requests: 'Too many requests. Please try again later or message us on WhatsApp.'
-  };
+  const TELEGRAM = `https://t.me/${document.body.dataset.telegram}`;
+  const DICT = window.JR_I18N;
+  const LANGS = Object.keys(DICT);
+  const LOCALES = { en: 'en-GB', ru: 'ru-RU', th: 'th-TH', zh: 'zh-CN' };
+  const TYPE_ICON = { scooter: '🛵', motorcycle: '🏍', car: '🚗' };
+  const DAY_MS = 86400000;
+  const STORAGE_KEY = 'jr_lang';
 
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
   const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const money = (n) => `${new Intl.NumberFormat('en-US').format(n)} ฿`;
-  const DAY_MS = 86400000;
 
-  /** Сегодня по Бангкоку: 'YYYY-MM-DD' */
-  const todayIso = () => new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date());
-  const addDays = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
-  const daysBetween = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / DAY_MS);
-  const niceDate = (iso) => new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'short' }).format(new Date(`${iso}T00:00:00Z`));
+  const state = { lang: 'en', models: null, catalog: new Map(), search: null, results: null, booking: null };
 
-  const state = { catalog: new Map(), search: null, booking: null };
+  /* ---------------------------------------------------------------- Языки */
+
+  /** Текст по ключу с подстановкой {параметров}; значения параметров не экранируются */
+  function t(key, params = {}) {
+    const text = DICT[state.lang]?.[key] ?? DICT.en[key] ?? key;
+    return text.replace(/\{(\w+)\}/g, (m, name) => (name in params ? String(params[name]) : m));
+  }
+
+  function daysText(n) {
+    switch (state.lang) {
+      case 'ru': {
+        const mod10 = n % 10;
+        const mod100 = n % 100;
+        const word = mod10 === 1 && mod100 !== 11 ? 'день' : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? 'дня' : 'дней';
+        return `${n} ${word}`;
+      }
+      case 'th': return `${n} วัน`;
+      case 'zh': return `${n}天`;
+      default: return `${n} ${n === 1 ? 'day' : 'days'}`;
+    }
+  }
+
+  const typeLabel = (type) => t(`type.${type}`);
+  const niceDate = (iso) => new Intl.DateTimeFormat(LOCALES[state.lang], { timeZone: 'UTC', day: 'numeric', month: 'short' })
+    .format(new Date(`${iso}T00:00:00Z`));
+
+  function storedLang() {
+    try {
+      return localStorage.getItem(STORAGE_KEY);
+    } catch {
+      return null;
+    }
+  }
+
+  function detectLang() {
+    const fromUrl = new URLSearchParams(location.search).get('lang');
+    if (LANGS.includes(fromUrl)) return fromUrl;
+    const saved = storedLang();
+    if (LANGS.includes(saved)) return saved;
+    for (const browserLang of navigator.languages || [navigator.language]) {
+      const code = String(browserLang || '').slice(0, 2).toLowerCase();
+      if (LANGS.includes(code)) return code;
+    }
+    return 'en';
+  }
+
+  function applyStatic() {
+    document.documentElement.lang = state.lang;
+    document.title = t('meta.title');
+    $('#meta-description').setAttribute('content', t('meta.description'));
+    $$('[data-i18n]').forEach((el) => { el.textContent = t(el.dataset.i18n); });
+    $$('[data-i18n-html]').forEach((el) => { el.innerHTML = t(el.dataset.i18nHtml); });
+    $$('[data-i18n-ph]').forEach((el) => { el.placeholder = t(el.dataset.i18nPh); });
+    $$('[data-i18n-aria]').forEach((el) => { el.setAttribute('aria-label', t(el.dataset.i18nAria)); });
+    $$('[data-type-option]').forEach((el) => { el.textContent = `${TYPE_ICON[el.dataset.typeOption]} ${typeLabel(el.dataset.typeOption)}`; });
+    $$('[data-wa]').forEach((el) => { el.href = waLink(t(el.dataset.wa)); });
+    $$('[data-lang]').forEach((el) => el.setAttribute('aria-pressed', String(el.dataset.lang === state.lang)));
+  }
+
+  function setLang(lang, { save = true } = {}) {
+    state.lang = LANGS.includes(lang) ? lang : 'en';
+    if (save) {
+      try { localStorage.setItem(STORAGE_KEY, state.lang); } catch { /* приватный режим — не страшно */ }
+      // Ссылкой с ?lang= можно поделиться; при смене языка обновляем адрес
+      const url = new URL(location.href);
+      url.searchParams.set('lang', state.lang);
+      history.replaceState(null, '', url);
+    }
+    applyStatic();
+    if (state.models) renderCatalog();
+    if (state.results) renderResults();
+    if (dialog.open && state.booking) refreshBookingTexts();
+    $$('.form__status').forEach((el) => { el.textContent = ''; });
+  }
+
+  /* ------------------------------------------------------------------ API */
 
   async function api(path, body) {
     const init = body
@@ -53,9 +119,13 @@
     return data;
   }
 
+  const errorText = (err, fallbackKey) => (err?.code && DICT.en[`err.${err.code}`] ? t(`err.${err.code}`) : t(fallbackKey));
+
   function waLink(text) {
     return `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(text)}`;
   }
+
+  const waAnchor = (text) => `<a href="${esc(waLink(text))}" target="_blank" rel="noopener">WhatsApp</a>`;
 
   /* ---------------------------------------------------------------- Шапка */
 
@@ -73,12 +143,13 @@
         burger.setAttribute('aria-expanded', 'false');
       }
     });
+    $$('[data-lang]').forEach((button) => button.addEventListener('click', () => setLang(button.dataset.lang)));
     $('#year').textContent = new Date().getFullYear();
   }
 
   /* ------------------------------------------------------------- Карточки */
 
-  const WA_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M17.5 14.4c-.3-.1-1.8-.9-2-1s-.5-.1-.7.1-.8 1-.9 1.2-.3.2-.6.1a8.2 8.2 0 0 1-4-3.5c-.3-.5.3-.5.9-1.6.1-.2 0-.4 0-.5l-.9-2.2c-.2-.6-.5-.5-.7-.5h-.6a1.2 1.2 0 0 0-.8.4 3.5 3.5 0 0 0-1.1 2.6 6 6 0 0 0 1.3 3.2 13.8 13.8 0 0 0 5.3 4.7c2 .9 2.8.9 3.8.8.6-.1 1.8-.8 2.1-1.5s.3-1.3.2-1.5-.3-.2-.6-.3zM12 21.8a9.8 9.8 0 0 1-5-1.4l-.4-.2-3.7 1 1-3.6-.2-.4A9.8 9.8 0 1 1 12 21.8zM20.5 3.5A11.8 11.8 0 0 0 1.9 17.7L.2 24l6.4-1.7A11.8 11.8 0 0 0 24 12a11.7 11.7 0 0 0-3.5-8.5z"/></svg>';
+  const icon = (name, size = 20) => `<svg width="${size}" height="${size}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 
   function media(item, badge = '') {
     const img = item.photo
@@ -88,15 +159,24 @@
   }
 
   function availabilityBadge(item) {
-    if (item.availableNow === true) return '<span class="badge badge--free">Available now</span>';
-    if (item.availableNow === false) return '<span class="badge badge--busy">Booked now · ask for dates</span>';
+    if (item.availableNow === true) return `<span class="badge badge--free">${esc(t('badge.free'))}</span>`;
+    if (item.availableNow === false) return `<span class="badge badge--busy">${esc(t('badge.busy'))}</span>`;
     return '';
+  }
+
+  function actions(model, type, waText) {
+    return `
+      <div class="vcard__actions">
+        <button class="btn btn--primary btn--sm" type="button" data-book="${esc(model)}"${type ? ` data-type="${esc(type)}"` : ''}>${esc(t('card.book'))}</button>
+        <a class="btn btn--wa btn--sm" href="${esc(waLink(waText))}" target="_blank" rel="noopener" aria-label="${esc(model)} — WhatsApp">${icon('wa')}</a>
+        <a class="btn btn--tg btn--sm" href="${TELEGRAM}" target="_blank" rel="noopener" aria-label="${esc(model)} — Telegram">${icon('tg')}</a>
+      </div>`;
   }
 
   function catalogCard(item) {
     const price = item.priceFrom
-      ? `from <b>${money(item.priceFrom)}</b> / day`
-      : '<span class="vcard__ask">Price on request</span>';
+      ? t('card.from', { price: money(item.priceFrom) })
+      : `<span class="vcard__ask">${esc(t('card.ask'))}</span>`;
     return `
       <article class="vcard">
         ${media(item, availabilityBadge(item))}
@@ -104,65 +184,69 @@
           ${item.description ? `<div class="vcard__spec">${esc(item.description)}</div>` : ''}
           <h3>${esc(item.model)}</h3>
           <div class="vcard__price">${price}</div>
-          <div class="vcard__actions">
-            <button class="btn btn--primary btn--sm" type="button" data-book="${esc(item.model)}">Book</button>
-            <a class="btn btn--wa btn--sm" href="${esc(waLink(`Hello! I am interested in ${item.model}`))}" target="_blank" rel="noopener" aria-label="Ask about ${esc(item.model)} in WhatsApp">${WA_ICON}</a>
-          </div>
+          ${actions(item.model, null, t('wa.model', { model: item.model }))}
         </div>
       </article>`;
   }
 
   function priceLines(price, days) {
     if (price?.total) {
-      return `<div class="vcard__price"><b>${money(price.perDay)}</b> / day</div>
-              <div class="vcard__total">≈ <b>${money(price.total)}</b> for ${days} ${days === 1 ? 'day' : 'days'}${price.deposit ? ` · deposit ${money(price.deposit)}` : ''}</div>`;
+      const deposit = price.deposit ? ` · ${esc(t('card.deposit', { amount: money(price.deposit) }))}` : '';
+      return `<div class="vcard__price">${t('card.perDay', { price: money(price.perDay) })}</div>
+              <div class="vcard__total">${t('card.total', { total: money(price.total), days: esc(daysText(days)) })}${deposit}</div>`;
     }
-    if (price?.fromPerDay) return `<div class="vcard__price">from <b>${money(price.fromPerDay)}</b> / day</div>`;
-    return '<div class="vcard__price"><span class="vcard__ask">Price on request</span></div>';
+    if (price?.fromPerDay) return `<div class="vcard__price">${t('card.from', { price: money(price.fromPerDay) })}</div>`;
+    return `<div class="vcard__price"><span class="vcard__ask">${esc(t('card.ask'))}</span></div>`;
   }
 
   function resultCard(option, search) {
     const info = state.catalog.get(option.model) || { model: option.model, type: search.type };
+    const waText = t('wa.modelDates', { model: option.model, from: niceDate(search.from), to: niceDate(search.to) });
     return `
       <article class="vcard">
-        ${media({ ...info, model: option.model }, '<span class="badge badge--free">Free for your dates</span>')}
+        ${media({ ...info, model: option.model }, `<span class="badge badge--free">${esc(t('badge.dates'))}</span>`)}
         <div class="vcard__body">
           ${info.description ? `<div class="vcard__spec">${esc(info.description)}</div>` : ''}
           <h3>${esc(option.model)}</h3>
           ${priceLines(option.price, search.days)}
-          <div class="vcard__actions">
-            <button class="btn btn--primary btn--sm" type="button" data-book="${esc(option.model)}" data-type="${esc(search.type)}">Book</button>
-            <a class="btn btn--wa btn--sm" href="${esc(waLink(`Hello! I am interested in ${option.model} from ${niceDate(search.from)} to ${niceDate(search.to)}`))}" target="_blank" rel="noopener" aria-label="Ask in WhatsApp">${WA_ICON}</a>
-          </div>
+          ${actions(option.model, search.type, waText)}
         </div>
       </article>`;
   }
 
   /* --------------------------------------------------------------- Каталог */
 
+  function renderCatalog() {
+    for (const grid of $$('[data-catalog]')) {
+      if (!state.models) {
+        grid.innerHTML = `<p class="muted">${t('catalog.error', { link: waAnchor(t('wa.which')) })}</p>`;
+        continue;
+      }
+      const items = state.models.filter((m) => m.type === grid.dataset.catalog);
+      grid.innerHTML = items.length
+        ? items.map(catalogCard).join('')
+        : `<p class="muted">${t('catalog.empty', { link: waAnchor(t('wa.which')) })}</p>`;
+    }
+  }
+
   async function loadCatalog() {
-    const grids = $$('[data-catalog]');
     try {
       const { models } = await api('/catalog');
+      state.models = models;
       models.forEach((m) => state.catalog.set(m.model, m));
-      for (const grid of grids) {
-        const items = models.filter((m) => m.type === grid.dataset.catalog);
-        grid.innerHTML = items.length
-          ? items.map(catalogCard).join('')
-          : `<p class="muted">Ask us about availability in <a href="${esc(waLink('Hello! What vehicles are available?'))}" target="_blank" rel="noopener">WhatsApp</a>.</p>`;
-      }
     } catch {
-      for (const grid of grids) {
-        grid.innerHTML = `<p class="muted">Could not load the catalog. Please message us in <a href="${esc(waLink('Hello! What vehicles are available?'))}" target="_blank" rel="noopener">WhatsApp</a>.</p>`;
-      }
+      state.models = null;
     }
+    renderCatalog();
   }
 
   /* ---------------------------------------------------- Подбор по датам */
 
+  const todayIso = () => new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date());
+  const addDays = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
+
   function setupDateInputs(fromInput, toInput, from, to) {
-    const today = todayIso();
-    fromInput.min = today;
+    fromInput.min = todayIso();
     fromInput.value = from;
     toInput.min = addDays(from, 1);
     toInput.value = to;
@@ -171,6 +255,25 @@
       toInput.min = addDays(fromInput.value, 1);
       if (!toInput.value || toInput.value <= fromInput.value) toInput.value = addDays(fromInput.value, 7);
     });
+  }
+
+  function renderResults() {
+    const { search, models, error } = state.results;
+    const period = `${niceDate(search.from)} – ${niceDate(search.to)}`;
+    const grid = $('#results-grid');
+    const errorBox = $('#results-error');
+    errorBox.hidden = !error;
+    errorBox.textContent = error ? errorText(error, 'results.error') : '';
+    if (!models) {
+      $('#results-title').textContent = period;
+      grid.innerHTML = error ? '' : '<div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>';
+      return;
+    }
+    $('#results-title').textContent = t('results.title', { period, days: daysText(search.days) });
+    const askText = t('wa.need', { type: typeLabel(search.type).toLowerCase(), from: niceDate(search.from), to: niceDate(search.to) });
+    grid.innerHTML = models.length
+      ? models.map((o) => resultCard(o, search)).join('')
+      : `<p class="muted">${t('results.none', { link: `<a href="${esc(waLink(askText))}" target="_blank" rel="noopener">${esc(t('results.noneLink'))}</a>` })}</p>`;
   }
 
   function bindSearch() {
@@ -182,34 +285,27 @@
       e.preventDefault();
       const button = $('button[type="submit"]', form);
       const search = { type: form.type.value, from: form.from.value, to: form.to.value };
-      const section = $('#results');
-      const grid = $('#results-grid');
-      const error = $('#results-error');
-      section.hidden = false;
-      error.hidden = true;
-      grid.innerHTML = '<div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>';
-      $('#results-title').textContent = `${TYPE_LABEL[search.type]}s for ${niceDate(search.from)} – ${niceDate(search.to)}`;
-      section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      $('#results').hidden = false;
+      state.results = { search, models: null, error: null };
+      renderResults();
+      $('#results').scrollIntoView({ behavior: 'smooth', block: 'start' });
       button.disabled = true;
       try {
         const data = await api(`/availability?type=${encodeURIComponent(search.type)}&from=${search.from}&to=${search.to}`);
         state.search = { ...search, days: data.days };
-        $('#results-title').textContent = `${data.models.length ? data.models.length : 'No'} ${TYPE_LABEL[search.type].toLowerCase()}${data.models.length === 1 ? '' : 's'} free · ${niceDate(search.from)} – ${niceDate(search.to)} (${data.days} ${data.days === 1 ? 'day' : 'days'})`;
-        grid.innerHTML = data.models.length
-          ? data.models.map((o) => resultCard(o, state.search)).join('')
-          : `<p class="muted">Everything is booked for these dates. Try other dates or <a href="${esc(waLink(`Hello! I need a ${TYPE_LABEL[search.type].toLowerCase()} from ${niceDate(search.from)} to ${niceDate(search.to)}`))}" target="_blank" rel="noopener">ask us in WhatsApp</a> — we'll find an option.</p>`;
+        state.results = { search: state.search, models: data.models, error: null };
       } catch (err) {
-        grid.innerHTML = '';
-        error.hidden = false;
-        error.textContent = ERRORS[err.code] || 'Could not check availability. Please try again.';
+        state.results = { search, models: null, error: err };
       } finally {
         button.disabled = false;
       }
+      renderResults();
     });
 
     $('#results-close').addEventListener('click', () => {
       $('#results').hidden = true;
       state.search = null;
+      state.results = null;
     });
   }
 
@@ -219,20 +315,28 @@
   const bookForm = $('#book-form');
   let estimateTimer = null;
 
+  function refreshBookingTexts() {
+    const { model, type } = state.booking;
+    const info = state.catalog.get(model) || {};
+    $('#book-type').textContent = type ? typeLabel(type) : '';
+    $('#book-price').innerHTML = info.priceFrom ? t('card.from', { price: money(info.priceFrom) }) : '';
+    if (!$('#book-done').hidden && state.booking.requestId) {
+      $('#done-title').textContent = t('done.title', { id: state.booking.requestId });
+    }
+    updateWaLink();
+    updateEstimate();
+  }
+
   function openBooking(model, typeHint) {
     const info = state.catalog.get(model) || { model, type: typeHint };
-    const type = info.type || typeHint;
-    state.booking = { model, type };
+    state.booking = { model, type: info.type || typeHint };
 
     $('#book-title').textContent = model;
-    $('#book-type').textContent = TYPE_LABEL[type] || '';
-    $('#book-price').textContent = info.priceFrom ? `from ${money(info.priceFrom)} / day` : '';
     const photo = $('#book-photo');
     photo.hidden = !info.photo;
     if (info.photo) photo.src = info.photo;
 
-    const start = addDays(todayIso(), 1);
-    const from = state.search?.from || start;
+    const from = state.search?.from || addDays(todayIso(), 1);
     const to = state.search?.to || addDays(from, 7);
     bookForm.from.value = from;
     bookForm.to.value = to;
@@ -242,8 +346,7 @@
     setStatus(bookForm, '');
     bookForm.hidden = false;
     $('#book-done').hidden = true;
-    updateWaLink();
-    updateEstimate();
+    refreshBookingTexts();
     dialog.showModal();
   }
 
@@ -251,8 +354,9 @@
     const { model } = state.booking;
     const from = bookForm.from.value;
     const to = bookForm.to.value;
-    const dates = from && to ? ` from ${niceDate(from)} to ${niceDate(to)}` : '';
-    $('#book-wa').href = waLink(`Hello! I am interested in ${model}${dates}`);
+    $('#book-wa').href = waLink(from && to
+      ? t('wa.modelDates', { model, from: niceDate(from), to: niceDate(to) })
+      : t('wa.model', { model }));
   }
 
   function updateEstimate() {
@@ -272,11 +376,11 @@
         box.hidden = false;
         box.classList.toggle('is-warn', !option);
         if (!option) {
-          box.textContent = 'Not available for these dates — send a request anyway and we will suggest an option.';
+          box.textContent = t('est.none');
         } else if (option.price?.total) {
-          box.textContent = `✓ Available · ${money(option.price.perDay)}/day · ≈ ${money(option.price.total)} for ${data.days} days`;
+          box.textContent = t('est.price', { perDay: money(option.price.perDay), total: money(option.price.total), days: daysText(data.days) });
         } else {
-          box.textContent = `✓ Available for your dates (${data.days} ${data.days === 1 ? 'day' : 'days'})`;
+          box.textContent = t('est.ok', { days: daysText(data.days) });
         }
       } catch {
         box.hidden = true;
@@ -312,7 +416,7 @@
       e.preventDefault();
       const button = $('button[type="submit"]', bookForm);
       button.disabled = true;
-      setStatus(bookForm, 'Sending…');
+      setStatus(bookForm, t('form.sending'));
       try {
         const result = await api('/request', {
           name: bookForm.name.value,
@@ -322,15 +426,16 @@
           model: state.booking.model,
           from: bookForm.from.value,
           to: bookForm.to.value,
-          lang: 'en',
+          lang: state.lang,
           website: bookForm.website.value
         });
-        $('#done-title').textContent = result.id ? `Request #${result.id} received!` : 'Request received!';
+        state.booking.requestId = result.id || null;
+        $('#done-title').textContent = result.id ? t('done.title', { id: result.id }) : t('done.titleNoId');
         bookForm.hidden = true;
         $('#book-done').hidden = false;
         bookForm.message.value = '';
       } catch (err) {
-        setStatus(bookForm, ERRORS[err.code] || 'Could not send the request. Please try WhatsApp.', 'error');
+        setStatus(bookForm, errorText(err, 'book.fail'), 'error');
       } finally {
         button.disabled = false;
       }
@@ -344,22 +449,22 @@
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const button = $('button[type="submit"]', form);
-      if (!form.message.value.trim()) return setStatus(form, ERRORS.message_required, 'error');
+      if (!form.message.value.trim()) return setStatus(form, t('err.message_required'), 'error');
       button.disabled = true;
-      setStatus(form, 'Sending…');
+      setStatus(form, t('form.sending'));
       try {
         await api('/request', {
           name: form.name.value,
           phone: form.phone.value,
           email: form.email.value,
           message: form.message.value,
-          lang: 'en',
+          lang: state.lang,
           website: form.website.value
         });
         form.reset();
-        setStatus(form, '✓ Thank you! Our manager will contact you shortly.', 'ok');
+        setStatus(form, t('form.thanks'), 'ok');
       } catch (err) {
-        setStatus(form, ERRORS[err.code] || 'Could not send. Please message us in WhatsApp.', 'error');
+        setStatus(form, errorText(err, 'form.fail'), 'error');
       } finally {
         button.disabled = false;
       }
@@ -370,5 +475,6 @@
   bindSearch();
   bindBooking();
   bindContact();
+  setLang(detectLang(), { save: false });
   loadCatalog();
 })();
