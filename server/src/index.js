@@ -7,12 +7,18 @@
  *                              WS.Автопрокат
  *   POST /webhooks/telegram  — обновления от Telegram (проверяется секрет)
  *   POST /webhooks/whatsapp  — сообщения WhatsApp от Kapso (проверяется подпись)
+ *   /api/staff/*             — сайт сотрудников (staffPortal.js)
+ *   /api/public/*            — открытое API сайта jetrental.click (publicApi.js)
  * ============================================================================
  */
 
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { config } from './config.js';
+import { HttpError, sendJson, readBody } from './http.js';
+import { staffRoute } from './staffPortal.js';
+import { publicRoute } from './publicApi.js';
+import { mailEnabled } from './mail.js';
 import { telegramEnabled, webhookSecret, setupTelegram } from './telegram/api.js';
 import { handleUpdate } from './telegram/handler.js';
 import { getStaffChatId } from './staff.js';
@@ -22,31 +28,6 @@ import { whatsappEnabled, knownPhoneNumberId } from './whatsapp/api.js';
 import { verifySignature, processWebhook, whatsappStatus } from './whatsapp/webhook.js';
 
 const STARTED_AT = new Date();
-const MAX_BODY_BYTES = 1024 * 1024;
-
-function sendJson(res, status, body) {
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
-  res.end(JSON.stringify(body));
-}
-
-/** Сырое тело запроса (Buffer) — нужно для проверки подписи вебхука */
-function readBody(req) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    let size = 0;
-    req.on('data', (chunk) => {
-      size += chunk.length;
-      if (size > MAX_BODY_BYTES) {
-        reject(new Error('Body too large'));
-        req.destroy();
-        return;
-      }
-      chunks.push(chunk);
-    });
-    req.on('end', () => resolve(Buffer.concat(chunks)));
-    req.on('error', reject);
-  });
-}
 
 function safeEqual(a, b) {
   const bufA = Buffer.from(String(a));
@@ -94,8 +75,27 @@ async function handleWhatsAppWebhook(req, res) {
   processWebhook(req.headers, body).catch((err) => console.error('WhatsApp webhook failed:', err));
 }
 
+/** Обработчик API: ошибки HttpError превращаются в JSON { error: код } */
+async function handleApi(handler, req, res, url) {
+  try {
+    await handler(req, res, url);
+  } catch (err) {
+    if (res.headersSent) return;
+    if (err instanceof HttpError) return sendJson(res, err.status, { error: err.code });
+    console.error(`${req.method} ${url.pathname} failed:`, err);
+    sendJson(res, 500, { error: 'internal_error' });
+  }
+}
+
 const server = http.createServer((req, res) => {
-  const { pathname } = new URL(req.url, 'http://localhost');
+  const url = new URL(req.url, 'http://localhost');
+  const { pathname } = url;
+
+  if (pathname.startsWith('/api/staff/') || pathname.startsWith('/api/public/')) {
+    const handler = pathname.startsWith('/api/staff/') ? staffRoute(req.method, pathname) : publicRoute(req.method, pathname);
+    if (!handler) return sendJson(res, 404, { error: 'not_found' });
+    return handleApi(handler, req, res, url);
+  }
 
   if (req.method === 'GET' && pathname === '/health') {
     return sendJson(res, 200, {
@@ -106,6 +106,7 @@ const server = http.createServer((req, res) => {
       telegram: { enabled: telegramEnabled, staffGroupBound: Boolean(getStaffChatId()) },
       sheets: fleetStatus(),
       avtoprokat: wsSyncStatus(),
+      mail: { enabled: mailEnabled },
       whatsapp: {
         enabled: whatsappEnabled,
         phoneNumberKnown: Boolean(knownPhoneNumberId()),

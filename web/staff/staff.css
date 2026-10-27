@@ -1,0 +1,255 @@
+/* JetRental Staff — мобильный интерфейс сотрудников, светлая и тёмная темы */
+
+:root {
+  --bg: #f3f6f9;
+  --surface: #ffffff;
+  --surface-2: #eef2f6;
+  --text: #0f1b2a;
+  --muted: #5d6b7c;
+  --line: #dde3ea;
+  --brand: #0e9f94;
+  --brand-ink: #ffffff;
+  --navy: #0b1f33;
+
+  --free: #16a34a;
+  --free-bg: #dcfce7;
+  --rent: #e0533d;
+  --rent-bg: #fde4df;
+  --reserve: #d48a07;
+  --reserve-bg: #fdf0d3;
+  --service: #5b6b8c;
+  --service-bg: #e3e8f2;
+
+  --radius: 14px;
+  --shadow: 0 1px 2px rgba(15, 27, 42, .06), 0 4px 16px rgba(15, 27, 42, .06);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0a1420;
+    --surface: #111e2d;
+    --surface-2: #172739;
+    --text: #e6edf5;
+    --muted: #93a3b8;
+    --line: #22344a;
+    --brand: #2cc4b6;
+    --brand-ink: #062a27;
+    --free: #4ade80;
+    --free-bg: #12341f;
+    --rent: #ff8a73;
+    --rent-bg: #3d1d18;
+    --reserve: #fbbf24;
+    --reserve-bg: #3a2c0c;
+    --service: #a5b4d4;
+    --service-bg: #222f45;
+    --shadow: none;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+[hidden] { display: none !important; }
+button, input, select { font: inherit; color: inherit; }
+a { color: var(--brand); }
+.muted { color: var(--muted); }
+
+/* --- Общие элементы --- */
+
+.brand { display: flex; align-items: center; gap: 10px; font-size: 17px; letter-spacing: -.01em; }
+.brand b { color: var(--brand); font-weight: 700; }
+.brand--big { font-size: 22px; margin-bottom: 28px; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 46px; padding: 0 18px; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--surface); cursor: pointer; font-weight: 600;
+}
+.btn--primary { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
+.btn:disabled { opacity: .6; cursor: default; }
+.link { background: none; border: 0; padding: 6px 0; color: var(--brand); cursor: pointer; font-weight: 600; }
+.link:disabled { color: var(--muted); cursor: default; }
+.icon-btn {
+  width: 40px; height: 40px; display: grid; place-items: center; border-radius: 10px;
+  border: 0; background: transparent; color: inherit; cursor: pointer;
+}
+.icon-btn:hover { background: rgba(255, 255, 255, .08); }
+
+.field { display: grid; gap: 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.field input, .search {
+  width: 100%; min-height: 48px; padding: 0 14px; border-radius: 12px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--text); font-size: 16px;
+}
+.field input:focus, .search:focus { outline: 2px solid var(--brand); outline-offset: 1px; border-color: transparent; }
+.code-input { letter-spacing: .5em; font-size: 24px !important; text-align: center; font-weight: 700; }
+
+.error { color: var(--rent); font-weight: 600; margin: 14px 0 0; }
+.banner { margin: 8px 16px 0; padding: 10px 14px; border-radius: 12px; background: var(--reserve-bg); color: var(--text); font-size: 14px; }
+
+/* --- Вход --- */
+
+.login { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; background: radial-gradient(1200px 600px at 10% -10%, rgba(20, 184, 166, .18), transparent 60%), var(--bg); }
+.login__card { width: 100%; max-width: 380px; }
+.login__form { display: grid; gap: 16px; }
+.login__form h1 { margin: 0; font-size: 26px; letter-spacing: -.02em; }
+.login__form p { margin: 0; }
+.login__links { display: flex; justify-content: space-between; }
+
+/* --- Каркас --- */
+
+.app { min-height: 100vh; padding-bottom: calc(76px + var(--safe-bottom)); }
+.topbar {
+  position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px 10px 16px; background: var(--navy); color: #fff;
+}
+.topbar .brand b { color: #5eead4; }
+.topbar__right { margin-left: auto; display: flex; gap: 2px; }
+
+.statusline { display: flex; justify-content: space-between; gap: 12px; padding: 10px 16px 0; font-size: 13px; max-width: 1100px; margin: 0 auto; }
+.view { padding: 12px 16px 24px; max-width: 1100px; margin: 0 auto; }
+
+.tabs { display: flex; }
+.tabs button {
+  border: 0; background: none; cursor: pointer; display: flex; flex-direction: column; align-items: center;
+  gap: 2px; font-size: 12px; font-weight: 600; color: var(--muted); padding: 8px 4px; flex: 1; position: relative;
+}
+.tabs button svg { width: 24px; height: 24px; }
+.tabs button[aria-current="page"] { color: var(--brand); }
+.tabs .count {
+  position: absolute; top: 2px; left: calc(50% + 6px); min-width: 18px; height: 18px; padding: 0 5px;
+  border-radius: 9px; background: var(--rent); color: #fff; font-size: 11px; line-height: 18px;
+}
+.tabs--bottom {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; padding-bottom: var(--safe-bottom);
+  background: var(--surface); border-top: 1px solid var(--line);
+}
+.tabs--top { display: none; }
+
+@media (min-width: 860px) {
+  .app { padding-bottom: 0; }
+  .tabs--bottom { display: none; }
+  .tabs--top { display: flex; gap: 4px; margin-left: 24px; }
+  .tabs--top button { flex-direction: row; gap: 8px; color: #b8c7d8; font-size: 14px; padding: 8px 12px; border-radius: 10px; flex: none; }
+  .tabs--top button svg { width: 20px; height: 20px; }
+  .tabs--top button[aria-current="page"] { color: #fff; background: rgba(255, 255, 255, .1); }
+  .tabs--top .count { position: static; }
+}
+
+/* --- Карточки и списки --- */
+
+.section-title { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 22px 0 10px; font-weight: 700; }
+.section-title:first-child { margin-top: 4px; }
+.card { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--line); }
+.list { display: grid; gap: 10px; }
+.empty { padding: 28px 16px; text-align: center; color: var(--muted); }
+
+.stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+@media (min-width: 640px) { .stats { grid-template-columns: repeat(4, 1fr); } }
+.stat { padding: 14px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); }
+.stat__value { font-size: 30px; font-weight: 800; letter-spacing: -.02em; line-height: 1.1; }
+.stat__label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); font-weight: 600; }
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; }
+.dot--free { background: var(--free); }
+.dot--rent { background: var(--rent); }
+.dot--reserve { background: var(--reserve); }
+.dot--service { background: var(--service); }
+
+.table-wrap { overflow-x: auto; }
+.type-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.type-table th, .type-table td { padding: 12px 10px; text-align: right; border-bottom: 1px solid var(--line); }
+@media (max-width: 420px) { .type-table th, .type-table td { padding: 10px 6px; font-size: 14px; } .type-table th { font-size: 11px; } }
+.type-table tr:last-child td { border-bottom: 0; }
+.type-table th { font-size: 12px; color: var(--muted); font-weight: 700; }
+.type-table th:first-child, .type-table td:first-child { text-align: left; }
+.type-table td:first-child { font-weight: 600; }
+
+.row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.row:last-child { border-bottom: 0; }
+.row__main { min-width: 0; flex: 1; }
+.row__title { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row__sub { font-size: 13px; color: var(--muted); }
+.row__side { text-align: right; font-size: 13px; white-space: nowrap; }
+
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.pill--free { background: var(--free-bg); color: var(--free); }
+.pill--rent { background: var(--rent-bg); color: var(--rent); }
+.pill--reserve { background: var(--reserve-bg); color: var(--reserve); }
+.pill--service { background: var(--service-bg); color: var(--service); }
+.pill--new { background: var(--rent); color: #fff; }
+.pill--taken { background: var(--surface-2); color: var(--muted); }
+
+/* --- Фильтры --- */
+
+.toolbar { display: grid; gap: 10px; margin-bottom: 12px; position: sticky; top: 60px; z-index: 10; background: var(--bg); padding: 8px 0; }
+.chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.chips::-webkit-scrollbar { display: none; }
+.chip {
+  border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 7px 14px;
+  font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;
+}
+.chip[aria-pressed="true"] { background: var(--text); color: var(--bg); border-color: var(--text); }
+.result-count { font-size: 13px; color: var(--muted); }
+
+/* --- Парк --- */
+
+.car { padding: 14px; cursor: pointer; }
+.car__head { display: flex; align-items: flex-start; gap: 10px; }
+.car__title { font-weight: 700; font-size: 16px; line-height: 1.3; }
+.car__plate { display: inline-block; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; font-weight: 700; background: var(--surface-2); border-radius: 6px; padding: 1px 7px; margin-right: 6px; }
+.car__meta { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--muted); }
+.car__meta b { color: var(--text); font-weight: 600; }
+.car__details { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line); font-size: 14px; display: grid; gap: 6px; }
+.car__details dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0; }
+.car__details dt { color: var(--muted); }
+.car__details dd { margin: 0; }
+.seg-list { list-style: none; padding: 0; margin: 4px 0 0; display: grid; gap: 6px; }
+.seg-list li { display: flex; align-items: center; gap: 8px; }
+.warn { color: var(--reserve); font-weight: 600; }
+
+/* --- Календарь --- */
+
+.cal { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: var(--radius); border: 1px solid var(--line); background: var(--surface); }
+.cal__grid { position: relative; min-width: max-content; }
+.cal__row { display: flex; border-bottom: 1px solid var(--line); min-height: 44px; }
+.cal__row:last-child { border-bottom: 0; }
+.cal__label {
+  position: sticky; left: 0; z-index: 3; width: 128px; flex: none; padding: 6px 10px; background: var(--surface);
+  border-right: 1px solid var(--line); font-size: 12px; line-height: 1.3; display: flex; flex-direction: column; justify-content: center;
+}
+.cal__label b { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal__track { position: relative; flex: none; }
+.cal__day { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--line); }
+.cal__day--weekend { background: var(--surface-2); opacity: .6; }
+.cal__head .cal__label { font-weight: 700; color: var(--muted); }
+.cal__head { position: sticky; top: 0; z-index: 4; background: var(--surface); }
+.cal__date { position: absolute; top: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 11px; color: var(--muted); border-left: 1px solid var(--line); }
+.cal__date b { font-size: 13px; color: var(--text); }
+.cal__date--today b { color: var(--brand); }
+.cal__group { padding: 8px 10px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); background: var(--surface-2); position: sticky; left: 0; }
+.bar { position: absolute; top: 9px; bottom: 9px; border-radius: 6px; min-width: 4px; }
+.bar--rent { background: var(--rent); }
+.bar--reserve { background: var(--reserve); }
+.bar--service { background: repeating-linear-gradient(135deg, var(--service), var(--service) 5px, transparent 5px, transparent 9px); border: 2px solid var(--service); }
+.now-line { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--brand); z-index: 2; pointer-events: none; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--muted); margin: 10px 2px 0; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 18px; height: 10px; border-radius: 3px; display: inline-block; }
+
+/* --- Заявки --- */
+
+.req { padding: 14px; display: grid; gap: 8px; }
+.req__head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.req__id { font-weight: 800; }
+.req__time { margin-left: auto; font-size: 13px; color: var(--muted); }
+.req__line { font-size: 14px; }
+.req__actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.req__actions a { text-decoration: none; }
+.btn--small { min-height: 36px; padding: 0 12px; font-size: 13px; border-radius: 10px; }

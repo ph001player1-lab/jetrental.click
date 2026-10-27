@@ -14,7 +14,7 @@ const HEADERS = [
   'С', 'По', 'Дней', 'Оценка ฿', 'Статус', 'Взял(а)', 'Взята'
 ];
 const STATUS_LABELS = { new: 'Новая', taken: 'В работе' };
-const CHANNEL_LABELS = { telegram: 'Telegram', whatsapp: 'WhatsApp', test: 'Тест' };
+const CHANNEL_LABELS = { telegram: 'Telegram', whatsapp: 'WhatsApp', site: 'Сайт', test: 'Тест' };
 
 let sheetReady = false;
 

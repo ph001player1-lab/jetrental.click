@@ -112,21 +112,21 @@ export async function handleStaffCallback(query, action, requestId) {
 
 async function bindGroup(msg) {
   if (config.telegram.staffChatId) {
-    return sendMessage(msg.chat.id, 'Рабочая группа задана в настройках сервера — /bind здесь не нужен.');
+    return sendMessage(msg.chat.id, 'The staff group is set in the server settings — /bind is not needed here.');
   }
 
   const member = await tg('getChatMember', { chat_id: msg.chat.id, user_id: msg.from.id });
   if (!['creator', 'administrator'].includes(member.status)) {
-    return sendMessage(msg.chat.id, 'Подключить группу может только её администратор.');
+    return sendMessage(msg.chat.id, 'Only a group admin can connect this group.');
   }
 
   db.setSetting('staff_chat_id', msg.chat.id);
-  return sendMessage(msg.chat.id, '✅ Готово! Новые заявки будут приходить в эту группу.\nПроверить кнопки: /test');
+  return sendMessage(msg.chat.id, '✅ Done! New requests will come to this group.\nTry the buttons: /test');
 }
 
 async function createTestRequest(msg) {
   if (!isStaffChat(msg.chat.id)) {
-    return sendMessage(msg.chat.id, 'Сначала подключите эту группу командой /bind.');
+    return sendMessage(msg.chat.id, 'Connect this group first with /bind.');
   }
 
   const start = new Date(`${todayIso()}T00:00:00Z`);
@@ -134,12 +134,12 @@ async function createTestRequest(msg) {
 
   const request = db.createRequest({
     channel: 'test',
-    clientName: 'Тестовый клиент',
+    clientName: 'Test client',
     clientPhone: '+66 00 000 0000',
     vehicleType: 'scooter',
     dateFrom: shift(3),
     dateTo: shift(10),
-    comment: `создал(а) ${displayName(msg.from)}`
+    comment: `created by ${displayName(msg.from)}`
   });
   await publishRequest(request);
 }
@@ -165,7 +165,7 @@ export async function handleMyChatMember(update) {
   if (isGroup && wasOut && isIn && !isStaffChat(update.chat.id)) {
     await sendMessage(
       update.chat.id,
-      '👋 Привет! Я ассистент по заявкам.\nЧтобы новые заявки приходили в эту группу, администратор отправляет /bind'
+      '👋 Hi! I\'m the rental requests assistant.\nTo receive new requests in this group, an admin sends /bind'
     );
   }
 }

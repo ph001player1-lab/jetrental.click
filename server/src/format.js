@@ -1,9 +1,10 @@
 /**
  * Тексты и форматирование: типы техники, даты, карточка заявки для группы.
+ * Карточка для сотрудников — на английском (команда читает по-английски).
  */
 
 import { config } from './config.js';
-import { LANGUAGES } from './i18n.js';
+import { LANGUAGES, t } from './i18n.js';
 
 export const VEHICLE_TYPES = {
   scooter: { label: 'Скутер', icon: '🛵' },
@@ -11,9 +12,9 @@ export const VEHICLE_TYPES = {
   car: { label: 'Автомобиль', icon: '🚗' }
 };
 
+/** Тип техники для сотрудников: '🛵 Scooter' */
 export function vehicleTypeLabel(type) {
-  const t = VEHICLE_TYPES[type];
-  return t ? `${t.icon} ${t.label}` : '—';
+  return VEHICLE_TYPES[type] ? t('en', `type_${type}`) : '—';
 }
 
 export function escapeHtml(text) {
@@ -44,35 +45,36 @@ export function formatTime(isoDateTime) {
 }
 
 /**
- * Карточка заявки для рабочей группы (HTML-разметка Telegram).
+ * Карточка заявки для рабочей группы (HTML-разметка Telegram), на английском.
  */
 export function formatStaffRequest(request) {
   const lines = [];
   const isTest = request.channel === 'test';
 
-  lines.push(`🆕 <b>Заявка #${request.id}</b>${isTest ? ' <i>(тест)</i>' : ''}`);
-  lines.push(request.model ? `${vehicleTypeLabel(request.vehicle_type)} · <b>${escapeHtml(request.model)}</b>` : vehicleTypeLabel(request.vehicle_type));
+  lines.push(`🆕 <b>Request #${request.id}</b>${isTest ? ' <i>(test)</i>' : ''}`);
+  if (request.model) lines.push(`${vehicleTypeLabel(request.vehicle_type)} · <b>${escapeHtml(request.model)}</b>`);
+  else if (request.vehicle_type) lines.push(vehicleTypeLabel(request.vehicle_type));
 
   if (request.date_from && request.date_to) {
     const days = daysBetween(request.date_from, request.date_to);
-    lines.push(`📅 ${formatShortDate(request.date_from)} – ${formatShortDate(request.date_to)} (${days} дн.)`);
+    lines.push(`📅 ${formatShortDate(request.date_from)} – ${formatShortDate(request.date_to)} (${days} ${days === 1 ? 'day' : 'days'})`);
   }
 
-  if (request.estimate_thb) lines.push(`💰 ≈ ${formatThb(request.estimate_thb)} за весь срок`);
-  if (request.free_units) lines.push(`🔑 Свободны (госномер): ${escapeHtml(request.free_units)}`);
+  if (request.estimate_thb) lines.push(`💰 ≈ ${formatThb(request.estimate_thb)} total`);
+  if (request.free_units) lines.push(`🔑 Free (plate): ${escapeHtml(request.free_units)}`);
 
   const contact = [request.client_name, request.client_phone].filter(Boolean).map(escapeHtml).join(' · ');
   if (contact) lines.push(`👤 ${contact}`);
   if (request.comment) lines.push(`💬 ${escapeHtml(request.comment)}`);
   const lang = LANGUAGES[request.lang];
-  lines.push(`📲 Источник: ${channelLabel(request.channel)}${lang ? ` · язык клиента ${lang.title}` : ''}`);
+  lines.push(`📲 Source: ${channelLabel(request.channel)}${lang ? ` · client language ${lang.title}` : ''}`);
 
   if (request.status === 'taken') {
     lines.push('');
-    lines.push(`✅ <b>Взял(а): ${escapeHtml(request.taken_by_name)}</b> · ${formatTime(request.taken_at)}`);
+    lines.push(`✅ <b>Taken by: ${escapeHtml(request.taken_by_name)}</b> · ${formatTime(request.taken_at)}`);
   } else if (request.declined_by) {
     lines.push('');
-    lines.push(`🚫 Не могут: ${escapeHtml(request.declined_by.split('\n').join(', '))}`);
+    lines.push(`🚫 Can't: ${escapeHtml(request.declined_by.split('\n').join(', '))}`);
   }
 
   return lines.join('\n');
@@ -87,7 +89,8 @@ function channelLabel(channel) {
   switch (channel) {
     case 'telegram': return 'Telegram';
     case 'whatsapp': return 'WhatsApp';
-    case 'test': return 'тестовая заявка';
+    case 'site': return 'Website';
+    case 'test': return 'test request';
     default: return channel;
   }
 }

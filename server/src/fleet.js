@@ -36,7 +36,9 @@ const CATALOG_COL = {
   pricePerDay: 'Цена ฿/день (1–6 дней)',
   pricePerDayWeek: 'Цена ฿/день (7–29 дней)',
   pricePerDayMonth: 'Цена ฿/день (от 30 дней)',
-  deposit: 'Депозит ฿'
+  deposit: 'Депозит ฿',
+  description: 'Описание для клиента',
+  photo: 'Фото (ссылка)'
 };
 
 // Значения колонки «Тип» в таблице → внутренние ключи бота
@@ -84,7 +86,9 @@ async function loadFleet() {
         pricePerDay: parsePrice(row[CATALOG_COL.pricePerDay]),
         pricePerDayWeek: parsePrice(row[CATALOG_COL.pricePerDayWeek]),
         pricePerDayMonth: parsePrice(row[CATALOG_COL.pricePerDayMonth]),
-        deposit: parsePrice(row[CATALOG_COL.deposit])
+        deposit: parsePrice(row[CATALOG_COL.deposit]),
+        description: String(row[CATALOG_COL.description] || '').trim(),
+        photo: String(row[CATALOG_COL.photo] || '').trim()
       });
     }
 

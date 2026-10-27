@@ -18,10 +18,16 @@ main() {
   git pull --ff-only
 
   "${compose[@]}" up -d --build --remove-orphans
+  # Caddyfile мог измениться — перечитываем без остановки
+  "${compose[@]}" exec -T caddy caddy reload --config /etc/caddy/kokon/Caddyfile --adapter caddyfile \
+    || echo "Внимание: Caddy не перечитал настройки, смотрите: docker compose logs caddy"
   "${compose[@]}" ps
 
   echo
-  echo "Готово. Проверка: https://bot.jetrental.click/health"
+  echo "Готово. Проверка:"
+  echo "  https://bot.jetrental.click/health"
+  echo "  https://staff.jetrental.click"
+  echo "  https://jetrental.click"
 }
 
 main "$@"

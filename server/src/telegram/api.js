@@ -85,8 +85,8 @@ export async function setupTelegram() {
   }
   await tg('setMyCommands', {
     commands: [
-      { command: 'bind', description: 'Получать заявки в эту группу' },
-      { command: 'test', description: 'Тестовая заявка' }
+      { command: 'bind', description: 'Receive requests in this group' },
+      { command: 'test', description: 'Test request' }
     ],
     scope: { type: 'all_group_chats' }
   });

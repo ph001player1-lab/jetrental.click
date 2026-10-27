@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<!--
+  JetRental Staff — сайт для сотрудников (staff.jetrental.click).
+  Вход по коду из письма, данные — из WS.Автопрокат через /api/staff/*.
+  Без сторонних библиотек: HTML + CSS + JS.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="theme-color" content="#0b1f33" />
+  <title>JetRental Staff</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="staff.css" />
+</head>
+<body>
+  <!-- Вход -->
+  <main id="login" class="login" hidden>
+    <div class="login__card">
+      <div class="brand brand--big">
+        <img src="favicon.svg" alt="" width="40" height="40" />
+        <span>JetRental <b>Staff</b></span>
+      </div>
+
+      <form id="email-form" class="login__form" novalidate>
+        <h1>Sign in</h1>
+        <p class="muted">Enter your work email. We'll send you a 6-digit code.</p>
+        <label class="field">
+          <span>Email</span>
+          <input id="email" type="email" inputmode="email" autocomplete="email" required placeholder="name@example.com" />
+        </label>
+        <button class="btn btn--primary" type="submit">Send code</button>
+      </form>
+
+      <form id="code-form" class="login__form" novalidate hidden>
+        <h1>Check your email</h1>
+        <p class="muted">If <b id="code-email"></b> has access, a code is on its way. It is valid for 10 minutes.</p>
+        <label class="field">
+          <span>Code</span>
+          <input id="code" class="code-input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="\d{6}" required placeholder="••••••" />
+        </label>
+        <button class="btn btn--primary" type="submit">Sign in</button>
+        <div class="login__links">
+          <button id="resend" class="link" type="button" disabled>Resend code</button>
+          <button id="change-email" class="link" type="button">Use another email</button>
+        </div>
+      </form>
+
+      <p id="login-error" class="error" role="alert" hidden></p>
+    </div>
+  </main>
+
+  <!-- Приложение -->
+  <div id="app" class="app" hidden>
+    <header class="topbar">
+      <div class="brand">
+        <img src="favicon.svg" alt="" width="28" height="28" />
+        <span>JetRental <b>Staff</b></span>
+      </div>
+      <nav class="tabs tabs--top" aria-label="Sections"></nav>
+      <div class="topbar__right">
+        <button id="refresh" class="icon-btn" type="button" title="Refresh" aria-label="Refresh">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M17.65 6.35A7.96 7.96 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+        </button>
+        <button id="logout" class="icon-btn" type="button" title="Sign out" aria-label="Sign out">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M10 17v-3H3v-4h7V7l5 5-5 5zm9-14H12v2h7v14h-7v2h7a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="statusline">
+      <span id="updated"></span>
+      <span id="who" class="muted"></span>
+    </div>
+    <p id="data-error" class="banner" hidden></p>
+
+    <main id="view" class="view"></main>
+
+    <nav class="tabs tabs--bottom" aria-label="Sections"></nav>
+  </div>
+
+  <script src="staff.js"></script>
+</body>
+</html>

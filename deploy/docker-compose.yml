@@ -1,7 +1,8 @@
 # ============================================================================
 # KOKON — сервисы на сервере
 # ============================================================================
-#   caddy — HTTPS для bot.jetrental.click, проксирует запросы в bot
+#   caddy — HTTPS для bot / staff / основного домена; отдаёт сайты из папки
+#           web/ и проксирует API и вебхуки в bot
 #   bot   — наш Node.js-сервер (папка server/)
 #
 # Секреты (токены, ключи) — только в /opt/kokon/.env на сервере, НЕ в git.
@@ -17,10 +18,16 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    # Конфиг берём из папки deploy целиком: так после git pull Caddy видит
+    # новый Caddyfile (update.sh делает caddy reload)
+    command: caddy run --config /etc/caddy/kokon/Caddyfile --adapter caddyfile
     environment:
       BOT_DOMAIN: ${BOT_DOMAIN:-bot.jetrental.click}
+      STAFF_DOMAIN: ${STAFF_DOMAIN:-staff.jetrental.click}
+      SITE_DOMAIN: ${SITE_DOMAIN:-jetrental.click}
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./:/etc/caddy/kokon:ro
+      - ../web:/srv/web:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:

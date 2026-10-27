@@ -135,14 +135,17 @@ export async function getFreeCarIds(begin, end) {
   return new Set(results.flatMap((r) => r.cars || []));
 }
 
-/** Свободные окна машины в периоде: [{ begin, end }] (UTC ISO-строки) */
-export async function getCarFreePeriods(carId, begin, end) {
+/**
+ * Свободные окна машины в периоде: [{ begin, end }] (UTC).
+ * reserves / idles — считать ли занятым время броней и сервисов.
+ */
+export async function getCarFreePeriods(carId, begin, end, { reserves = true, idles = true } = {}) {
   const data = await dataRequest('car_period_list', {
     car_id: carId,
     begin,
     end,
-    include_reserves: true,
-    include_idles: true
+    include_reserves: reserves,
+    include_idles: idles
   });
   return data.car_periods || [];
 }

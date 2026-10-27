@@ -1,6 +1,55 @@
-# Caddy сам получает и продлевает HTTPS-сертификат (Let's Encrypt)
-# для домена бота и передаёт запросы контейнеру bot.
+# Caddy сам получает и продлевает HTTPS-сертификаты (Let's Encrypt).
+#   bot.jetrental.click   — вебхуки ботов и /health → контейнер bot
+#   staff.jetrental.click — сайт сотрудников (web/staff) + /api/staff/* → bot
+#   jetrental.click       — сайт аренды (web/site) + /api/public/* → bot
+#   www.jetrental.click   — переадресация на jetrental.click
+
 {$BOT_DOMAIN} {
 	encode gzip
 	reverse_proxy bot:3000
+}
+
+{$STAFF_DOMAIN} {
+	encode gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		X-Robots-Tag "noindex, nofollow"
+		Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+		-Server
+	}
+	handle /api/staff/* {
+		reverse_proxy bot:3000
+	}
+	handle {
+		root * /srv/web/staff
+		try_files {path} /index.html
+		file_server
+	}
+}
+
+{$SITE_DOMAIN} {
+	encode gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+	@images path /img/*
+	header @images Cache-Control "public, max-age=604800"
+	handle /api/public/* {
+		reverse_proxy bot:3000
+	}
+	handle {
+		root * /srv/web/site
+		try_files {path} /index.html
+		file_server
+	}
+}
+
+www.{$SITE_DOMAIN} {
+	redir https://{$SITE_DOMAIN}{uri} permanent
 }

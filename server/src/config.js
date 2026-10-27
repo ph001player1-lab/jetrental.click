@@ -42,6 +42,21 @@ export const config = {
     pauseHours: Number(process.env.WHATSAPP_PAUSE_HOURS) || 12
   },
 
+  // Письма (коды входа на сайт сотрудников) через Resend
+  mail: {
+    resendApiKey: process.env.RESEND_API_KEY || '',
+    apiBase: (process.env.RESEND_API_BASE || 'https://api.resend.com').replace(/\/+$/, ''),
+    from: process.env.MAIL_FROM || 'JetRental Staff <noreply@jetrental.click>'
+  },
+
+  // Сайт сотрудников (staff.jetrental.click): вход по коду из письма
+  staff: {
+    sessionHours: 24,
+    codeMinutes: 10,
+    // Почты с доступом помимо листа Users (через запятую) — на случай, если таблица недоступна
+    extraEmails: (process.env.STAFF_EMAILS || '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean)
+  },
+
   telegram: {
     token: process.env.TELEGRAM_BOT_TOKEN || '',
     apiBase: (process.env.TELEGRAM_API_BASE || 'https://api.telegram.org').replace(/\/+$/, ''),

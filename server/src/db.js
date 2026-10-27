@@ -60,6 +60,26 @@ db.exec(`
   );
 `);
 
+// Сайт сотрудников: коды входа из писем и сессии (храним только хэши)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS login_codes (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    email      TEXT NOT NULL,
+    code_hash  TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    attempts   INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS login_codes_email ON login_codes (email);
+
+  CREATE TABLE IF NOT EXISTS staff_sessions (
+    token_hash TEXT PRIMARY KEY,
+    email      TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+  );
+`);
+
 // Колонки, добавленные после первого запуска: дописываем в существующую базу
 const requestColumns = db.prepare('PRAGMA table_info(requests)').all().map((c) => c.name);
 for (const [name, type] of [
@@ -200,4 +220,52 @@ export function isChatPaused(chatKey) {
 export function moveStaffChat(oldChatId, newChatId) {
   db.prepare('UPDATE requests SET staff_chat_id = ? WHERE staff_chat_id = ?')
     .run(String(newChatId), String(oldChatId));
+}
+
+/* --- Сайт сотрудников: коды входа и сессии --- */
+
+export function saveLoginCode(email, codeHash, expiresAt) {
+  db.prepare('INSERT INTO login_codes (email, code_hash, created_at, expires_at) VALUES (?, ?, ?, ?)')
+    .run(email, codeHash, nowIso(), expiresAt);
+}
+
+/** Сколько кодов отправлено на почту с момента sinceIso и когда последний */
+export function loginCodeStats(email, sinceIso) {
+  return db.prepare('SELECT COUNT(*) AS count, MAX(created_at) AS last FROM login_codes WHERE email = ? AND created_at > ?')
+    .get(email, sinceIso);
+}
+
+/** Последний действующий код для почты */
+export function latestLoginCode(email) {
+  return db.prepare('SELECT * FROM login_codes WHERE email = ? AND expires_at > ? ORDER BY id DESC LIMIT 1')
+    .get(email, nowIso()) || null;
+}
+
+export function addLoginCodeAttempt(id) {
+  db.prepare('UPDATE login_codes SET attempts = attempts + 1 WHERE id = ?').run(Number(id));
+}
+
+export function deleteLoginCodes(email) {
+  db.prepare('DELETE FROM login_codes WHERE email = ?').run(email);
+}
+
+export function createStaffSession(tokenHash, email, expiresAt) {
+  db.prepare('INSERT INTO staff_sessions (token_hash, email, created_at, expires_at) VALUES (?, ?, ?, ?)')
+    .run(tokenHash, email, nowIso(), expiresAt);
+  // Заодно чистим просроченное
+  db.prepare('DELETE FROM staff_sessions WHERE expires_at < ?').run(nowIso());
+  db.prepare('DELETE FROM login_codes WHERE created_at < ?').run(new Date(Date.now() - 2 * 86400000).toISOString());
+}
+
+export function getStaffSession(tokenHash) {
+  return db.prepare('SELECT * FROM staff_sessions WHERE token_hash = ? AND expires_at > ?').get(tokenHash, nowIso()) || null;
+}
+
+export function deleteStaffSession(tokenHash) {
+  db.prepare('DELETE FROM staff_sessions WHERE token_hash = ?').run(tokenHash);
+}
+
+/** Последние заявки для сайта сотрудников */
+export function listRecentRequests(limit = 100) {
+  return db.prepare("SELECT * FROM requests WHERE channel != 'test' ORDER BY id DESC LIMIT ?").all(Number(limit));
 }
