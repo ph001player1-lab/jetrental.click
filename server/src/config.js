@@ -17,6 +17,17 @@ export const config = {
     sheetsBase: (process.env.GOOGLE_SHEETS_BASE || 'https://sheets.googleapis.com/v4/spreadsheets').replace(/\/+$/, '')
   },
 
+  // WS.Автопрокат — основная программа учёта (API-протокол разработчика).
+  // Адрес и доступ — только в .env: WS_API_URL, WS_API_USER, WS_API_PASSWORD
+  ws: {
+    baseUrl: (process.env.WS_API_URL || '').replace(/\/+$/, ''),
+    user: process.env.WS_API_USER || '',
+    password: process.env.WS_API_PASSWORD || '',
+    // Время выдачи/возврата по умолчанию, когда клиент назвал только даты
+    rentTime: process.env.WS_RENT_TIME || '12:00',
+    syncMinutes: Number(process.env.WS_SYNC_MINUTES) || 10
+  },
+
   telegram: {
     token: process.env.TELEGRAM_BOT_TOKEN || '',
     apiBase: (process.env.TELEGRAM_API_BASE || 'https://api.telegram.org').replace(/\/+$/, ''),

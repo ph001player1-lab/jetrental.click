@@ -111,6 +111,10 @@ export async function updateRange(range, values) {
   await sheetsRequest('PUT', `/values/${encodeRange(range)}?valueInputOption=USER_ENTERED`, { values });
 }
 
+export async function clearRange(range) {
+  await sheetsRequest('POST', `/values/${encodeRange(range)}:clear`, {});
+}
+
 /** Создаёт лист с заголовками, если его ещё нет */
 export async function ensureSheet(sheetName, headers) {
   const meta = await sheetsRequest('GET', '?fields=sheets.properties.title');

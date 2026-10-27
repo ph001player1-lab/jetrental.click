@@ -12,6 +12,7 @@
 
 import { getRows, sheetsEnabled } from './google/sheets.js';
 import { listActiveRequests } from './db.js';
+import * as ws from './ws/api.js';
 
 const VEHICLES_SHEET = 'Vehicles';
 const CATALOG_SHEET = 'Catalog';
@@ -44,6 +45,7 @@ const REPAIR_STATUSES = ['In Repair', 'Needs Repair'];
 
 let cache = null;
 let lastError = null;
+let wsError = null;
 
 /** '20.12.2025' / '20.12.2025 14:00' / '2025-12-20' → '2025-12-20' */
 export function parseSheetDate(value) {
@@ -143,31 +145,86 @@ export function priceFor(entry, days) {
 
 const sortPrice = (price) => price?.perDay || price?.fromPerDay || 0;
 
+/** Госномер для сопоставления таблицы и Автопроката: только цифры ('ก 7072' → '7072') */
+export function plateKey(plate) {
+  return String(plate || '').replace(/\D/g, '');
+}
+
+/** Сколько единиц каждой модели уже «держат» заявки бота на эти даты */
+function heldByModel(from, to) {
+  const held = new Map();
+  for (const request of listActiveRequests()) {
+    if (request.model && overlaps(request, from, to)) held.set(request.model, (held.get(request.model) || 0) + 1);
+  }
+  return held;
+}
+
+/** Свободные единицы по данным Google-таблицы (запасной вариант без Автопроката) */
+function freeBySheet(units, vehicleType, from, to) {
+  const byModel = new Map();
+  for (const unit of units) {
+    if (unit.type !== vehicleType || !unit.model) continue;
+    if (!byModel.has(unit.model)) byModel.set(unit.model, { plates: [], wsPrices: [] });
+    if (isUnitFree(unit, from, to)) byModel.get(unit.model).plates.push(unit.plate);
+  }
+  return byModel;
+}
+
+/**
+ * Свободные единицы по данным WS.Автопрокат: занятость (аренды, брони, сервисы)
+ * и тарифы берём из программы, а модель и тип — из таблицы по госномеру.
+ */
+async function freeByWs(units, vehicleType, from, to, days) {
+  const [freeIds, cars, tariffs] = await Promise.all([
+    ws.getFreeCarIds(ws.toWsDateTime(from), ws.toWsDateTime(to)),
+    ws.getCars(),
+    ws.getTariffs()
+  ]);
+  const unitsByPlate = new Map(units.map((u) => [plateKey(u.plate), u]));
+
+  const byModel = new Map();
+  for (const car of cars) {
+    const unit = unitsByPlate.get(plateKey(car.number));
+    if (!unit || unit.type !== vehicleType || !unit.model) continue;
+    if (!byModel.has(unit.model)) byModel.set(unit.model, { plates: [], wsPrices: [] });
+    if (!freeIds.has(car.car_id)) continue;
+    const entry = byModel.get(unit.model);
+    entry.plates.push(unit.plate);
+    const price = ws.tariffFor(tariffs.get(car.car_id), days);
+    if (price) entry.wsPrices.push(price);
+  }
+  return byModel;
+}
+
 /**
  * Свободные модели нужного типа на даты: [{ model, freePlates, price }].
- * Заявки, которые уже приняты ботом на эти даты, «придерживают» единицы.
+ * Если подключён Автопрокат — занятость и цены берём оттуда (в реальном
+ * времени), иначе — из Google-таблицы. Заявки, которые уже приняты ботом
+ * на эти даты, «придерживают» единицы.
  */
 export async function findAvailableModels(vehicleType, from, to) {
   const { units, catalog } = await loadFleet();
   const days = Math.round((Date.parse(to) - Date.parse(from)) / 86400000);
 
-  const byModel = new Map();
-  for (const unit of units) {
-    if (unit.type !== vehicleType || !unit.model) continue;
-    if (!byModel.has(unit.model)) byModel.set(unit.model, []);
-    if (isUnitFree(unit, from, to)) byModel.get(unit.model).push(unit.plate);
+  let byModel = null;
+  if (ws.wsEnabled) {
+    try {
+      byModel = await freeByWs(units, vehicleType, from, to, days);
+      wsError = null;
+    } catch (err) {
+      wsError = err.message;
+      console.error('WS availability failed, using sheet data:', err.message);
+    }
   }
+  if (!byModel) byModel = freeBySheet(units, vehicleType, from, to);
 
-  const held = new Map();
-  for (const request of listActiveRequests()) {
-    if (request.model && overlaps(request, from, to)) held.set(request.model, (held.get(request.model) || 0) + 1);
-  }
-
+  const held = heldByModel(from, to);
   const result = [];
-  for (const [model, plates] of byModel) {
-    const freeCount = plates.length - (held.get(model) || 0);
-    if (freeCount <= 0) continue;
-    result.push({ model, freePlates: plates, price: priceFor(catalog.get(model), days) });
+  for (const [model, { plates, wsPrices }] of byModel) {
+    if (plates.length - (held.get(model) || 0) <= 0) continue;
+    // Цена из Автопроката (самая низкая среди свободных единиц), иначе из листа Catalog
+    const wsPrice = wsPrices.sort((a, b) => a.perDay - b.perDay)[0];
+    result.push({ model, freePlates: plates, price: wsPrice || priceFor(catalog.get(model), days) });
   }
 
   // Сначала модели с ценой (от дешёвых к дорогим), потом без цены по алфавиту
@@ -178,6 +235,11 @@ export async function findAvailableModels(vehicleType, from, to) {
     if (pa || pb) return pa ? -1 : 1;
     return a.model.localeCompare(b.model);
   });
+}
+
+/** Текущие данные таблицы (для синхронизации с Автопрокатом) */
+export function getFleet() {
+  return loadFleet();
 }
 
 /** Загрузка при старте сервера, чтобы /health сразу показывал состояние таблицы */
@@ -192,7 +254,8 @@ export function fleetStatus() {
     units: cache ? cache.units.length : 0,
     catalogModels: cache ? cache.catalog.size : 0,
     loadedAt: cache ? new Date(cache.loadedAt).toISOString() : null,
-    error: lastError
+    error: lastError,
+    wsAvailabilityError: wsError
   };
 }
 

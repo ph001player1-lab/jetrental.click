@@ -3,7 +3,8 @@
  * KOKON BOT — HTTP-сервер
  * ============================================================================
  *   GET  /health             — проверка, что сервер жив (без секретов):
- *                              Telegram, рабочая группа, Google-таблица
+ *                              Telegram, рабочая группа, Google-таблица,
+ *                              WS.Автопрокат
  *   POST /webhooks/telegram  — обновления от Telegram (проверяется секрет)
  *
  * Сюда же позже придёт вебхук WhatsApp.
@@ -17,6 +18,7 @@ import { telegramEnabled, webhookSecret, setupTelegram } from './telegram/api.js
 import { handleUpdate } from './telegram/handler.js';
 import { getStaffChatId } from './staff.js';
 import { fleetStatus, warmUpFleet } from './fleet.js';
+import { startWsSync, wsSyncStatus } from './ws/sync.js';
 
 const STARTED_AT = new Date();
 const MAX_BODY_BYTES = 1024 * 1024;
@@ -80,7 +82,8 @@ const server = http.createServer((req, res) => {
       startedAt: STARTED_AT.toISOString(),
       uptimeSeconds: Math.round(process.uptime()),
       telegram: { enabled: telegramEnabled, staffGroupBound: Boolean(getStaffChatId()) },
-      sheets: fleetStatus()
+      sheets: fleetStatus(),
+      avtoprokat: wsSyncStatus()
     });
   }
 
@@ -97,6 +100,7 @@ const server = http.createServer((req, res) => {
 server.listen(config.port, () => {
   console.log(`kokon-bot listening on port ${config.port}`);
   warmUpFleet();
+  startWsSync();
 
   if (telegramEnabled) {
     setupTelegram()
