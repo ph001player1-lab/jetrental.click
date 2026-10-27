@@ -52,6 +52,12 @@ db.exec(`
   );
 `);
 
+// Колонки, добавленные после первого запуска: дописываем в существующую базу
+const requestColumns = db.prepare('PRAGMA table_info(requests)').all().map((c) => c.name);
+for (const [name, type] of [['model', 'TEXT'], ['estimate_thb', 'INTEGER'], ['free_units', 'TEXT'], ['sheet_row', 'INTEGER']]) {
+  if (!requestColumns.includes(name)) db.exec(`ALTER TABLE requests ADD COLUMN ${name} ${type}`);
+}
+
 const nowIso = () => new Date().toISOString();
 
 /* --- Настройки --- */
@@ -91,8 +97,9 @@ export function clearSession(chatId) {
 export function createRequest(data) {
   const result = db.prepare(`
     INSERT INTO requests
-      (created_at, channel, client_chat_id, client_name, client_phone, vehicle_type, date_from, date_to, comment)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (created_at, channel, client_chat_id, client_name, client_phone, vehicle_type, date_from, date_to, comment,
+       model, estimate_thb, free_units)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     nowIso(),
     data.channel,
@@ -102,7 +109,10 @@ export function createRequest(data) {
     data.vehicleType || null,
     data.dateFrom || null,
     data.dateTo || null,
-    data.comment || null
+    data.comment || null,
+    data.model || null,
+    data.estimateThb || null,
+    data.freeUnits || null
   );
   return getRequest(Number(result.lastInsertRowid));
 }
@@ -135,6 +145,15 @@ export function addDecline(id, userName) {
   if (!names.includes(userName)) names.push(userName);
   db.prepare('UPDATE requests SET declined_by = ? WHERE id = ?').run(names.join('\n'), Number(id));
   return getRequest(id);
+}
+
+export function setSheetRow(id, row) {
+  db.prepare('UPDATE requests SET sheet_row = ? WHERE id = ?').run(Number(row), Number(id));
+}
+
+/** Заявки, которые ещё «держат» технику: новые и взятые в работу */
+export function listActiveRequests() {
+  return db.prepare("SELECT * FROM requests WHERE status IN ('new', 'taken') AND channel != 'test'").all();
 }
 
 export function moveStaffChat(oldChatId, newChatId) {

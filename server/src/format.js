@@ -50,12 +50,15 @@ export function formatStaffRequest(request) {
   const isTest = request.channel === 'test';
 
   lines.push(`🆕 <b>Заявка #${request.id}</b>${isTest ? ' <i>(тест)</i>' : ''}`);
-  lines.push(vehicleTypeLabel(request.vehicle_type));
+  lines.push(request.model ? `${vehicleTypeLabel(request.vehicle_type)} · <b>${escapeHtml(request.model)}</b>` : vehicleTypeLabel(request.vehicle_type));
 
   if (request.date_from && request.date_to) {
     const days = daysBetween(request.date_from, request.date_to);
     lines.push(`📅 ${formatShortDate(request.date_from)} – ${formatShortDate(request.date_to)} (${days} дн.)`);
   }
+
+  if (request.estimate_thb) lines.push(`💰 ≈ ${formatThb(request.estimate_thb)} за весь срок`);
+  if (request.free_units) lines.push(`🔑 Свободны (госномер): ${escapeHtml(request.free_units)}`);
 
   const contact = [request.client_name, request.client_phone].filter(Boolean).map(escapeHtml).join(' · ');
   if (contact) lines.push(`👤 ${contact}`);
@@ -71,6 +74,11 @@ export function formatStaffRequest(request) {
   }
 
   return lines.join('\n');
+}
+
+/** 8400 → '8 400 ฿' */
+export function formatThb(amount) {
+  return `${new Intl.NumberFormat('ru-RU').format(amount).replace(/[\u00a0\u202f]/g, ' ')} ฿`;
 }
 
 function channelLabel(channel) {

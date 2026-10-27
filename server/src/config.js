@@ -9,6 +9,14 @@ export const config = {
   dataDir: process.env.DATA_DIR || '/data',
   timezone: 'Asia/Bangkok',
 
+  google: {
+    // ID таблицы — из её адреса: docs.google.com/spreadsheets/d/<ID>/edit
+    sheetId: process.env.GOOGLE_SHEET_ID || '',
+    serviceAccountFile: process.env.GOOGLE_SA_FILE || '/run/secrets/google-sa.json',
+    tokenUrl: process.env.GOOGLE_TOKEN_URL || 'https://oauth2.googleapis.com/token',
+    sheetsBase: (process.env.GOOGLE_SHEETS_BASE || 'https://sheets.googleapis.com/v4/spreadsheets').replace(/\/+$/, '')
+  },
+
   telegram: {
     token: process.env.TELEGRAM_BOT_TOKEN || '',
     apiBase: (process.env.TELEGRAM_API_BASE || 'https://api.telegram.org').replace(/\/+$/, ''),

@@ -34,6 +34,14 @@ services:
       DATA_DIR: /data
     volumes:
       - bot_data:/data
+      # Ключ служебного аккаунта Google (доступ к таблице). Файл кладётся на
+      # сервер вручную через scp; если его нет, запуск остановится с ошибкой.
+      - type: bind
+        source: /opt/kokon/google-sa.json
+        target: /run/secrets/google-sa.json
+        read_only: true
+        bind:
+          create_host_path: false
     env_file:
       - path: /opt/kokon/.env
         required: false

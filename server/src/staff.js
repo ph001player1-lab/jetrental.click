@@ -14,6 +14,7 @@ import { config } from './config.js';
 import * as db from './db.js';
 import { formatStaffRequest, escapeHtml } from './format.js';
 import { todayIso } from './dates.js';
+import { mirrorNewRequest, mirrorRequestStatus } from './sheetsSync.js';
 import { tg, sendMessage, inlineKeyboard, answerCallback, displayName, parseCommand } from './telegram/api.js';
 
 export function getStaffChatId() {
@@ -33,8 +34,13 @@ function staffButtons(request) {
   ]]);
 }
 
-/** Публикует заявку в рабочей группе. Возвращает false, если группа не подключена. */
-export async function postRequestToStaff(request) {
+/**
+ * Новая заявка уходит в рабочую группу и копией в Google-таблицу.
+ * Возвращает false, если группа ещё не подключена.
+ */
+export async function publishRequest(request) {
+  await mirrorNewRequest(request);
+
   const chatId = getStaffChatId();
   if (!chatId) {
     console.warn(`Request #${request.id}: staff group is not bound yet (send /bind in the group)`);
@@ -85,6 +91,7 @@ export async function handleStaffCallback(query, action, requestId) {
     await refreshStaffMessage(taken);
     await answerCallback(query, `Заявка #${taken.id} ваша`);
     await notifyClientTaken(taken);
+    await mirrorRequestStatus(taken);
     return;
   }
 
@@ -128,7 +135,7 @@ async function createTestRequest(msg) {
     dateTo: shift(10),
     comment: `создал(а) ${displayName(msg.from)}`
   });
-  await postRequestToStaff(request);
+  await publishRequest(request);
 }
 
 export async function handleGroupMessage(msg) {

@@ -22,7 +22,7 @@ export async function handleUpdate(update) {
 async function handleCallbackQuery(query) {
   const [action, value] = String(query.data || '').split(':');
 
-  if (action === 'type') return handleClientCallback(query, value);
+  if (action === 'type' || action === 'model') return handleClientCallback(query, action, value);
   if (action === 'take' || action === 'decline') return handleStaffCallback(query, action, Number(value));
 
   return answerCallback(query);
