@@ -46,7 +46,8 @@ async function askContact(chatId) {
 }
 
 function extractPhone(msg) {
-  if (msg.contact?.phone_number) return msg.contact.phone_number;
+  // Telegram присылает номер контакта без «+»: 66944688871 → +66944688871
+  if (msg.contact?.phone_number) return msg.contact.phone_number.replace(/^(?!\+)/, '+');
   const text = (msg.text || '').trim();
   const digits = text.replace(/\D/g, '');
   return digits.length >= 7 && digits.length <= 15 ? text : null;
