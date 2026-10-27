@@ -8,6 +8,9 @@ RUN npm install --omit=dev
 
 COPY src ./src
 
+# Папка для базы SQLite (Docker-том bot_data), доступная пользователю node
+RUN mkdir -p /data && chown node:node /data
+
 USER node
 EXPOSE 3000
 CMD ["node", "src/index.js"]

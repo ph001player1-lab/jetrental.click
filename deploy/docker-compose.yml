@@ -31,6 +31,9 @@ services:
     restart: unless-stopped
     environment:
       PORT: "3000"
+      DATA_DIR: /data
+    volumes:
+      - bot_data:/data
     env_file:
       - path: /opt/kokon/.env
         required: false
@@ -38,3 +41,4 @@ services:
 volumes:
   caddy_data:
   caddy_config:
+  bot_data:
