@@ -8,14 +8,21 @@
 
 set -euo pipefail
 
-APP_DIR="/opt/kokon/app"
-COMPOSE=(docker compose -f "$APP_DIR/deploy/docker-compose.yml")
+# Весь код внутри main: bash сначала дочитывает файл целиком, поэтому
+# git pull может безопасно обновить и этот же скрипт.
+main() {
+  local app_dir="/opt/kokon/app"
+  local compose=(docker compose -f "$app_dir/deploy/docker-compose.yml")
 
-cd "$APP_DIR"
-git pull --ff-only
+  cd "$app_dir"
+  git pull --ff-only
 
-"${COMPOSE[@]}" up -d --build --remove-orphans
-"${COMPOSE[@]}" ps
+  "${compose[@]}" up -d --build --remove-orphans
+  "${compose[@]}" ps
 
-echo
-echo "Готово. Проверка: https://bot.jetrental.click/health"
+  echo
+  echo "Готово. Проверка: https://bot.jetrental.click/health"
+}
+
+main "$@"
+exit
