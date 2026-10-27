@@ -31,6 +31,7 @@ const VEHICLE_COL = {
 const CATALOG_COL = {
   model: 'Модель для клиента',
   type: 'Тип',
+  priceFrom: 'Цена от ฿/день (как на сайте)',
   pricePerDay: 'Цена ฿/день (1–6 дней)',
   pricePerDayWeek: 'Цена ฿/день (7–29 дней)',
   pricePerDayMonth: 'Цена ฿/день (от 30 дней)',
@@ -77,6 +78,7 @@ async function loadFleet() {
       if (!name) continue;
       catalog.set(name, {
         type: TYPE_KEYS[row[CATALOG_COL.type]] || null,
+        priceFrom: parsePrice(row[CATALOG_COL.priceFrom]),
         pricePerDay: parsePrice(row[CATALOG_COL.pricePerDay]),
         pricePerDayWeek: parsePrice(row[CATALOG_COL.pricePerDayWeek]),
         pricePerDayMonth: parsePrice(row[CATALOG_COL.pricePerDayMonth]),
@@ -123,15 +125,23 @@ function overlaps(request, from, to) {
   return request.date_from && request.date_to && request.date_from <= to && request.date_to >= from;
 }
 
-/** Цена за весь срок по тарифам модели или null, если цены не заполнены */
+/**
+ * Цена модели на срок:
+ * - заполнены тарифы по срокам → { perDay, total, deposit } (точная оценка);
+ * - есть только цена «от» с сайта → { fromPerDay, deposit } (без суммы);
+ * - ничего нет → null (цену уточнит менеджер).
+ */
 export function priceFor(entry, days) {
   if (!entry) return null;
   let perDay = entry.pricePerDay;
   if (days >= 7 && entry.pricePerDayWeek) perDay = entry.pricePerDayWeek;
   if (days >= 30 && entry.pricePerDayMonth) perDay = entry.pricePerDayMonth;
-  if (!perDay) return null;
-  return { perDay, total: perDay * days, deposit: entry.deposit };
+  if (perDay) return { perDay, total: perDay * days, deposit: entry.deposit };
+  if (entry.priceFrom) return { fromPerDay: entry.priceFrom, deposit: entry.deposit };
+  return null;
 }
+
+const sortPrice = (price) => price?.perDay || price?.fromPerDay || 0;
 
 /**
  * Свободные модели нужного типа на даты: [{ model, freePlates, price }].
@@ -162,10 +172,18 @@ export async function findAvailableModels(vehicleType, from, to) {
 
   // Сначала модели с ценой (от дешёвых к дорогим), потом без цены по алфавиту
   return result.sort((a, b) => {
-    if (a.price && b.price) return a.price.perDay - b.price.perDay;
-    if (a.price || b.price) return a.price ? -1 : 1;
+    const pa = sortPrice(a.price);
+    const pb = sortPrice(b.price);
+    if (pa && pb) return pa - pb;
+    if (pa || pb) return pa ? -1 : 1;
     return a.model.localeCompare(b.model);
   });
+}
+
+/** Загрузка при старте сервера, чтобы /health сразу показывал состояние таблицы */
+export function warmUpFleet() {
+  if (!sheetsEnabled) return;
+  loadFleet().catch((err) => console.error('Fleet warm-up failed:', err.message));
 }
 
 export function fleetStatus() {

@@ -16,7 +16,7 @@ import { config } from './config.js';
 import { telegramEnabled, webhookSecret, setupTelegram } from './telegram/api.js';
 import { handleUpdate } from './telegram/handler.js';
 import { getStaffChatId } from './staff.js';
-import { fleetStatus } from './fleet.js';
+import { fleetStatus, warmUpFleet } from './fleet.js';
 
 const STARTED_AT = new Date();
 const MAX_BODY_BYTES = 1024 * 1024;
@@ -96,6 +96,7 @@ const server = http.createServer((req, res) => {
 
 server.listen(config.port, () => {
   console.log(`kokon-bot listening on port ${config.port}`);
+  warmUpFleet();
 
   if (telegramEnabled) {
     setupTelegram()

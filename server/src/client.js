@@ -49,8 +49,10 @@ async function askContact(chatId) {
 }
 
 function modelLine(option) {
-  if (!option.price) return `• <b>${escapeHtml(option.model)}</b> — цену уточнит менеджер`;
-  return `• <b>${escapeHtml(option.model)}</b> — ${formatThb(option.price.perDay)}/день, ≈ ${formatThb(option.price.total)}`;
+  const name = `• <b>${escapeHtml(option.model)}</b>`;
+  if (option.price?.total) return `${name} — ${formatThb(option.price.perDay)}/день, ≈ ${formatThb(option.price.total)}`;
+  if (option.price?.fromPerDay) return `${name} — от ${formatThb(option.price.fromPerDay)}/день`;
+  return `${name} — цену уточнит менеджер`;
 }
 
 /**
