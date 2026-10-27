@@ -7,11 +7,13 @@ import { escapeHtml } from '../format.js';
 import { tg, sendMessage, inlineKeyboard, answerCallback } from '../telegram/api.js';
 import { handleClientText, handleClientChoice } from '../client.js';
 
-const CONTACT_KEYBOARD = {
-  keyboard: [[{ text: '📱 Отправить мой номер', request_contact: true }]],
-  resize_keyboard: true,
-  one_time_keyboard: true
-};
+function contactKeyboard(buttonText) {
+  return {
+    keyboard: [[{ text: buttonText, request_contact: true }]],
+    resize_keyboard: true,
+    one_time_keyboard: true
+  };
+}
 
 function telegramUi(chatId, query = null) {
   return {
@@ -23,7 +25,7 @@ function telegramUi(chatId, query = null) {
     choices: (text, options) => sendMessage(chatId, text, {
       reply_markup: inlineKeyboard(options.map((o) => [{ text: o.title, callback_data: o.id }]))
     }),
-    askPhone: (text) => sendMessage(chatId, text, { reply_markup: CONTACT_KEYBOARD }),
+    askPhone: (text, buttonText) => sendMessage(chatId, text, { reply_markup: contactKeyboard(buttonText) }),
     ack: (text) => (query ? answerCallback(query, text) : Promise.resolve()),
     // Убираем кнопки у сообщения, на котором нажали, и пишем, что выбрано
     closeChoices: async (note) => {
@@ -36,7 +38,7 @@ function telegramUi(chatId, query = null) {
       }
       if (note) await sendMessage(chatId, note);
     },
-    restartHint: '/start'
+    restartHint: () => '/start'
   };
 }
 

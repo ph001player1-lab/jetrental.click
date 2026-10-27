@@ -4,6 +4,7 @@
 
 import crypto from 'node:crypto';
 import { config } from '../config.js';
+import { LANGUAGES, t } from '../i18n.js';
 
 export const telegramEnabled = Boolean(config.telegram.token);
 
@@ -71,10 +72,17 @@ export async function setupTelegram() {
     allowed_updates: ['message', 'callback_query', 'my_chat_member']
   });
 
-  await tg('setMyCommands', {
-    commands: [{ command: 'start', description: 'Новая заявка на аренду' }],
-    scope: { type: 'all_private_chats' }
-  });
+  // Меню команд в личке: по умолчанию по-английски, для ru/th/zh — на языке приложения Telegram
+  for (const lang of [null, ...Object.keys(LANGUAGES)]) {
+    await tg('setMyCommands', {
+      commands: [
+        { command: 'start', description: t(lang, 'cmd_start') },
+        { command: 'lang', description: t(lang, 'cmd_lang') }
+      ],
+      scope: { type: 'all_private_chats' },
+      ...(lang ? { language_code: lang } : {})
+    });
+  }
   await tg('setMyCommands', {
     commands: [
       { command: 'bind', description: 'Получать заявки в эту группу' },

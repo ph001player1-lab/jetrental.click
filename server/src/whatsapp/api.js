@@ -68,7 +68,7 @@ export function sendButtons(to, bodyText, options) {
 }
 
 /** options: [{ id, title, description? }] — до 10 строк одним разделом */
-export function sendList(to, bodyText, buttonText, options) {
+export function sendList(to, bodyText, buttonText, options, sectionTitle = buttonText) {
   return send(to, {
     type: 'interactive',
     interactive: {
@@ -77,7 +77,7 @@ export function sendList(to, bodyText, buttonText, options) {
       action: {
         button: cut(buttonText, LIMITS.listButton),
         sections: [{
-          title: 'Варианты',
+          title: cut(sectionTitle, LIMITS.rowTitle),
           rows: options.slice(0, LIMITS.rows).map((o) => ({
             id: o.id,
             title: cut(o.title, LIMITS.rowTitle),

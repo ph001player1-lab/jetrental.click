@@ -62,7 +62,9 @@ db.exec(`
 
 // Колонки, добавленные после первого запуска: дописываем в существующую базу
 const requestColumns = db.prepare('PRAGMA table_info(requests)').all().map((c) => c.name);
-for (const [name, type] of [['model', 'TEXT'], ['estimate_thb', 'INTEGER'], ['free_units', 'TEXT'], ['sheet_row', 'INTEGER']]) {
+for (const [name, type] of [
+  ['model', 'TEXT'], ['estimate_thb', 'INTEGER'], ['free_units', 'TEXT'], ['sheet_row', 'INTEGER'], ['lang', 'TEXT']
+]) {
   if (!requestColumns.includes(name)) db.exec(`ALTER TABLE requests ADD COLUMN ${name} ${type}`);
 }
 
@@ -100,14 +102,24 @@ export function clearSession(chatId) {
   db.prepare('DELETE FROM sessions WHERE chat_id = ?').run(String(chatId));
 }
 
+/* --- Язык клиента: выбирается один раз и запоминается для чата --- */
+
+export function getChatLanguage(chatKey) {
+  return getSetting(`lang:${chatKey}`);
+}
+
+export function setChatLanguage(chatKey, lang) {
+  setSetting(`lang:${chatKey}`, lang);
+}
+
 /* --- Заявки --- */
 
 export function createRequest(data) {
   const result = db.prepare(`
     INSERT INTO requests
       (created_at, channel, client_chat_id, client_name, client_phone, vehicle_type, date_from, date_to, comment,
-       model, estimate_thb, free_units)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       model, estimate_thb, free_units, lang)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     nowIso(),
     data.channel,
@@ -120,7 +132,8 @@ export function createRequest(data) {
     data.comment || null,
     data.model || null,
     data.estimateThb || null,
-    data.freeUnits || null
+    data.freeUnits || null,
+    data.lang || null
   );
   return getRequest(Number(result.lastInsertRowid));
 }

@@ -4,7 +4,8 @@
  * ============================================================================
  * - /bind  — админ группы подключает её: сюда будут приходить заявки
  * - /test  — тестовая заявка, чтобы проверить кнопки
- * - кнопки «Беру» / «Не могу» под каждой заявкой
+ * - кнопки «Take» / «Can't» под каждой заявкой (на английском — в группе
+ *   работают люди с разными языками)
  *
  * Позже здесь же ассистент будет разбирать сообщения «сдал / выдал / ремонт».
  * ============================================================================
@@ -13,6 +14,7 @@
 import { config } from './config.js';
 import * as db from './db.js';
 import { formatStaffRequest, escapeHtml } from './format.js';
+import { t } from './i18n.js';
 import { todayIso } from './dates.js';
 import { mirrorNewRequest, mirrorRequestStatus } from './sheetsSync.js';
 import { sendText as waSendText } from './whatsapp/api.js';
@@ -30,8 +32,8 @@ function isStaffChat(chatId) {
 function staffButtons(request) {
   if (request.status !== 'new') return { inline_keyboard: [] };
   return inlineKeyboard([[
-    { text: '✋ Беру', callback_data: `take:${request.id}` },
-    { text: '🚫 Не могу', callback_data: `decline:${request.id}` }
+    { text: '✋ Take', callback_data: `take:${request.id}` },
+    { text: "🚫 Can't", callback_data: `decline:${request.id}` }
   ]]);
 }
 
@@ -71,15 +73,11 @@ async function refreshStaffMessage(request) {
 async function notifyClientTaken(request) {
   if (!request.client_chat_id) return;
   if (request.channel === 'telegram') {
-    await sendMessage(
-      request.client_chat_id,
-      `👋 Вашей заявкой #${request.id} занимается менеджер <b>${escapeHtml(request.taken_by_name)}</b>. Скоро свяжемся с вами!`
-    );
+    const name = `<b>${escapeHtml(request.taken_by_name)}</b>`;
+    await sendMessage(request.client_chat_id, t(request.lang, 'manager_taken', { id: request.id, name }));
   } else if (request.channel === 'whatsapp') {
-    await waSendText(
-      request.client_chat_id,
-      `👋 Вашей заявкой #${request.id} занимается менеджер *${request.taken_by_name}*. Скоро свяжемся с вами!`
-    );
+    const name = `*${request.taken_by_name}*`;
+    await waSendText(request.client_chat_id, t(request.lang, 'manager_taken', { id: request.id, name }));
   }
 }
 
@@ -87,26 +85,26 @@ export async function handleStaffCallback(query, action, requestId) {
   if (!isStaffChat(query.message?.chat?.id)) return answerCallback(query);
 
   const request = db.getRequest(requestId);
-  if (!request) return answerCallback(query, 'Заявка не найдена');
+  if (!request) return answerCallback(query, 'Request not found');
 
   const name = displayName(query.from);
 
   if (action === 'take') {
     if (!db.takeRequest(request.id, query.from.id, name)) {
-      return answerCallback(query, `Уже взял(а): ${db.getRequest(request.id).taken_by_name}`);
+      return answerCallback(query, `Already taken by ${db.getRequest(request.id).taken_by_name}`);
     }
     const taken = db.getRequest(request.id);
     await refreshStaffMessage(taken);
-    await answerCallback(query, `Заявка #${taken.id} ваша`);
+    await answerCallback(query, `Request #${taken.id} is yours`);
     await notifyClientTaken(taken);
     await mirrorRequestStatus(taken);
     return;
   }
 
   if (action === 'decline') {
-    if (request.status !== 'new') return answerCallback(query, 'Заявка уже в работе');
+    if (request.status !== 'new') return answerCallback(query, 'Already taken');
     await refreshStaffMessage(db.addDecline(request.id, name));
-    return answerCallback(query, 'Понятно, спасибо');
+    return answerCallback(query, 'OK, thanks');
   }
 
   return answerCallback(query);

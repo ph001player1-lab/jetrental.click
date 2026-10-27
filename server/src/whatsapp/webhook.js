@@ -16,6 +16,7 @@ import * as db from '../db.js';
 import { rememberPhoneNumberId, sendText } from './api.js';
 import { whatsappUi } from '../channels/whatsapp.js';
 import { handleClientText, handleClientChoice } from '../client.js';
+import { t } from '../i18n.js';
 
 let lastInboundAt = null;
 
@@ -75,7 +76,7 @@ async function handleMessage(payload) {
   if (msg.type === 'text') return handleClientText(chat, msg.text?.body || '');
 
   // Голосовые, фото и прочее пока не разбираем
-  return sendText(phone, 'Пока я понимаю только текст и кнопки 🙏 Напишите, пожалуйста, сообщением или нажмите «меню».');
+  return sendText(phone, t(db.getChatLanguage(key), 'media_unsupported'));
 }
 
 /**

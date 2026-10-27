@@ -22,7 +22,7 @@ export async function handleUpdate(update) {
 async function handleCallbackQuery(query) {
   const [action, value] = String(query.data || '').split(':');
 
-  if (action === 'type' || action === 'model') return handleTelegramClientCallback(query, action, value);
+  if (['lang', 'type', 'model'].includes(action)) return handleTelegramClientCallback(query, action, value);
   if (action === 'take' || action === 'decline') return handleStaffCallback(query, action, Number(value));
 
   return answerCallback(query);

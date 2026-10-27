@@ -3,6 +3,7 @@
  */
 
 import { config } from './config.js';
+import { LANGUAGES } from './i18n.js';
 
 export const VEHICLE_TYPES = {
   scooter: { label: 'Скутер', icon: '🛵' },
@@ -63,7 +64,8 @@ export function formatStaffRequest(request) {
   const contact = [request.client_name, request.client_phone].filter(Boolean).map(escapeHtml).join(' · ');
   if (contact) lines.push(`👤 ${contact}`);
   if (request.comment) lines.push(`💬 ${escapeHtml(request.comment)}`);
-  lines.push(`📲 Источник: ${channelLabel(request.channel)}`);
+  const lang = LANGUAGES[request.lang];
+  lines.push(`📲 Источник: ${channelLabel(request.channel)}${lang ? ` · язык клиента ${lang.title}` : ''}`);
 
   if (request.status === 'taken') {
     lines.push('');
