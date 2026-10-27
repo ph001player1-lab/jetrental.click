@@ -100,7 +100,7 @@ EOF
   systemctl reload ssh 2>/dev/null || systemctl restart ssh
   SSH_STATUS="вход только по SSH-ключу (пароль отключён)"
 else
-  SSH_STATUS="ВНИМАНИЕ: SSH-ключ не найден, вход по паролю оставлен. Добавьте ключ и запустите скрипт ещё раз."
+  SSH_STATUS="вход по паролю (SSH-ключ добавим позже и запустим скрипт ещё раз)"
 fi
 
 log "6/6 Рабочая папка $APP_DIR"
