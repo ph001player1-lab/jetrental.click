@@ -3,7 +3,7 @@
 # KOKON — первичная настройка сервера (Ubuntu 24.04)
 # ============================================================================
 # Запуск на сервере:
-#   curl -fsSL https://raw.githubusercontent.com/ph001player1-lab/Kokon-Car-Bike-Service/refs/heads/claude/bold-pascal-1k2fgi/deploy/bootstrap.sh -o bootstrap.sh
+#   curl -fsSL https://raw.githubusercontent.com/ph001player1-lab/jetrental.click/refs/heads/claude/bold-pascal-1k2fgi/deploy/bootstrap.sh -o bootstrap.sh
 #   sudo bash bootstrap.sh
 #
 # Что делает (безопасно запускать повторно):
