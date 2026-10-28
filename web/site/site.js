@@ -155,11 +155,23 @@
   const isFullPhoto = (photo) => /\.jpe?g$/i.test(photo || '');
 
   function media(item, badge = '') {
+    const icon = TYPE_ICON[item.type] || '🚘';
     const img = item.photo
-      ? `<img src="${esc(item.photo)}" alt="${esc(item.model)}" loading="lazy" width="320" height="220" />`
-      : `<span class="vcard__placeholder" aria-hidden="true">${TYPE_ICON[item.type] || '🚘'}</span>`;
+      ? `<img src="${esc(item.photo)}" alt="${esc(item.model)}" loading="lazy" width="320" height="220" data-icon="${icon}" />`
+      : `<span class="vcard__placeholder" aria-hidden="true">${icon}</span>`;
     return `<div class="vcard__media${isFullPhoto(item.photo) ? ' vcard__media--photo' : ''}">${badge}${img}</div>`;
   }
+
+  // Файла по ссылке из Catalog нет (опечатка, ещё не выложен) → значок вместо пустой рамки
+  document.addEventListener('error', (event) => {
+    const img = event.target;
+    if (!(img instanceof HTMLImageElement)) return;
+    if (img.id === 'book-photo') { img.hidden = true; return; }
+    const box = img.closest('.vcard__media');
+    if (!box) return;
+    box.classList.remove('vcard__media--photo');
+    img.outerHTML = `<span class="vcard__placeholder" aria-hidden="true">${img.dataset.icon || '🚘'}</span>`;
+  }, true);
 
   function availabilityBadge(item) {
     if (item.availableNow === true) return `<span class="badge badge--free">${esc(t('badge.free'))}</span>`;
