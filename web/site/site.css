@@ -267,7 +267,6 @@ a.topbar__item:hover { color: var(--white); }
 .icon-btn--tg { background: var(--tg); color: var(--white); }
 .staff-link--footer { margin-left: 6px; padding: 8px 14px; font-size: 13px; }
 .footer__copy { flex-basis: 100%; margin: 0; font-size: 14px; }
-.footer__copy a { color: inherit; }
 @media (max-width: 700px) { .footer__social { margin-left: 0; } }
 
 /* --- Окно бронирования --- */
