@@ -25,7 +25,9 @@ import { HttpError, sendJson, readJson, parseCookies, clientIp, rateLimiter } fr
 import { findStaff, normalizeEmail, isValidEmail } from './staffUsers.js';
 import { mailEnabled, sendMail } from './mail.js';
 import { getWsSnapshot, wsSyncStatus } from './ws/sync.js';
-import { getFleet, sheetsEnabled } from './fleet.js';
+import { getFleet, sheetsEnabled, plateKey } from './fleet.js';
+import { tariffOn } from './pricing.js';
+import { todayIso } from './dates.js';
 
 const COOKIE = 'jr_staff';
 const MAX_ATTEMPTS = 5;
@@ -158,11 +160,22 @@ async function me(req, res) {
   sendJson(res, 200, { user: publicUser(staff), sessionExpiresAt: staff.sessionExpiresAt });
 }
 
-/** Цены моделей из листа Catalog: модель → { priceFrom, perDay, perDayWeek, perDayMonth, deposit } */
-async function catalogPrices() {
-  if (!sheetsEnabled) return {};
+/**
+ * Цены моделей из листа Catalog: модель → { priceFrom, perDay, perDayWeek, perDayMonth, deposit }
+ * и тариф каждой машины на сегодня из сезонного прайса: id → { season, verified, tiers, deposit, overKm }
+ */
+async function priceData(cars) {
+  if (!sheetsEnabled) return { prices: {}, tariffs: {} };
   try {
-    const { catalog } = await getFleet();
+    const { catalog, pricing } = await getFleet();
+    const today = todayIso();
+    const tariffs = {};
+    if (pricing) {
+      for (const car of cars) {
+        const tariff = tariffOn(pricing, plateKey(car.plate), today);
+        if (tariff) tariffs[car.id] = tariff;
+      }
+    }
     const prices = {};
     for (const [model, entry] of catalog) {
       prices[model] = {
@@ -173,9 +186,9 @@ async function catalogPrices() {
         deposit: entry.deposit
       };
     }
-    return prices;
+    return { prices, tariffs };
   } catch {
-    return {};
+    return { prices: {}, tariffs: {} };
   }
 }
 
@@ -190,7 +203,7 @@ async function fleet(req, res) {
     windowFrom: snapshot?.windowFrom || null,
     windowTo: snapshot?.windowTo || null,
     cars: snapshot?.cars || [],
-    prices: await catalogPrices()
+    ...(await priceData(snapshot?.cars || []))
   });
 }
 

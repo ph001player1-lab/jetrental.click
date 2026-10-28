@@ -11,7 +11,9 @@
   <meta name="robots" content="noindex, nofollow" />
   <meta name="theme-color" content="#0b1f33" />
   <title>JetRental Staff</title>
-  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="icon-32.png" sizes="32x32" type="image/png" />
+  <link rel="icon" href="icon-192.png" sizes="192x192" type="image/png" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="stylesheet" href="staff.css" />
 </head>
 <body>
@@ -19,8 +21,11 @@
   <main id="login" class="login" hidden>
     <div class="login__card">
       <div class="brand brand--big">
-        <img src="favicon.svg" alt="" width="40" height="40" />
-        <span>JetRental <b>Staff</b></span>
+        <picture>
+          <source srcset="logo-wordmark-light.webp" media="(prefers-color-scheme: dark)" />
+          <img src="logo-wordmark.webp" alt="JetRental" width="341" height="120" />
+        </picture>
+        <span class="brand__tag">Staff</span>
       </div>
 
       <form id="email-form" class="login__form" novalidate>
@@ -55,8 +60,8 @@
   <div id="app" class="app" hidden>
     <header class="topbar">
       <div class="brand">
-        <img src="favicon.svg" alt="" width="28" height="28" />
-        <span>JetRental <b>Staff</b></span>
+        <img src="logo-wordmark-light.webp" alt="JetRental" width="341" height="120" />
+        <span class="brand__tag">Staff</span>
       </div>
       <nav class="tabs tabs--top" aria-label="Sections"></nav>
       <div class="topbar__right">

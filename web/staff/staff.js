@@ -287,6 +287,9 @@
   const cars = () => state.fleet?.cars || [];
   const carName = (car) => car.model || car.wsModel || '—';
   const priceOf = (car) => state.fleet?.prices?.[car.model] || null;
+  const tariffOf = (car) => state.fleet?.tariffs?.[car.id] || null;
+  const SEASON_NAMES = { 'Низкий': 'Low', 'Средний': 'Mid', 'Высокий': 'High', 'Пик': 'Peak' };
+  const TIER_LABELS = ['1–2 d', '3–6 d', '7–13 d', '14–30 d', '31+ d'];
 
   function filteredCars() {
     const q = state.filters.q.trim().toLowerCase();
@@ -411,8 +414,19 @@
 
   function renderCar(car) {
     const price = priceOf(car);
-    const priceText = price?.perDay ? `${money(price.perDay)}/day` : price?.priceFrom ? `from ${money(price.priceFrom)}/day` : '';
-    const deposit = car.deposit || price?.deposit;
+    // Цена на сегодня — из сезонного прайса по госномеру, иначе «от» из каталога
+    const tariff = tariffOf(car);
+    const todayPrice = tariff?.tiers?.[0];
+    const priceText = todayPrice
+      ? `${money(todayPrice)}/day today${tariff.verified ? '' : ' ⚠️'}`
+      : price?.perDay ? `${money(price.perDay)}/day` : price?.priceFrom ? `from ${money(price.priceFrom)}/day` : '';
+    const deposit = tariff?.deposit || car.deposit || price?.deposit;
+    const seasonText = tariff
+      ? `${SEASON_NAMES[tariff.season] || tariff.season}${tariff.verified ? '' : ' — ⚠️ prices not verified yet'}${tariff.suspicious ? ' — ⚠️ typo in the price row' : ''}`
+      : '';
+    const seasonTiers = tariff?.tiers
+      ? tariff.tiers.map((v, i) => (v ? `${TIER_LABELS[i]}: ${money(v)}` : null)).filter(Boolean).join(' · ')
+      : '';
     const open = state.expanded.has(car.id);
     const upcoming = car.segments.filter((s) => Date.parse(s.to) > Date.now());
     const tariffs = car.tariffs.length
@@ -441,6 +455,9 @@
             <dl>
               <dt>In Avtoprokat</dt><dd>${esc(car.wsModel)} · ID ${esc(car.id)}</dd>
               ${!car.model ? '<dt>Sheet</dt><dd class="warn">Not matched in the Vehicles sheet</dd>' : ''}
+              ${seasonText ? `<dt>Season today</dt><dd${tariff.verified && !tariff.suspicious ? '' : ' class="warn"'}>${esc(seasonText)}</dd>` : ''}
+              ${seasonTiers ? `<dt>Price list</dt><dd>${esc(seasonTiers)}${tariff.overKm ? ` · over-mileage ${esc(money(tariff.overKm))}/km` : ''}</dd>` : ''}
+              ${tariff && !tariff.tiers ? '<dt>Price list</dt><dd class="warn">No row for this plate</dd>' : ''}
               ${tariffs ? `<dt>Tariffs</dt><dd>${esc(tariffs)}</dd>` : ''}
               ${tiers ? `<dt>Catalog</dt><dd>${esc(tiers)}</dd>` : ''}
               <dt>Next 7 days</dt><dd>${car.freeWeek ? 'Free the whole week' : 'Has bookings/rentals'}</dd>

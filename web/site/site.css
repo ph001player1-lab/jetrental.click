@@ -65,10 +65,10 @@ h3 { font-size: 19px; font-weight: 700; }
 
 .header { position: sticky; top: 0; z-index: 50; background: rgba(255, 255, 255, .88); backdrop-filter: saturate(160%) blur(12px); border-bottom: 1px solid rgba(11, 31, 51, .06); }
 .header__inner { display: flex; align-items: center; gap: 24px; height: 68px; }
-.logo { display: inline-flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 800; letter-spacing: -.03em; color: var(--navy); text-decoration: none; }
-.logo b { color: var(--sea); font-weight: 800; }
-.logo--light { color: var(--white); }
-.logo--light b { color: var(--sea-light); }
+.logo { display: inline-flex; align-items: center; flex: none; text-decoration: none; }
+.logo img { height: 50px; width: auto; }
+.logo--light img { height: 44px; }
+@media (max-width: 560px) { .logo img { height: 40px; } }
 .nav { display: flex; gap: 22px; }
 .nav a { color: var(--ink); text-decoration: none; font-weight: 600; font-size: 15px; }
 .nav a:hover { color: var(--sea); }

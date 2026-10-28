@@ -64,9 +64,14 @@ a { color: var(--brand); }
 
 /* --- Общие элементы --- */
 
-.brand { display: flex; align-items: center; gap: 10px; font-size: 17px; letter-spacing: -.01em; }
-.brand b { color: var(--brand); font-weight: 700; }
-.brand--big { font-size: 22px; margin-bottom: 28px; }
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand img { height: 34px; width: auto; display: block; }
+.brand__tag {
+  font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; padding: 3px 8px;
+  border-radius: 999px; background: var(--brand); color: var(--brand-ink);
+}
+.brand--big { margin-bottom: 28px; }
+.brand--big img { height: 64px; }
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
@@ -110,7 +115,7 @@ a { color: var(--brand); }
   position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 12px;
   padding: 10px 12px 10px 16px; background: var(--navy); color: #fff;
 }
-.topbar .brand b { color: #5eead4; }
+.topbar .brand__tag { background: #5eead4; color: #062a27; }
 .topbar__right { margin-left: auto; display: flex; gap: 2px; }
 
 .statusline { display: flex; justify-content: space-between; gap: 12px; padding: 10px 16px 0; font-size: 13px; max-width: 1100px; margin: 0 auto; }

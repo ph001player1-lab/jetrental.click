@@ -4,13 +4,16 @@
  * ============================================================================
  * Vehicles — единицы техники (госномер, статус, даты текущей аренды) и
  *            колонка «Модель для клиента», которая объединяет одинаковые байки.
- * Catalog  — одна строка на модель: цены по срокам аренды и депозит.
+ * Catalog  — одна строка на модель: цена «от», описание, фото.
+ * Сезоны + «Прайс …» — цены каждой единицы по сезонам (pricing.js): из них
+ *            считается точная стоимость на даты.
  *
  * Таблица читается не чаще раза в 2 минуты, чтобы не упираться в лимиты Google.
  * ============================================================================
  */
 
-import { getRows, sheetsEnabled } from './google/sheets.js';
+import { getRows, getValues, sheetsEnabled } from './google/sheets.js';
+import { parsePrice, buildPricing, priceSheetNames, SEASONS_SHEET, quotePlate } from './pricing.js';
 import { listActiveRequests } from './db.js';
 import * as ws from './ws/api.js';
 
@@ -32,7 +35,8 @@ const VEHICLE_COL = {
 const CATALOG_COL = {
   model: 'Модель для клиента',
   type: 'Тип',
-  priceFrom: 'Цена от ฿/день (как на сайте)',
+  // Заголовок менялся («как на сайте» → «из прайса …»): ищем по началу
+  priceFrom: 'Цена от ฿/день',
   pricePerDay: 'Цена ฿/день (1–6 дней)',
   pricePerDayWeek: 'Цена ฿/день (7–29 дней)',
   pricePerDayMonth: 'Цена ฿/день (от 30 дней)',
@@ -58,22 +62,32 @@ export function parseSheetDate(value) {
   return m ? m[0] : null;
 }
 
-/** '1 200' / '1200,00' / '฿1,200' → 1200 */
-function parsePrice(value) {
-  const text = String(value || '').replace(/[\s ฿]/g, '');
-  if (!text) return null;
-  const normalized = /,\d{1,2}$/.test(text) ? text.replace(/\./g, '').replace(',', '.') : text.replace(/,/g, '');
-  const number = Math.round(parseFloat(normalized));
-  return Number.isFinite(number) && number > 0 ? number : null;
+/** Значение колонки, заголовок которой начинается с prefix */
+function byPrefix(row, prefix) {
+  const key = Object.keys(row).find((k) => k.startsWith(prefix));
+  return key ? row[key] : '';
+}
+
+/** Сезоны и листы цен; null — если листа «Сезоны» нет или он пуст */
+async function loadPricing() {
+  const seasonRows = await getRows(SEASONS_SHEET);
+  const names = priceSheetNames(seasonRows);
+  if (!names.length) return null;
+  const sheets = await Promise.all(names.map((name) => getValues(`'${name}'!A2:I`).catch((err) => {
+    console.error(`Price sheet "${name}" load failed:`, err.message);
+    return [];
+  })));
+  return buildPricing(seasonRows, new Map(names.map((name, i) => [name, sheets[i]])));
 }
 
 async function loadFleet() {
   if (cache && Date.now() - cache.loadedAt < CACHE_MS) return cache;
 
   try {
-    const [vehicleRows, catalogRows] = await Promise.all([
+    const [vehicleRows, catalogRows, pricing] = await Promise.all([
       getRows(VEHICLES_SHEET),
-      getRows(CATALOG_SHEET).catch(() => [])
+      getRows(CATALOG_SHEET).catch(() => []),
+      loadPricing().catch(() => null)
     ]);
 
     const catalog = new Map();
@@ -82,7 +96,7 @@ async function loadFleet() {
       if (!name) continue;
       catalog.set(name, {
         type: TYPE_KEYS[row[CATALOG_COL.type]] || null,
-        priceFrom: parsePrice(row[CATALOG_COL.priceFrom]),
+        priceFrom: parsePrice(byPrefix(row, CATALOG_COL.priceFrom)),
         pricePerDay: parsePrice(row[CATALOG_COL.pricePerDay]),
         pricePerDayWeek: parsePrice(row[CATALOG_COL.pricePerDayWeek]),
         pricePerDayMonth: parsePrice(row[CATALOG_COL.pricePerDayMonth]),
@@ -105,7 +119,7 @@ async function loadFleet() {
       };
     });
 
-    cache = { loadedAt: Date.now(), units, catalog };
+    cache = { loadedAt: Date.now(), units, catalog, pricing };
     lastError = null;
     return cache;
   } catch (err) {
@@ -207,7 +221,7 @@ async function freeByWs(units, vehicleType, from, to, days) {
  * на эти даты, «придерживают» единицы.
  */
 export async function findAvailableModels(vehicleType, from, to) {
-  const { units, catalog } = await loadFleet();
+  const { units, catalog, pricing } = await loadFleet();
   const days = Math.round((Date.parse(to) - Date.parse(from)) / 86400000);
 
   let byModel = null;
@@ -226,9 +240,16 @@ export async function findAvailableModels(vehicleType, from, to) {
   const result = [];
   for (const [model, { plates, wsPrices }] of byModel) {
     if (plates.length - (held.get(model) || 0) <= 0) continue;
-    // Цена из Автопроката (самая низкая среди свободных единиц), иначе из листа Catalog
+    // Цена: сезонный прайс (самая дешёвая из свободных единиц) → тарифы
+    // Автопроката → цена «от» из листа Catalog
+    const quoted = plates
+      .map((plate) => ({ plate, price: quotePlate(pricing, plateKey(plate), from, to) }))
+      .filter((q) => q.price)
+      .sort((a, b) => a.price.total - b.price.total);
     const wsPrice = wsPrices.sort((a, b) => a.perDay - b.perDay)[0];
-    result.push({ model, freePlates: plates, price: wsPrice || priceFor(catalog.get(model), days) });
+    // Самую дешёвую единицу ставим первой — менеджер увидит её в карточке заявки
+    const freePlates = quoted.length ? [quoted[0].plate, ...plates.filter((p) => p !== quoted[0].plate)] : plates;
+    result.push({ model, freePlates, price: quoted[0]?.price || wsPrice || priceFor(catalog.get(model), days) });
   }
 
   // Сначала модели с ценой (от дешёвых к дорогим), потом без цены по алфавиту
@@ -257,6 +278,8 @@ export function fleetStatus() {
     enabled: sheetsEnabled,
     units: cache ? cache.units.length : 0,
     catalogModels: cache ? cache.catalog.size : 0,
+    seasons: cache?.pricing ? cache.pricing.seasons.length : 0,
+    verifiedSeasons: cache?.pricing ? [...new Set(cache.pricing.seasons.filter((s) => s.verified).map((s) => s.name))] : [],
     loadedAt: cache ? new Date(cache.loadedAt).toISOString() : null,
     error: lastError,
     wsAvailabilityError: wsError
