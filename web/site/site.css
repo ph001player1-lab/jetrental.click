@@ -196,6 +196,8 @@ a.topbar__item:hover { color: var(--white); }
 .vcard__media { position: relative; aspect-ratio: 16 / 11; background: radial-gradient(circle at 50% 70%, #ffffff 0, #eef3f7 70%); display: grid; place-items: center; padding: 14px; }
 .section--sand .vcard__media { background: radial-gradient(circle at 50% 70%, #ffffff 0, #f3ede3 75%); }
 .vcard__media img { width: 100%; height: 100%; object-fit: contain; }
+.vcard__media--photo { padding: 0; }
+.vcard__media--photo img { object-fit: cover; }
 .vcard__placeholder { font-size: 64px; opacity: .5; }
 .badge { position: absolute; top: 12px; left: 12px; display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; font-size: 12px; font-weight: 800; background: var(--white); box-shadow: 0 2px 8px rgba(11, 31, 51, .1); }
 .badge::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
@@ -265,6 +267,7 @@ a.topbar__item:hover { color: var(--white); }
 .icon-btn--tg { background: var(--tg); color: var(--white); }
 .staff-link--footer { margin-left: 6px; padding: 8px 14px; font-size: 13px; }
 .footer__copy { flex-basis: 100%; margin: 0; font-size: 14px; }
+.footer__copy a { color: inherit; }
 @media (max-width: 700px) { .footer__social { margin-left: 0; } }
 
 /* --- Окно бронирования --- */
@@ -275,6 +278,7 @@ a.topbar__item:hover { color: var(--white); }
 .dialog__close { position: absolute; top: 12px; right: 12px; width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--sand); font-size: 24px; line-height: 1; cursor: pointer; color: var(--navy); }
 .dialog__vehicle { display: flex; gap: 16px; align-items: center; padding-right: 36px; }
 .dialog__vehicle img { width: 132px; height: 92px; object-fit: contain; flex: none; border-radius: 14px; background: radial-gradient(circle at 50% 70%, #fff, #eef3f7 75%); }
+.dialog__vehicle img.is-photo { object-fit: cover; }
 .dialog__vehicle .eyebrow { margin-bottom: 4px; }
 .dialog__vehicle p.muted { margin: 4px 0 0; }
 .dialog__alt { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; font-size: 14px; color: var(--muted); }

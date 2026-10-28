@@ -151,11 +151,14 @@
 
   const icon = (name, size = 20) => `<svg width="${size}" height="${size}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 
+  /** Фото с фоном (.jpg) заполняют карточку целиком, вырезанные (.webp/.png) — по центру */
+  const isFullPhoto = (photo) => /\.jpe?g$/i.test(photo || '');
+
   function media(item, badge = '') {
     const img = item.photo
       ? `<img src="${esc(item.photo)}" alt="${esc(item.model)}" loading="lazy" width="320" height="220" />`
       : `<span class="vcard__placeholder" aria-hidden="true">${TYPE_ICON[item.type] || '🚘'}</span>`;
-    return `<div class="vcard__media">${badge}${img}</div>`;
+    return `<div class="vcard__media${isFullPhoto(item.photo) ? ' vcard__media--photo' : ''}">${badge}${img}</div>`;
   }
 
   function availabilityBadge(item) {
@@ -334,6 +337,7 @@
     $('#book-title').textContent = model;
     const photo = $('#book-photo');
     photo.hidden = !info.photo;
+    photo.classList.toggle('is-photo', isFullPhoto(info.photo));
     if (info.photo) photo.src = info.photo;
 
     const from = state.search?.from || addDays(todayIso(), 1);
