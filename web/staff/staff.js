@@ -160,6 +160,29 @@
   async function requestCode(email) {
     state.loginEmail = email.trim().toLowerCase();
     await api('/login', { body: { email: state.loginEmail } });
+    savePending(state.loginEmail);
+  }
+
+  // Отправленный код помним 10 минут: ярлык на телефоне может перезагрузить
+  // страницу, пока сотрудник смотрит письмо, — тогда сразу открываем ввод кода
+  const PENDING_KEY = 'jr_staff_pending_login';
+  const PENDING_MS = 10 * 60 * 1000;
+
+  function savePending(email) {
+    try { localStorage.setItem(PENDING_KEY, JSON.stringify({ email, at: Date.now() })); } catch { /* хранилище недоступно */ }
+  }
+
+  function clearPending() {
+    try { localStorage.removeItem(PENDING_KEY); } catch { /* хранилище недоступно */ }
+  }
+
+  function pendingEmail() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(PENDING_KEY) || 'null');
+      if (saved?.email && Date.now() - saved.at < PENDING_MS) return saved.email;
+    } catch { /* хранилище недоступно */ }
+    clearPending();
+    return '';
   }
 
   function withBusy(form, fn) {
@@ -192,6 +215,7 @@
       const code = $('#code').value.replace(/\D/g, '');
       if (code.length !== 6) throw Object.assign(new Error(), { code: 'invalid_code' });
       const data = await api('/verify', { body: { email: state.loginEmail, code } });
+      clearPending();
       state.user = data.user;
       startApp();
     }));
@@ -211,7 +235,7 @@
         setLoginError(ERRORS[err.code] || 'Could not send a new code.');
       }
     });
-    $('#change-email').addEventListener('click', () => showLogin('email'));
+    $('#change-email').addEventListener('click', () => { clearPending(); showLogin('email'); });
   }
 
   /* ----------------------------------------------------------- Приложение */
@@ -640,10 +664,12 @@
     bindApp();
     try {
       const data = await api('/me');
+      clearPending();
       state.user = data.user;
       startApp();
     } catch {
-      showLogin('email');
+      state.loginEmail = pendingEmail();
+      showLogin(state.loginEmail ? 'code' : 'email');
     }
   }
 
