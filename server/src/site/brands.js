@@ -27,8 +27,10 @@ const BRANDS = {
     email: 'info@jetrental.click',
     assets: 'img/brand',
     logo: { width: 341, height: 120 },
+    wordmark: 'JETRENTAL',
     googleVerification: [],
-    indexable: false
+    indexable: false,
+    theme: 'modern'
   },
   kokoncar: {
     id: 'kokoncar',
@@ -37,6 +39,7 @@ const BRANDS = {
     email: 'info@kokoncar.rent',
     assets: 'img/brand/kokoncar',
     logo: { width: 344, height: 160 },
+    wordmark: 'KOKON CAR',
     // Метка Google Search Console со старого сайта на Wix — чтобы подтверждение не слетело
     googleVerification: ['q_ZYOKxSsfoUE_qybSHBRXAWbm-yb936bQnAFzPTRnM'],
     indexable: true
@@ -44,16 +47,19 @@ const BRANDS = {
 };
 
 /**
- * Бренд по заголовку Host: { ...бренд, host, origin, indexable } или null —
- * домен не наш сайт (например, bot.jetrental.click с вебхуками).
+ * Бренд по заголовку Host: { ...бренд, host, origin, indexable, theme } или
+ * null — домен не наш сайт (например, bot.jetrental.click с вебхуками).
+ * Дизайн (theme): 'classic' — как старый kokoncar.com на Wix, 'modern' — новый.
+ * Тестовая копия KokonCar — classic, jetrental.click — modern (между ними
+ * выбирают), на kokoncar.com — настройка KOKON_THEME (по умолчанию classic).
  */
 export function brandForHost(hostHeader) {
   const host = String(hostHeader || '').toLowerCase().replace(/:\d+$/, '');
   const { site } = config;
   if (site.kokonPreviewHosts.includes(host)) {
-    return { ...CONTACTS, ...BRANDS.kokoncar, host, origin: `https://${host}`, indexable: false };
+    return { ...CONTACTS, ...BRANDS.kokoncar, host, origin: `https://${host}`, indexable: false, theme: 'classic' };
   }
-  if (site.kokonHosts.includes(host)) return { ...CONTACTS, ...BRANDS.kokoncar, host };
+  if (site.kokonHosts.includes(host)) return { ...CONTACTS, ...BRANDS.kokoncar, host, theme: site.kokonTheme };
   if (site.jetrentalHosts.includes(host)) return { ...CONTACTS, ...BRANDS.jetrental, host };
   return null;
 }

@@ -178,7 +178,20 @@ window.JR_I18N = {
     'nf.metaTitle': 'Page not found | {brand}',
     'nf.title': 'Page not found',
     'nf.text': 'The page may have moved. Choose a vehicle or go to the home page.',
-    'nf.home': 'Home page'
+    'nf.home': 'Home page',
+
+    // Дизайн как на старом kokoncar.com (classic)
+    'cl.insurance': 'Insurance',
+    'cl.help': 'Help on the road',
+    'cl.delivery': 'Fast delivery',
+    'cl.service': 'Service 24/7',
+    'cl.from': 'from {price}',
+    'cl.perDay': '{price}/day',
+    'card.seeMore': 'See more',
+    'form.firstNamePh': 'First name',
+    'form.phonePh': 'Your phone number connected to WhatsApp',
+    'form.emailPh': 'Enter your email address',
+    'form.messagePh': 'Write your preferred messenger (WhatsApp, Telegram, Line)'
   },
 
   ru: {
@@ -353,7 +366,20 @@ window.JR_I18N = {
     'nf.metaTitle': 'Страница не найдена | {brand}',
     'nf.title': 'Страница не найдена',
     'nf.text': 'Возможно, страница переехала. Выберите технику или перейдите на главную.',
-    'nf.home': 'На главную'
+    'nf.home': 'На главную',
+
+    // Дизайн как на старом kokoncar.com (classic)
+    'cl.insurance': 'Страховка',
+    'cl.help': 'Помощь в дороге',
+    'cl.delivery': 'Быстрая доставка',
+    'cl.service': 'Сервис 24/7',
+    'cl.from': 'от {price}',
+    'cl.perDay': '{price}/сутки',
+    'card.seeMore': 'Подробнее',
+    'form.firstNamePh': 'Имя',
+    'form.phonePh': 'Номер телефона с WhatsApp',
+    'form.emailPh': 'Ваш email',
+    'form.messagePh': 'Напишите, где удобнее общаться (WhatsApp, Telegram, Line)'
   },
 
   th: {
@@ -528,7 +554,20 @@ window.JR_I18N = {
     'nf.metaTitle': 'ไม่พบหน้านี้ | {brand}',
     'nf.title': 'ไม่พบหน้านี้',
     'nf.text': 'หน้านี้อาจถูกย้ายแล้ว เลือกรถหรือไปที่หน้าแรก',
-    'nf.home': 'หน้าแรก'
+    'nf.home': 'หน้าแรก',
+
+    // Дизайн как на старом kokoncar.com (classic)
+    'cl.insurance': 'ประกันภัย',
+    'cl.help': 'ช่วยเหลือระหว่างทาง',
+    'cl.delivery': 'ส่งรถรวดเร็ว',
+    'cl.service': 'บริการ 24/7',
+    'cl.from': 'เริ่มต้น {price}',
+    'cl.perDay': '{price}/วัน',
+    'card.seeMore': 'ดูเพิ่มเติม',
+    'form.firstNamePh': 'ชื่อ',
+    'form.phonePh': 'เบอร์โทรที่ใช้ WhatsApp',
+    'form.emailPh': 'อีเมลของคุณ',
+    'form.messagePh': 'ช่องทางที่สะดวกให้ติดต่อ (WhatsApp, Telegram, Line)'
   },
 
   zh: {
@@ -703,6 +742,19 @@ window.JR_I18N = {
     'nf.metaTitle': '页面不存在 | {brand}',
     'nf.title': '页面不存在',
     'nf.text': '页面可能已移动。请选择车辆或返回首页。',
-    'nf.home': '返回首页'
+    'nf.home': '返回首页',
+
+    // Дизайн как на старом kokoncar.com (classic)
+    'cl.insurance': '保险',
+    'cl.help': '道路救援',
+    'cl.delivery': '快速送车',
+    'cl.service': '24/7 服务',
+    'cl.from': '{price} 起',
+    'cl.perDay': '{price}/天',
+    'card.seeMore': '查看详情',
+    'form.firstNamePh': '名字',
+    'form.phonePh': '绑定 WhatsApp 的手机号',
+    'form.emailPh': '您的邮箱',
+    'form.messagePh': '您常用的联系方式（WhatsApp、Telegram、Line）'
   }
 };

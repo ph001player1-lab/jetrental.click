@@ -77,6 +77,8 @@ export const config = {
     kokonHosts: hostList(process.env.KOKON_HOSTS, 'www.kokoncar.com,kokoncar.com'),
     // Тестовая копия KokonCar до переезда домена — закрыта от поисковиков
     kokonPreviewHosts: hostList(process.env.KOKON_PREVIEW_HOSTS, 'kokon.jetrental.click'),
+    // Дизайн kokoncar.com после переезда: classic (как на Wix) или modern
+    kokonTheme: process.env.KOKON_THEME === 'modern' ? 'modern' : 'classic',
     // Коды подтверждения Яндекс.Вебмастера / Google Search Console (через запятую)
     yandexVerification: (process.env.YANDEX_VERIFICATION || '').split(',').map((s) => s.trim()).filter(Boolean),
     googleVerification: (process.env.GOOGLE_VERIFICATION || '').split(',').map((s) => s.trim()).filter(Boolean)

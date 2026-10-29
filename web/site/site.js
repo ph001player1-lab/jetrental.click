@@ -26,6 +26,8 @@
   const LOCALES = { en: 'en-GB', ru: 'ru-RU', th: 'th-TH', zh: 'zh-CN' };
   const TYPE_ICON = { scooter: '🛵', motorcycle: '🏍', car: '🚗' };
   const CATEGORY = { scooter: 'scooters', motorcycle: 'motorbikes', car: 'cars' };
+  // Дизайн страницы: 'modern' (новый) или 'classic' (как старый kokoncar.com)
+  const CLASSIC = document.body.dataset.theme === 'classic';
   const DAY_MS = 86400000;
 
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -132,9 +134,9 @@
     const img = event.target;
     if (!(img instanceof HTMLImageElement)) return;
     if (img.id === 'book-photo') { img.hidden = true; return; }
-    const box = img.closest('.vcard__media');
+    const box = img.closest('.vcard__media, .cl-card__media, .cl-model__media');
     if (!box) return;
-    box.classList.remove('vcard__media--photo');
+    box.classList.remove('vcard__media--photo', 'is-photo');
     img.outerHTML = `<span class="vcard__placeholder" aria-hidden="true">${img.dataset.icon || '🚘'}</span>`;
   }, true);
 
@@ -157,9 +159,40 @@
     return `<div class="vcard__price"><span class="vcard__ask">${esc(t('card.ask'))}</span></div>`;
   }
 
+  // Значки плашек карточки (как в server/src/site/classic.js)
+  const ICON_SPEC = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" d="M12 8.2a3.8 3.8 0 1 0 0 7.6 3.8 3.8 0 0 0 0-7.6zm0-5.2 1.3 2.4 2.7-.6.6 2.7 2.4 1.3-1.2 2.5 1.2 2.5-2.4 1.3-.6 2.7-2.7-.6L12 21l-1.3-2.4-2.7.6-.6-2.7L5 15.2l1.2-2.5L5 10.2l2.4-1.3.6-2.7 2.7.6z"/></svg>';
+  const ICON_PRICE = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" d="M3.5 12.6 11.4 4.7a1.6 1.6 0 0 1 1.2-.5H19a.8.8 0 0 1 .8.8v6.4a1.6 1.6 0 0 1-.5 1.2l-7.9 7.9a1.6 1.6 0 0 1-2.3 0l-5.6-5.6a1.6 1.6 0 0 1 0-2.3zM16 8.1a.9.9 0 1 0 0-1.8.9.9 0 0 0 0 1.8zM9.6 13.3l3.1 3.1M8 15l1.8 1.8"/></svg>';
+
+  /** Карточка результата подбора в дизайне classic — как карточки на страницах */
+  function classicResultCard(option, search, info, waText) {
+    const words = option.model.split(/\s+/);
+    const n = /^royal enfield/i.test(option.model) ? 2 : 1;
+    const href = modelUrl(info);
+    const baht = (v) => `${new Intl.NumberFormat('en-US').format(v)}฿`;
+    const price = option.price?.total
+      ? `<li>${ICON_PRICE}<span>${esc(t('cl.perDay', { price: baht(option.price.perDay) }))}</span></li>`
+      : `<li>${ICON_PRICE}<span>${option.price?.fromPerDay ? esc(t('cl.from', { price: baht(option.price.fromPerDay) })) : esc(t('card.ask'))}</span></li>`;
+    const total = option.price?.total ? `<p class="cl-card__total">${t('card.total', { total: money(option.price.total), days: esc(daysText(search.days)) })}</p>` : '';
+    const photo = info.photo
+      ? `<img src="${esc(info.photo)}" alt="${esc(option.model)}" loading="lazy" width="320" height="220" data-icon="${TYPE_ICON[info.type] || '🚘'}" />`
+      : `<span class="vcard__placeholder" aria-hidden="true">${TYPE_ICON[info.type] || '🚘'}</span>`;
+    return `
+      <article class="cl-card">
+        <${href ? `a href="${esc(href)}"` : 'div'} class="cl-card__media${isFullPhoto(info.photo) ? ' is-photo' : ''}"><span class="badge badge--free">${esc(t('badge.dates'))}</span>${photo}</${href ? 'a' : 'div'}>
+        <h3 class="cl-card__title">${href ? `<a href="${esc(href)}">` : '<span>'}<b>${esc(words.slice(0, n).join(' '))}</b> <span>${esc(words.slice(n).join(' '))}</span>${href ? '</a>' : '</span>'}</h3>
+        <ul class="cl-card__pills">${info.description ? `<li>${ICON_SPEC}<span>${esc(info.description)}</span></li>` : ''}${price}</ul>
+        ${total}
+        <div class="cl-card__actions">
+          <button class="cl-btn cl-btn--dark" type="button" data-book="${esc(option.model)}" data-type="${esc(search.type)}">${esc(t('card.book'))}</button>
+          <a class="cl-btn cl-btn--wa" href="${esc(waLink(waText))}" target="_blank" rel="noopener">${icon('wa', 18)}What'sApp</a>
+        </div>
+      </article>`;
+  }
+
   function resultCard(option, search) {
     const info = state.catalog.get(option.model) || { model: option.model, type: search.type };
     const waText = t('wa.modelDates', { model: option.model, from: niceDate(search.from), to: niceDate(search.to) });
+    if (CLASSIC) return classicResultCard(option, search, info, waText);
     return `
       <article class="vcard">
         ${media({ ...info, model: option.model }, `<span class="badge badge--free">${esc(t('badge.dates'))}</span>`)}
@@ -419,9 +452,56 @@
     });
   }
 
+  /* -------------------------------------------- Анимации и карусели (classic) */
+
+  // Блоки с data-reveal плавно появляются, когда доходят до экрана; карточки
+  // в одном ряду — друг за другом
+  function bindReveal() {
+    const items = document.querySelectorAll('[data-reveal]');
+    window.__reveal = true;
+    if (!items.length) return;
+    if (!('IntersectionObserver' in window) || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      items.forEach((el) => el.classList.add('is-in'));
+      return;
+    }
+    document.querySelectorAll('.cl-slider__track, .cl-grid').forEach((row) => {
+      [...row.children].forEach((el, i) => el.style.setProperty('--delay', `${Math.min(i, 6) * 0.08}s`));
+    });
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        entry.target.classList.add('is-in');
+        observer.unobserve(entry.target);
+      }
+    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
+    items.forEach((el) => observer.observe(el));
+  }
+
+  // Стрелки карусели листают примерно на ширину экрана
+  function bindSliders() {
+    document.querySelectorAll('[data-slider]').forEach((slider) => {
+      const track = $('.cl-slider__track', slider);
+      const prev = $('[data-slide="-1"]', slider);
+      const next = $('[data-slide="1"]', slider);
+      const update = () => {
+        prev.disabled = track.scrollLeft < 8;
+        next.disabled = track.scrollLeft + track.clientWidth >= track.scrollWidth - 8;
+      };
+      slider.addEventListener('click', (e) => {
+        const arrow = e.target.closest('[data-slide]');
+        if (arrow) track.scrollBy({ left: Number(arrow.dataset.slide) * track.clientWidth * 0.8, behavior: 'smooth' });
+      });
+      track.addEventListener('scroll', update, { passive: true });
+      window.addEventListener('resize', update);
+      update();
+    });
+  }
+
   bindHeader();
   bindSearch();
   bindBooking();
   bindContact();
+  bindReveal();
+  bindSliders();
   loadCatalog();
 })();

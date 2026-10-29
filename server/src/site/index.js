@@ -22,7 +22,9 @@ import { pagePath, splitLang, TYPE_BY_CATEGORY, TYPE_ORDER } from './urls.js';
 import { siteCatalog, modelTariffs } from './data.js';
 import { catalogVersion } from '../publicApi.js';
 import { legacyTarget } from './legacy.js';
-import { renderHome, renderCategory, renderModel, renderNotFound, esc } from './render.js';
+import * as modern from './render.js';
+import * as classic from './classic.js';
+import { esc } from './common.js';
 
 const PAGE_CACHE_MS = 60 * 1000;
 const pageCache = new Map();
@@ -46,10 +48,13 @@ function assetUrl(name) {
   }
 }
 
+const THEMES = { modern, classic };
+
 function context(brand, lang) {
   return {
     brand,
     lang,
+    theme: THEMES[brand.theme] ? brand.theme : 'modern',
     t: translator(lang, brand.name),
     assetUrl,
     year: new Date().getFullYear(),
@@ -174,7 +179,8 @@ export async function handleSite(req, res, url) {
     const { lang } = splitLang(pathname);
     res.setHeader('Retry-After', '300');
     // Главная с сообщением «каталог не загрузился» и контактами
-    sendHtml(req, res, 503, renderHome(context(brand, lang), data), brand);
+    const ctx = context(brand, lang);
+    sendHtml(req, res, 503, THEMES[ctx.theme].renderHome(ctx, data), brand);
     return true;
   }
   if (pathname === '/sitemap.xml') {
@@ -204,17 +210,18 @@ export async function handleSite(req, res, url) {
   }
 
   const ctx = context(brand, found.lang);
+  const theme = THEMES[ctx.theme];
   let status = 200;
   let html;
   if (found.notFound) {
     status = 404;
-    html = renderNotFound(ctx, data);
+    html = theme.renderNotFound(ctx, data);
   } else if (found.page.kind === 'home') {
-    html = renderHome(ctx, data);
+    html = theme.renderHome(ctx, data);
   } else if (found.page.kind === 'category') {
-    html = renderCategory(ctx, data, found.page.type);
+    html = theme.renderCategory(ctx, data, found.page.type);
   } else {
-    html = renderModel(ctx, data, found.page.item, await modelTariffs(found.page.item.model));
+    html = theme.renderModel(ctx, data, found.page.item, await modelTariffs(found.page.item.model));
   }
 
   // Страницы 404 не кэшируем: случайные адреса не должны занимать память
