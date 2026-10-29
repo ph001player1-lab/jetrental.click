@@ -267,6 +267,11 @@ export function getFleet() {
   return loadFleet();
 }
 
+/** Перечитать таблицу при следующем обращении (после правки с сайта сотрудников) */
+export function invalidateFleet() {
+  if (cache) cache.loadedAt = 0;
+}
+
 /** Загрузка при старте сервера, чтобы /health сразу показывал состояние таблицы */
 export function warmUpFleet() {
   if (!sheetsEnabled) return;

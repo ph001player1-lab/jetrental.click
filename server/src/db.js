@@ -80,6 +80,21 @@ db.exec(`
   );
 `);
 
+// Кто и когда менял фото и описания моделей через сайт сотрудников
+db.exec(`
+  CREATE TABLE IF NOT EXISTS catalog_changes (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TEXT NOT NULL,
+    model      TEXT NOT NULL,
+    field      TEXT NOT NULL,
+    old_value  TEXT,
+    new_value  TEXT,
+    by_email   TEXT NOT NULL,
+    by_name    TEXT
+  );
+  CREATE INDEX IF NOT EXISTS catalog_changes_model ON catalog_changes (model);
+`);
+
 // Колонки, добавленные после первого запуска: дописываем в существующую базу
 const requestColumns = db.prepare('PRAGMA table_info(requests)').all().map((c) => c.name);
 for (const [name, type] of [
@@ -268,4 +283,20 @@ export function deleteStaffSession(tokenHash) {
 /** Последние заявки для сайта сотрудников */
 export function listRecentRequests(limit = 100) {
   return db.prepare("SELECT * FROM requests WHERE channel != 'test' ORDER BY id DESC LIMIT ?").all(Number(limit));
+}
+
+/* --- Изменения каталога с сайта сотрудников --- */
+
+export function logCatalogChange({ model, field, oldValue, newValue, email, name }) {
+  db.prepare('INSERT INTO catalog_changes (created_at, model, field, old_value, new_value, by_email, by_name) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run(nowIso(), model, field, oldValue ?? null, newValue ?? null, email, name || null);
+}
+
+/** Последнее изменение каждой модели: модель → { at, by, field } */
+export function lastCatalogChanges() {
+  const rows = db.prepare(`
+    SELECT c.model, c.created_at, c.by_name, c.by_email, c.field FROM catalog_changes c
+    JOIN (SELECT model, MAX(id) AS id FROM catalog_changes GROUP BY model) last ON last.id = c.id
+  `).all();
+  return new Map(rows.map((r) => [r.model, { at: r.created_at, by: r.by_name || r.by_email, field: r.field }]));
 }

@@ -1,7 +1,10 @@
 /**
  * Бренды сайта. Код и данные одни, а название, логотип, почта и основной
  * адрес зависят от домена: kokoncar.com — KokonCar, jetrental.click — JetRental.
- * Тестовая копия KokonCar (kokon.jetrental.click) закрыта от поисковиков.
+ * Поисковикам открыт только kokoncar.com: тестовая копия KokonCar
+ * (kokon.jetrental.click) и jetrental.click закрыты, чтобы в поиске не было
+ * двух одинаковых сайтов. После переезда jetrental.click будет переадресовывать
+ * на kokoncar.com (это делает Caddy).
  */
 
 import { config } from '../config.js';
@@ -24,7 +27,8 @@ const BRANDS = {
     email: 'info@jetrental.click',
     assets: 'img/brand',
     logo: { width: 341, height: 120 },
-    googleVerification: []
+    googleVerification: [],
+    indexable: false
   },
   kokoncar: {
     id: 'kokoncar',
@@ -34,21 +38,22 @@ const BRANDS = {
     assets: 'img/brand/kokoncar',
     logo: { width: 344, height: 160 },
     // Метка Google Search Console со старого сайта на Wix — чтобы подтверждение не слетело
-    googleVerification: ['q_ZYOKxSsfoUE_qybSHBRXAWbm-yb936bQnAFzPTRnM']
+    googleVerification: ['q_ZYOKxSsfoUE_qybSHBRXAWbm-yb936bQnAFzPTRnM'],
+    indexable: true
   }
 };
 
 /**
- * Бренд по заголовку Host: { ...бренд, host, origin, preview } или null —
+ * Бренд по заголовку Host: { ...бренд, host, origin, indexable } или null —
  * домен не наш сайт (например, bot.jetrental.click с вебхуками).
  */
 export function brandForHost(hostHeader) {
   const host = String(hostHeader || '').toLowerCase().replace(/:\d+$/, '');
   const { site } = config;
   if (site.kokonPreviewHosts.includes(host)) {
-    return { ...CONTACTS, ...BRANDS.kokoncar, host, origin: `https://${host}`, preview: true };
+    return { ...CONTACTS, ...BRANDS.kokoncar, host, origin: `https://${host}`, indexable: false };
   }
-  if (site.kokonHosts.includes(host)) return { ...CONTACTS, ...BRANDS.kokoncar, host, preview: false };
-  if (site.jetrentalHosts.includes(host)) return { ...CONTACTS, ...BRANDS.jetrental, host, preview: false };
+  if (site.kokonHosts.includes(host)) return { ...CONTACTS, ...BRANDS.kokoncar, host };
+  if (site.jetrentalHosts.includes(host)) return { ...CONTACTS, ...BRANDS.jetrental, host };
   return null;
 }

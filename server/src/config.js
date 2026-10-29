@@ -3,6 +3,7 @@
  * окружения (на сервере — файл /opt/kokon/.env), в коде их нет.
  */
 
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /** 'a.com, B.com' → ['a.com', 'b.com'] */
@@ -10,10 +11,12 @@ function hostList(value, fallback) {
   return String(value || fallback).split(',').map((h) => h.trim().toLowerCase()).filter(Boolean);
 }
 
+const dataDir = process.env.DATA_DIR || '/data';
+
 export const config = {
   port: Number(process.env.PORT) || 3000,
   publicBaseUrl: (process.env.PUBLIC_BASE_URL || 'https://bot.jetrental.click').replace(/\/+$/, ''),
-  dataDir: process.env.DATA_DIR || '/data',
+  dataDir,
   timezone: 'Asia/Bangkok',
 
   google: {
@@ -68,6 +71,8 @@ export const config = {
   // скрипты отдаёт Caddy из папки web/site. Бренд выбирается по домену.
   site: {
     dir: process.env.SITE_DIR || fileURLToPath(new URL('../../web/site/', import.meta.url)),
+    // Фото, загруженные через сайт сотрудников (отдаёт Caddy по адресу /uploads/…)
+    uploadsDir: process.env.UPLOADS_DIR || path.join(dataDir, 'uploads'),
     jetrentalHosts: hostList(process.env.JETRENTAL_HOSTS, 'jetrental.click,www.jetrental.click'),
     kokonHosts: hostList(process.env.KOKON_HOSTS, 'www.kokoncar.com,kokoncar.com'),
     // Тестовая копия KokonCar до переезда домена — закрыта от поисковиков

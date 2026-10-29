@@ -13,6 +13,8 @@
  *   GET  /api/staff/me                        — кто вошёл
  *   GET  /api/staff/fleet                     — парк из Автопроката + цены
  *   GET  /api/staff/requests                  — заявки из ботов и сайта
+ *   /api/staff/models…                        — фото и описания моделей
+ *                                               для сайта (staffCatalog.js)
  *
  * В базе храним только хэши кодов и сессий.
  * ============================================================================
@@ -28,6 +30,7 @@ import { getWsSnapshot, wsSyncStatus } from './ws/sync.js';
 import { getFleet, sheetsEnabled, plateKey } from './fleet.js';
 import { tariffOn } from './pricing.js';
 import { todayIso } from './dates.js';
+import { canEdit, listModels, saveDescription, uploadPhoto } from './staffCatalog.js';
 
 const COOKIE = 'jr_staff';
 const MAX_ATTEMPTS = 5;
@@ -131,7 +134,7 @@ async function verify(req, res) {
 }
 
 function publicUser(staff) {
-  return { email: staff.email, name: staff.name, role: staff.role };
+  return { email: staff.email, name: staff.name, role: staff.role, canEdit: canEdit(staff) };
 }
 
 /** Сотрудник текущего запроса; 401, если не вошёл или доступ отозван */
@@ -231,13 +234,19 @@ async function requests(req, res) {
   sendJson(res, 200, { requests: rows });
 }
 
+/** Обработчик, которому нужен вошедший сотрудник: handler(staff, req, res, url) */
+const signedIn = (handler) => async (req, res, url) => handler(await requireStaff(req), req, res, url);
+
 const ROUTES = {
   'POST /api/staff/login': login,
   'POST /api/staff/verify': verify,
   'POST /api/staff/logout': logout,
   'GET /api/staff/me': me,
   'GET /api/staff/fleet': fleet,
-  'GET /api/staff/requests': requests
+  'GET /api/staff/requests': requests,
+  'GET /api/staff/models': signedIn(listModels),
+  'POST /api/staff/models/description': signedIn(saveDescription),
+  'POST /api/staff/models/photo': signedIn(uploadPhoto)
 };
 
 /** Обработчик для пути /api/staff/*; null — такого маршрута нет */

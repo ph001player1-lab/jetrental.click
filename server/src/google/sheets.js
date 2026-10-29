@@ -107,8 +107,9 @@ export async function appendRow(sheetName, values) {
   return match ? Number(match[1]) : null;
 }
 
-export async function updateRange(range, values) {
-  await sheetsRequest('PUT', `/values/${encodeRange(range)}?valueInputOption=USER_ENTERED`, { values });
+/** raw: true — записать текст как есть (без формул и автоформата: «=…» не станет формулой) */
+export async function updateRange(range, values, { raw = false } = {}) {
+  await sheetsRequest('PUT', `/values/${encodeRange(range)}?valueInputOption=${raw ? 'RAW' : 'USER_ENTERED'}`, { values });
 }
 
 export async function clearRange(range) {

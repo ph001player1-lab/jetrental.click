@@ -2,6 +2,7 @@
 <!--
   JetRental Staff — сайт для сотрудников (staff.jetrental.click).
   Вход по коду из письма, данные — из WS.Автопрокат через /api/staff/*.
+  При изменении staff.js / staff.css увеличивайте ?v=, чтобы телефоны не брали старый файл из кэша.
   Без сторонних библиотек: HTML + CSS + JS.
 -->
 <html lang="en">
@@ -19,7 +20,7 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="JR Staff" />
-  <link rel="stylesheet" href="staff.css" />
+  <link rel="stylesheet" href="staff.css?v=2" />
 </head>
 <body>
   <!-- Вход -->
@@ -90,6 +91,49 @@
     <nav class="tabs tabs--bottom" aria-label="Sections"></nav>
   </div>
 
-  <script src="staff.js"></script>
+  <!-- Фото и описание модели для сайта (вкладка Website) -->
+  <dialog id="model-dialog" class="sheet">
+    <form id="model-form" class="sheet__body" novalidate>
+      <div class="sheet__head">
+        <div>
+          <div class="muted" id="md-type"></div>
+          <h2 id="md-title"></h2>
+        </div>
+        <button type="button" class="icon-btn icon-btn--plain" data-close aria-label="Close">×</button>
+      </div>
+
+      <div class="md-frame" id="md-frame">
+        <img id="md-current" alt="" hidden />
+        <canvas id="md-canvas" hidden></canvas>
+        <span id="md-empty" class="muted">No photo yet</span>
+      </div>
+      <p class="md-caption muted">This is how the photo looks on the website card.</p>
+
+      <div class="md-photo">
+        <label class="btn">📷 Choose photo<input id="md-file" type="file" accept="image/*" hidden /></label>
+        <div id="md-options" hidden>
+          <div class="chips">
+            <button type="button" class="chip" data-mode="cutout">Fit — vehicle only</button>
+            <button type="button" class="chip" data-mode="photo">Fill the card</button>
+          </div>
+          <label class="check" id="md-white-wrap"><input type="checkbox" id="md-white" checked /> Remove white background</label>
+        </div>
+      </div>
+
+      <label class="field">
+        <span>Description on the card — e.g. “200 h.p. · Hybrid” or “350 cm³”</span>
+        <input id="md-desc" maxlength="100" autocomplete="off" />
+      </label>
+
+      <p class="muted md-hint">Changes appear on the website within 2 minutes. Best photos: the whole vehicle, side or 3/4 view, on a white or transparent background.</p>
+      <p id="md-status" class="md-status" role="status"></p>
+      <div class="md-buttons">
+        <button type="button" class="btn" data-close>Cancel</button>
+        <button type="submit" class="btn btn--primary" id="md-save">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="staff.js?v=2"></script>
 </body>
 </html>

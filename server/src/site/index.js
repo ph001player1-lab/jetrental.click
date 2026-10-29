@@ -20,6 +20,7 @@ import { brandForHost } from './brands.js';
 import { translator, SITE_LANGS } from './texts.js';
 import { pagePath, splitLang, TYPE_BY_CATEGORY, TYPE_ORDER } from './urls.js';
 import { siteCatalog, modelTariffs } from './data.js';
+import { catalogVersion } from '../publicApi.js';
 import { legacyTarget } from './legacy.js';
 import { renderHome, renderCategory, renderModel, renderNotFound, esc } from './render.js';
 
@@ -62,7 +63,7 @@ function sendHtml(req, res, status, html, brand) {
   res.writeHead(status, {
     'Content-Type': 'text/html; charset=utf-8',
     'Cache-Control': status === 200 ? 'public, max-age=60' : 'no-store',
-    ...(brand.preview ? { 'X-Robots-Tag': 'noindex, nofollow' } : {})
+    ...(brand.indexable ? {} : { 'X-Robots-Tag': 'noindex, nofollow' })
   });
   res.end(req.method === 'HEAD' ? undefined : html);
 }
@@ -71,7 +72,7 @@ function sendText(req, res, type, body, brand) {
   res.writeHead(200, {
     'Content-Type': `${type}; charset=utf-8`,
     'Cache-Control': 'public, max-age=3600',
-    ...(brand.preview ? { 'X-Robots-Tag': 'noindex, nofollow' } : {})
+    ...(brand.indexable ? {} : { 'X-Robots-Tag': 'noindex, nofollow' })
   });
   res.end(req.method === 'HEAD' ? undefined : body);
 }
@@ -146,7 +147,9 @@ ${urls.join('\n')}
 }
 
 function robots(brand) {
-  if (brand.preview) return 'User-agent: *\nDisallow: /\n';
+  // Закрытый сайт не запрещаем обходить: поисковик должен зайти на страницу,
+  // увидеть «noindex» и убрать её из поиска, если уже успел найти
+  if (!brand.indexable) return 'User-agent: *\nDisallow:\n';
   return `User-agent: *\nAllow: /\nDisallow: /api/\n\nSitemap: ${brand.origin}/sitemap.xml\n`;
 }
 
@@ -194,7 +197,8 @@ export async function handleSite(req, res, url) {
 
   const key = `${brand.host}|${pathname}`;
   const cached = pageCache.get(key);
-  if (cached && Date.now() - cached.at < PAGE_CACHE_MS && cached.dataAt === data.updatedAt) {
+  const version = `${data.updatedAt}|${catalogVersion()}`;
+  if (cached && Date.now() - cached.at < PAGE_CACHE_MS && cached.version === version) {
     sendHtml(req, res, cached.status, cached.html, brand);
     return true;
   }
@@ -215,7 +219,7 @@ export async function handleSite(req, res, url) {
 
   // Страницы 404 не кэшируем: случайные адреса не должны занимать память
   if (status === 200) {
-    pageCache.set(key, { at: Date.now(), dataAt: data.updatedAt, status, html });
+    pageCache.set(key, { at: Date.now(), version, status, html });
     if (pageCache.size > 1000) {
       for (const [k, v] of pageCache) if (Date.now() - v.at > PAGE_CACHE_MS) pageCache.delete(k);
     }

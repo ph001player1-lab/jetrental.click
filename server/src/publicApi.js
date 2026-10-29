@@ -32,11 +32,11 @@ const requestLimiter = rateLimiter(60 * 60 * 1000, 5);
 let catalogCache = null;
 const availabilityCache = new Map();
 
-/** Ссылка на фото: полный https-адрес или файл сайта из папки img/ (от корня — страниц несколько) */
+/** Ссылка на фото: полный https-адрес, файл сайта из img/ или загруженный с сайта сотрудников (uploads/) */
 function safePhoto(value) {
   const text = String(value || '').trim();
   if (/^https:\/\/[^\s"'<>]+$/.test(text)) return text;
-  if (/^\/?img\/[\w\-./]+$/.test(text) && !text.includes('..')) return `/${text.replace(/^\//, '')}`;
+  if (/^\/?(img|uploads)\/[\w\-./]+$/.test(text) && !text.includes('..')) return `/${text.replace(/^\//, '')}`;
   return '';
 }
 
@@ -77,6 +77,16 @@ async function buildCatalog() {
     || (a.priceFrom || Infinity) - (b.priceFrom || Infinity)
     || a.model.localeCompare(b.model));
   return { updatedAt: snapshot?.updatedAt || null, models };
+}
+
+/** Сбросить кэш каталога (после правки фото или описания) */
+export function resetCatalog() {
+  catalogCache = null;
+}
+
+/** Версия каталога: меняется при каждой пересборке — по ней обновляются страницы сайта */
+export function catalogVersion() {
+  return catalogCache?.at || 0;
 }
 
 /** Каталог для API и страниц сайта (кэш на минуту) */

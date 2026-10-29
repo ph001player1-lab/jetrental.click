@@ -2,9 +2,11 @@
  * ============================================================================
  * JetRental Staff — сайт сотрудников
  * ============================================================================
- * Экраны: вход (почта → код) и 4 вкладки: Overview, Fleet, Calendar, Requests.
+ * Экраны: вход (почта → код) и 5 вкладок: Overview, Fleet, Calendar, Requests,
+ * Website (фото и описания моделей для сайта — менять могут роли Editor/Admin).
  * Данные: GET /api/staff/fleet (снимок Автопроката, обновляется на сервере
- * раз в 10 минут) и GET /api/staff/requests. Время показываем по Бангкоку.
+ * раз в 10 минут), GET /api/staff/requests, GET /api/staff/models.
+ * Время показываем по Бангкоку.
  * ============================================================================
  */
 (() => {
@@ -30,20 +32,29 @@
     too_many_requests: 'Too many attempts. Please try again later.',
     mail_not_configured: 'Email sending is not set up on the server yet.',
     mail_failed: 'Could not send the email. Please try again in a minute.',
-    no_access: 'This email no longer has access.'
+    no_access: 'This email no longer has access.',
+    read_only: 'You can view only. Ask the owner to give you the Editor role in the Users sheet.',
+    model_not_found: 'This model is no longer in the Catalog sheet.',
+    bad_image: 'This file does not look like a photo. Try another one.',
+    image_required: 'Please choose a photo (JPG, PNG or WEBP).',
+    too_many_uploads: 'Too many photos uploaded this hour. Please try later.',
+    body_too_large: 'The photo is too large. Try another one.',
+    sheets_not_configured: 'Google Sheets is not connected on the server.'
   };
 
   const ICONS = {
     overview: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>',
     fleet: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M18.92 6.01A1.5 1.5 0 0 0 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1h12v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-8l-2.08-5.99zM6.5 16a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm11 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zM5 11l1.5-4.5h11L19 11H5z"/></svg>',
     calendar: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 16H5V10h14v10zM7 12h5v5H7z"/></svg>',
-    requests: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z"/></svg>'
+    requests: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z"/></svg>',
+    site: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M21 19V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2zM8.5 13.5l2.5 3 3.5-4.5 4.5 6H5l3.5-4.5z"/></svg>'
   };
   const TABS = [
     { id: 'overview', title: 'Overview' },
     { id: 'fleet', title: 'Fleet' },
     { id: 'calendar', title: 'Calendar' },
-    { id: 'requests', title: 'Requests' }
+    { id: 'requests', title: 'Requests' },
+    { id: 'site', title: 'Website' }
   ];
 
   const state = {
@@ -56,7 +67,11 @@
     reqFilter: 'all',
     expanded: new Set(),
     loginEmail: '',
-    timer: null
+    timer: null,
+    // Вкладка Website: модели из листа Catalog и правка одной модели
+    models: null,
+    canEdit: false,
+    editing: null
   };
 
   const $ = (sel) => document.querySelector(sel);
@@ -249,6 +264,7 @@
     renderTabs();
     render();
     loadData();
+    if (state.tab === 'site') loadModels();
     clearInterval(state.timer);
     state.timer = setInterval(() => { if (!document.hidden) loadData(); }, REFRESH_MS);
   }
@@ -287,6 +303,7 @@
 
   function setTab(tab) {
     state.tab = tab;
+    if (tab === 'site' && !state.models) loadModels();
     history.replaceState(null, '', `#${tab}`);
     renderTabs();
     render();
@@ -304,6 +321,7 @@
     if (state.tab === 'fleet') view.innerHTML = renderFleet();
     if (state.tab === 'calendar') view.innerHTML = renderCalendar();
     if (state.tab === 'requests') view.innerHTML = renderRequests();
+    if (state.tab === 'site') view.innerHTML = renderSite();
   }
 
   /* --------------------------------------------------------- Данные парка */
@@ -602,6 +620,329 @@
       </article>`;
   }
 
+
+  /* --------------------------------------------- Website: фото и описания */
+
+  async function loadModels() {
+    try {
+      const data = await api('/models');
+      state.models = data.models || [];
+      state.canEdit = Boolean(data.canEdit);
+      if (state.tab === 'site') render();
+    } catch (err) {
+      if (err.status === 401) return showLogin('email', err.code === 'no_access' ? ERRORS.no_access : '');
+      showDataError('Could not load models. Check your connection.');
+    }
+  }
+
+  const isPhotoFill = (photo) => /\.jpe?g$/i.test(photo || '');
+  const TYPE_ICON = { scooter: '🛵', motorcycle: '🏍', car: '🚗' };
+
+  function filteredModels() {
+    const q = state.filters.q.trim().toLowerCase();
+    return (state.models || []).filter((m) => (state.filters.type === 'all' || m.type === state.filters.type)
+      && (!q || m.model.toLowerCase().includes(q)));
+  }
+
+  function renderSite() {
+    if (!state.models) return '<div class="empty">Loading…</div>';
+    const list = filteredModels();
+    const noPhoto = state.models.filter((m) => m.onSite && !m.photo).length;
+    const typeChips = [['all', 'All types'], ...Object.entries(TYPES)].map(([id, label]) =>
+      `<button type="button" class="chip" data-filter="type" data-value="${id}" aria-pressed="${state.filters.type === id}">${label}</button>`).join('');
+    return `
+      <div class="toolbar">
+        <input class="search" type="search" placeholder="Search model" value="${esc(state.filters.q)}" data-search autocomplete="off" />
+        <div class="chips">${typeChips}</div>
+      </div>
+      <div class="result-count">${list.length} models${noPhoto ? ` · <span class="warn">${noPhoto} on the website without a photo</span>` : ''}${state.canEdit ? '' : ' · view only'}</div>
+      <div class="mgrid">${list.length ? list.map(renderModelCard).join('') : '<div class="empty">Nothing found</div>'}</div>`;
+  }
+
+  function renderModelCard(m) {
+    const change = m.lastChange ? `Edited by ${esc(m.lastChange.by)} · ${esc(dateTime(m.lastChange.at))}` : '';
+    return `
+      <article class="card mcard">
+        <div class="mframe${isPhotoFill(m.photo) ? ' is-photo' : ''}">
+          ${m.photo ? `<img src="${esc(m.photo)}" alt="${esc(m.model)}" loading="lazy" />` : `<span class="mframe__empty">${TYPE_ICON[m.type] || '🚘'}</span>`}
+        </div>
+        <div class="mcard__body">
+          <div class="mcard__title">${esc(m.model)}</div>
+          <div class="mcard__desc">${m.description ? esc(m.description) : '<span class="muted">No description</span>'}</div>
+          <div class="mcard__meta">${esc(TYPE_ONE[m.type] || '—')} · ${m.units} in fleet</div>
+          ${m.onSite ? '' : '<div><span class="tag">Not on the website — no vehicles</span></div>'}
+          ${change ? `<div class="mcard__meta">${change}</div>` : ''}
+          ${state.canEdit ? `<button type="button" class="btn btn--small" data-edit-model="${esc(m.model)}">Edit</button>` : ''}
+        </div>
+      </article>`;
+  }
+
+  /* Фото готовим в браузере: уменьшаем, по желанию убираем белый фон,
+     обрезаем пустые края. На сервер уходит готовый файл: webp/png — техника
+     целиком в рамке, jpg — фото на всю карточку (как на сайте). */
+
+  const MAX_SOURCE = 1600; // сначала уменьшаем огромные фото с телефона (результат — до 1280–1600 px)
+  const CUTOUT_BOX = { w: 1280, h: 880 };
+  const PHOTO_MAX_W = 1600;
+  const MAX_UPLOAD = 4 * 1024 * 1024;
+
+  async function decodeFile(file) {
+    if (window.createImageBitmap) {
+      try { return await createImageBitmap(file); } catch { /* ниже — запасной способ */ }
+    }
+    const url = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    return img;
+  }
+
+  function toCanvas(source, maxSide) {
+    const w = source.width;
+    const h = source.height;
+    const k = Math.min(1, maxSide / Math.max(w, h));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(w * k));
+    canvas.height = Math.max(1, Math.round(h * k));
+    canvas.getContext('2d').drawImage(source, 0, 0, canvas.width, canvas.height);
+    return canvas;
+  }
+
+  /** Есть ли прозрачность и белые ли углы (тогда фото «вырезанное») */
+  function analyze(canvas) {
+    const { width: w, height: h } = canvas;
+    const data = canvas.getContext('2d').getImageData(0, 0, w, h).data;
+    let transparent = 0;
+    for (let i = 3; i < data.length; i += 4 * 7) if (data[i] < 250) transparent++;
+    const white = (x, y) => { const i = (y * w + x) * 4; return data[i] > 238 && data[i + 1] > 238 && data[i + 2] > 238; };
+    const corners = [[2, 2], [w - 3, 2], [2, h - 3], [w - 3, h - 3]].filter(([x, y]) => white(Math.max(0, x), Math.max(0, y))).length;
+    return { hasAlpha: transparent > (data.length / 28) * 0.01, whiteCorners: corners >= 3 };
+  }
+
+  /** Белый фон, соединённый с краями, становится прозрачным (заливка от краёв) */
+  function removeWhite(canvas) {
+    const ctx = canvas.getContext('2d');
+    const { width: w, height: h } = canvas;
+    const img = ctx.getImageData(0, 0, w, h);
+    const d = img.data;
+    const isBg = (p) => {
+      const i = p * 4;
+      const max = Math.max(d[i], d[i + 1], d[i + 2]);
+      return d[i + 3] > 0 && Math.min(d[i], d[i + 1], d[i + 2]) >= 236 && max - Math.min(d[i], d[i + 1], d[i + 2]) < 14;
+    };
+    // Очередь на типизированном массиве: каждый пиксель попадает в неё один раз
+    const bg = new Uint8Array(w * h);
+    const queue = new Int32Array(w * h);
+    let head = 0;
+    let tail = 0;
+    const visit = (p) => { if (!bg[p] && isBg(p)) { bg[p] = 1; queue[tail++] = p; } };
+    for (let x = 0; x < w; x++) { visit(x); visit((h - 1) * w + x); }
+    for (let y = 0; y < h; y++) { visit(y * w); visit(y * w + w - 1); }
+    while (head < tail) {
+      const p = queue[head++];
+      const x = p % w;
+      if (x > 0) visit(p - 1);
+      if (x < w - 1) visit(p + 1);
+      if (p >= w) visit(p - w);
+      if (p < w * (h - 1)) visit(p + w);
+    }
+    for (let p = 0; p < w * h; p++) {
+      if (bg[p]) { d[p * 4 + 3] = 0; continue; }
+      // Мягкий край: светлые пиксели рядом с вырезанным фоном — полупрозрачные
+      const x = p % w;
+      const nearBg = (x > 0 && bg[p - 1]) || (x < w - 1 && bg[p + 1]) || (p >= w && bg[p - w]) || (p < w * (h - 1) && bg[p + w]);
+      if (nearBg && (d[p * 4] + d[p * 4 + 1] + d[p * 4 + 2]) / 3 > 200) d[p * 4 + 3] = Math.round(d[p * 4 + 3] * 0.5);
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+
+  /** Обрезать прозрачные края и оставить 3% воздуха вокруг техники */
+  function trim(canvas) {
+    const { width: w, height: h } = canvas;
+    const d = canvas.getContext('2d').getImageData(0, 0, w, h).data;
+    let x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (d[(y * w + x) * 4 + 3] > 8) {
+          if (x < x0) x0 = x;
+          if (x > x1) x1 = x;
+          if (y < y0) y0 = y;
+          if (y > y1) y1 = y;
+        }
+      }
+    }
+    if (x1 < 0) return canvas;
+    const pad = Math.round(Math.max(x1 - x0, y1 - y0) * 0.03);
+    const out = document.createElement('canvas');
+    out.width = x1 - x0 + 1 + pad * 2;
+    out.height = y1 - y0 + 1 + pad * 2;
+    out.getContext('2d').drawImage(canvas, x0, y0, x1 - x0 + 1, y1 - y0 + 1, pad, pad, x1 - x0 + 1, y1 - y0 + 1);
+    return out;
+  }
+
+  function fitInto(canvas, maxW, maxH) {
+    const k = Math.min(1, maxW / canvas.width, maxH / canvas.height);
+    if (k === 1) return canvas;
+    const out = document.createElement('canvas');
+    out.width = Math.round(canvas.width * k);
+    out.height = Math.round(canvas.height * k);
+    const ctx = out.getContext('2d');
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(canvas, 0, 0, out.width, out.height);
+    return out;
+  }
+
+  function processPhoto() {
+    const ed = state.editing;
+    if (!ed?.source) return;
+    let result;
+    if (ed.mode === 'cutout') {
+      const work = toCanvas(ed.source, MAX_SOURCE);
+      if (ed.removeWhite && !ed.info.hasAlpha) removeWhite(work);
+      result = fitInto(trim(work), CUTOUT_BOX.w, CUTOUT_BOX.h);
+    } else {
+      // Фото на всю карточку — без прозрачности, на белом фоне
+      const work = toCanvas(ed.source, MAX_SOURCE);
+      const flat = document.createElement('canvas');
+      flat.width = work.width;
+      flat.height = work.height;
+      const ctx = flat.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, flat.width, flat.height);
+      ctx.drawImage(work, 0, 0);
+      result = fitInto(flat, PHOTO_MAX_W, PHOTO_MAX_W);
+    }
+    ed.result = result;
+    const preview = $('#md-canvas');
+    preview.width = result.width;
+    preview.height = result.height;
+    preview.getContext('2d').drawImage(result, 0, 0);
+    preview.hidden = false;
+    $('#md-current').hidden = true;
+    $('#md-empty').hidden = true;
+    $('#md-frame').classList.toggle('is-photo', ed.mode === 'photo');
+    document.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === ed.mode)));
+    $('#md-white-wrap').hidden = ed.mode !== 'cutout' || ed.info.hasAlpha;
+  }
+
+  function encode(canvas, mode) {
+    const toBlob = (type, quality) => new Promise((resolve) => canvas.toBlob(resolve, type, quality));
+    if (mode === 'photo') return toBlob('image/jpeg', 0.86);
+    // Не все браузеры умеют сохранять webp (старый Safari) — тогда png
+    return toBlob('image/webp', 0.88).then((blob) => (blob && blob.type === 'image/webp' ? blob : toBlob('image/png')));
+  }
+
+  function setModelStatus(text, kind = '') {
+    const box = $('#md-status');
+    box.textContent = text;
+    box.className = `md-status${kind ? ` is-${kind}` : ''}`;
+  }
+
+  function openModel(name) {
+    const m = (state.models || []).find((x) => x.model === name);
+    if (!m) return;
+    state.editing = { model: m.model, source: null, result: null, mode: 'cutout', removeWhite: true, info: null };
+    $('#md-title').textContent = m.model;
+    $('#md-type').textContent = TYPE_ONE[m.type] || '';
+    $('#md-desc').value = m.description || '';
+    $('#md-file').value = '';
+    $('#md-options').hidden = true;
+    $('#md-canvas').hidden = true;
+    const current = $('#md-current');
+    current.hidden = !m.photo;
+    if (m.photo) current.src = m.photo;
+    $('#md-empty').hidden = Boolean(m.photo);
+    $('#md-frame').classList.toggle('is-photo', isPhotoFill(m.photo));
+    setModelStatus('');
+    $('#model-dialog').showModal();
+  }
+
+  async function choosePhoto(file) {
+    const ed = state.editing;
+    if (!ed || !file) return;
+    setModelStatus('Preparing the photo…');
+    try {
+      ed.source = await decodeFile(file);
+      ed.info = analyze(toCanvas(ed.source, 400));
+      // Прозрачный или белый фон — техника целиком в рамке, иначе — фото на всю карточку
+      ed.mode = ed.info.hasAlpha || ed.info.whiteCorners ? 'cutout' : 'photo';
+      ed.removeWhite = true;
+      $('#md-white').checked = true;
+      $('#md-options').hidden = false;
+      processPhoto();
+      setModelStatus('');
+    } catch {
+      ed.source = null;
+      setModelStatus('Could not open this file. Please choose a JPG or PNG photo.', 'error');
+    }
+  }
+
+  async function saveModel() {
+    const ed = state.editing;
+    const m = (state.models || []).find((x) => x.model === ed?.model);
+    if (!ed || !m) return;
+    const button = $('#md-save');
+    button.disabled = true;
+    try {
+      if (ed.result) {
+        setModelStatus('Uploading the photo…');
+        const blob = await encode(ed.result, ed.mode);
+        if (!blob) throw Object.assign(new Error(), { code: 'bad_image' });
+        if (blob.size > MAX_UPLOAD) throw Object.assign(new Error(), { code: 'body_too_large' });
+        const response = await fetch(`${API}/models/photo?model=${encodeURIComponent(ed.model)}`, {
+          method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': blob.type }, body: blob
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw Object.assign(new Error(), { status: response.status, code: data.error });
+        m.photo = data.photo;
+        ed.result = null;
+      }
+      const description = $('#md-desc').value.trim();
+      if (description !== (m.description || '')) {
+        setModelStatus('Saving the description…');
+        const data = await api('/models/description', { body: { model: ed.model, description } });
+        m.description = data.description;
+      }
+      setModelStatus('✓ Saved. The website will show it within 2 minutes.', 'ok');
+      render();
+      loadModels();
+      setTimeout(() => { if ($('#model-dialog').open && !state.editing?.result) $('#model-dialog').close(); }, 1200);
+    } catch (err) {
+      if (err.status === 401) { $('#model-dialog').close(); return showLogin('email'); }
+      setModelStatus(ERRORS[err.code] || 'Could not save. Please try again.', 'error');
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  function bindModelDialog() {
+    const dialog = $('#model-dialog');
+    dialog.addEventListener('click', (event) => {
+      if (event.target === dialog || event.target.closest('[data-close]')) return dialog.close();
+      const mode = event.target.closest('[data-mode]');
+      if (mode && state.editing?.source) {
+        state.editing.mode = mode.dataset.mode;
+        processPhoto();
+      }
+    });
+    $('#md-file').addEventListener('change', (event) => choosePhoto(event.target.files[0]));
+    $('#md-white').addEventListener('change', (event) => {
+      if (!state.editing) return;
+      state.editing.removeWhite = event.target.checked;
+      processPhoto();
+    });
+    $('#model-form').addEventListener('submit', (event) => {
+      event.preventDefault();
+      saveModel();
+    });
+    dialog.addEventListener('close', () => { state.editing = null; });
+  }
+
   /* --------------------------------------------------------------- События */
 
   function bindApp() {
@@ -628,6 +969,8 @@
         state.reqFilter = req.dataset.req;
         return render();
       }
+      const edit = event.target.closest('[data-edit-model]');
+      if (edit) return openModel(edit.dataset.editModel);
       const car = event.target.closest('[data-car]');
       if (car && !event.target.closest('a')) {
         const id = Number(car.dataset.car);
@@ -647,7 +990,11 @@
       input.setSelectionRange(caret, caret);
     });
 
-    $('#refresh').addEventListener('click', loadData);
+    $('#refresh').addEventListener('click', () => {
+      loadData();
+      if (state.tab === 'site') loadModels();
+    });
+    bindModelDialog();
     $('#logout').addEventListener('click', async () => {
       await api('/logout', { method: 'POST' }).catch(() => {});
       state.user = null;

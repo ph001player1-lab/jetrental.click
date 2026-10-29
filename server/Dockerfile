@@ -8,8 +8,9 @@ RUN npm install --omit=dev
 
 COPY src ./src
 
-# Папка для базы SQLite (Docker-том bot_data), доступная пользователю node
-RUN mkdir -p /data && chown node:node /data
+# Папки для базы SQLite (том bot_data) и фото с сайта сотрудников (том
+# site_uploads), доступные пользователю node
+RUN mkdir -p /data /uploads && chown node:node /data /uploads
 
 USER node
 EXPOSE 3000

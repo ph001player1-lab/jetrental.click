@@ -41,7 +41,7 @@ function jsonLd(data) {
 function head(ctx, meta) {
   const { brand, lang } = ctx;
   const abs = (p) => `${brand.origin}${p}`;
-  const noindex = brand.preview || meta.noindex;
+  const noindex = !brand.indexable || meta.noindex;
   const links = meta.alternates
     ? [
         `<link rel="canonical" href="${esc(abs(meta.alternates[lang]))}" />`,

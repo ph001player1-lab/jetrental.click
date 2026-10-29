@@ -29,6 +29,8 @@ services:
     volumes:
       - ./:/etc/caddy/kokon:ro
       - ../web:/srv/web:ro
+      # Фото, загруженные через сайт сотрудников (пишет bot, отдаёт caddy)
+      - site_uploads:/srv/uploads:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
@@ -42,8 +44,10 @@ services:
       DATA_DIR: /data
       # Страницы сайта собирает бот: тексты (i18n.js) и версии файлов — отсюда
       SITE_DIR: /srv/web/site
+      UPLOADS_DIR: /uploads
     volumes:
       - bot_data:/data
+      - site_uploads:/uploads
       - ../web:/srv/web:ro
       # Ключ служебного аккаунта Google (доступ к таблице). Файл кладётся на
       # сервер вручную через scp; если его нет, запуск остановится с ошибкой.
@@ -61,3 +65,4 @@ volumes:
   caddy_data:
   caddy_config:
   bot_data:
+  site_uploads:
