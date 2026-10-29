@@ -8,6 +8,10 @@ import { config } from './config.js';
 
 export const mailEnabled = Boolean(config.mail.resendApiKey);
 
+// Последнее неудачное письмо (null — следующее ушло) — для окна «Проблемы»
+let lastFailure = null;
+export const mailFailure = () => lastFailure;
+
 export async function sendMail({ to, subject, text, html }) {
   if (!mailEnabled) throw new Error('Mail is not configured: RESEND_API_KEY is not set');
   const response = await fetch(`${config.mail.apiBase}/emails`, {
@@ -20,7 +24,10 @@ export async function sendMail({ to, subject, text, html }) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(`Resend failed: HTTP ${response.status} ${data.message || data.name || ''}`.trim());
+    const message = `Resend failed: HTTP ${response.status} ${data.message || data.name || ''}`.trim();
+    lastFailure = { at: new Date().toISOString(), message };
+    throw new Error(message);
   }
+  lastFailure = null;
   return data;
 }

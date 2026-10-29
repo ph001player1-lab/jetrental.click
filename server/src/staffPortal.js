@@ -13,6 +13,7 @@
  *   GET  /api/staff/me                        — кто вошёл
  *   GET  /api/staff/fleet                     — парк из Автопроката + цены
  *   GET  /api/staff/requests                  — заявки из ботов и сайта
+ *   GET  /api/staff/dashboard                 — проблемы и брони впереди (dashboard.js)
  *   /api/staff/models…                        — фото, галерея и описания моделей
  *                                               для сайта (staffCatalog.js)
  *
@@ -31,6 +32,7 @@ import { getFleet, sheetsEnabled, plateKey } from './fleet.js';
 import { tariffOn } from './pricing.js';
 import { todayIso } from './dates.js';
 import { canEdit, listModels, saveDescription, uploadPhoto, uploadThumb, saveGallery } from './staffCatalog.js';
+import { collectProblems, bookingOutlook, LIMITS } from './dashboard.js';
 
 const COOKIE = 'jr_staff';
 const MAX_ATTEMPTS = 5;
@@ -234,6 +236,11 @@ async function requests(req, res) {
   sendJson(res, 200, { requests: rows });
 }
 
+async function dashboard(req, res) {
+  await requireStaff(req);
+  sendJson(res, 200, { problems: await collectProblems(), outlook: bookingOutlook(), limits: LIMITS });
+}
+
 /** Обработчик, которому нужен вошедший сотрудник: handler(staff, req, res, url) */
 const signedIn = (handler) => async (req, res, url) => handler(await requireStaff(req), req, res, url);
 
@@ -244,6 +251,7 @@ const ROUTES = {
   'GET /api/staff/me': me,
   'GET /api/staff/fleet': fleet,
   'GET /api/staff/requests': requests,
+  'GET /api/staff/dashboard': dashboard,
   'GET /api/staff/models': signedIn(listModels),
   'POST /api/staff/models/description': signedIn(saveDescription),
   'POST /api/staff/models/photo': signedIn(uploadPhoto),

@@ -19,6 +19,10 @@
   --reserve-bg: #fdf0d3;
   --service: #5b6b8c;
   --service-bg: #e3e8f2;
+  /* График загрузки: свои оттенки тех же цветов — различимы и при дальтонизме */
+  --chart-rent: #c0362c;
+  --chart-reserve: #c98a00;
+  --warn: #b45309;
 
   --radius: 14px;
   --shadow: 0 1px 2px rgba(15, 27, 42, .06), 0 4px 16px rgba(15, 27, 42, .06);
@@ -44,6 +48,9 @@
     --reserve-bg: #3a2c0c;
     --service: #a5b4d4;
     --service-bg: #222f45;
+    --chart-rent: #c23a2c;
+    --chart-reserve: #c08a12;
+    --warn: #fbbf24;
     --shadow: none;
     color-scheme: dark;
   }
@@ -158,6 +165,71 @@ a { color: var(--brand); }
 
 .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
 @media (min-width: 640px) { .stats { grid-template-columns: repeat(4, 1fr); } }
+.stats--3 { grid-template-columns: repeat(3, 1fr); }
+@media (min-width: 640px) { .stats--3 { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 420px) { .stats--3 .stat { padding: 12px 10px; } .stats--3 .stat__value { font-size: 26px; } .stats--3 .stat__label { font-size: 12px; align-items: flex-start; } .stats--3 .dot { margin-top: 3px; } }
+.note { font-size: 13px; margin: 10px 2px 0; }
+
+/* Окно «Проблемы» на обзоре */
+.ok-line { margin: 4px 0 0; padding: 10px 14px; border-radius: var(--radius); background: var(--free-bg); color: var(--text); font-weight: 600; font-size: 14px; }
+.problems { margin-top: 4px; border-color: var(--rent); overflow: hidden; }
+.problems__head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 12px 14px; background: var(--rent-bg); }
+.problems__head h2 { margin: 0; font-size: 16px; }
+.problems__head .muted { font-size: 13px; }
+.problem { display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 11px 14px; border: 0; border-top: 1px solid var(--line); background: none; color: var(--text); font: inherit; text-align: left; }
+button.problem { cursor: pointer; }
+button.problem:hover { background: var(--surface-2); }
+.problem__level { flex: none; width: 74px; font-size: 12px; font-weight: 700; padding-top: 2px; }
+.problem__level--error { color: var(--rent); }
+.problem__level--warning { color: var(--warn); }
+.problem__main { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.problem__title { font-weight: 700; font-size: 14px; }
+.problem__detail { font-size: 13px; color: var(--muted); }
+.problem__go { flex: none; font-size: 20px; color: var(--muted); line-height: 1; padding-top: 2px; }
+.problems__more { margin: 0 14px 12px; }
+@media (max-width: 420px) { .problem { flex-wrap: wrap; gap: 4px 10px; } .problem__level { width: auto; } .problem__main { flex-basis: 100%; order: 3; } .problem__go { margin-left: auto; } }
+
+/* График загрузки парка на 14 дней */
+.load { margin-top: 10px; padding: 14px 14px 10px; }
+.load__head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px 14px; flex-wrap: wrap; font-size: 14px; }
+.load__legend { display: flex; gap: 14px; font-size: 13px; color: var(--muted); }
+.load__legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex: none; }
+.sw--rent { background: var(--chart-rent); }
+.sw--reserve { background: var(--chart-reserve); }
+.load__plot { position: relative; margin-top: 14px; padding-left: 34px; }
+.load__grid { position: absolute; left: 0; right: 0; top: 0; height: 140px; pointer-events: none; }
+.load__grid span { position: absolute; left: 0; right: 0; border-top: 1px solid var(--line); font-size: 10px; color: var(--muted); line-height: 0; }
+.load__grid span::before { content: none; }
+.load__cols { display: grid; grid-template-columns: repeat(14, minmax(0, 1fr)); gap: 4px; }
+.load__col { position: relative; display: grid; gap: 6px; outline: none; }
+.load__area { position: relative; height: 140px; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+.load__stack { width: min(70%, 26px); display: flex; flex-direction: column-reverse; gap: 2px; }
+.load__seg { display: block; flex: 0 1 0; min-height: 2px; }
+.load__stack > .load__seg:last-child { border-radius: 4px 4px 0 0; }
+.load__seg--rent { background: var(--chart-rent); }
+.load__seg--reserve { background: var(--chart-reserve); }
+.load__value { font-size: 11px; font-weight: 700; color: var(--text); margin-bottom: 3px; font-variant-numeric: tabular-nums; }
+.load__x { display: grid; justify-items: center; font-size: 11px; color: var(--muted); line-height: 1.2; }
+.load__x b { color: var(--text); font-size: 12px; }
+.load__x--today b { color: var(--brand); }
+.load__col:hover .load__area, .load__col:focus-visible .load__area { background: var(--surface-2); border-radius: 6px; }
+.load__tip { display: none; position: absolute; top: -4px; left: 50%; transform: translateX(-50%); z-index: 5; min-width: 150px; padding: 8px 10px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); box-shadow: 0 6px 24px rgba(0, 0, 0, .18); font-size: 12px; white-space: nowrap; }
+.load__tip span { display: flex; align-items: center; gap: 6px; margin-top: 3px; }
+.load__tip--left { left: 0; transform: none; }
+.load__tip--right { left: auto; right: 0; transform: none; }
+.load__col:hover .load__tip, .load__col:focus-visible .load__tip { display: block; }
+@media (max-width: 420px) {
+  .load { padding: 12px 10px 8px; }
+  .load__plot { padding-left: 28px; }
+  .load__cols { gap: 2px; }
+  .load__wd { display: none; }
+  .load__x b { font-size: 11px; }
+  .load__value { font-size: 10px; }
+}
+.load__table { margin-top: 8px; font-size: 13px; }
+.load__table summary { cursor: pointer; color: var(--muted); padding: 4px 0; }
+.load__table .type-table th, .load__table .type-table td { padding: 6px 8px; }
 .stat { padding: 14px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); }
 .stat__value { font-size: 30px; font-weight: 800; letter-spacing: -.02em; line-height: 1.1; }
 .stat__label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); font-weight: 600; }

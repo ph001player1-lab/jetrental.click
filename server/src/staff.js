@@ -4,6 +4,7 @@
  * ============================================================================
  * - /bind  — админ группы подключает её: сюда будут приходить заявки
  * - /test  — тестовая заявка, чтобы проверить кнопки
+ * - /summary — сводка: брони впереди и проблемы (сама приходит в 10:00)
  * - кнопки «Take» / «Can't» под каждой заявкой (на английском — в группе
  *   работают люди с разными языками)
  *
@@ -19,9 +20,28 @@ import { todayIso } from './dates.js';
 import { mirrorNewRequest, mirrorRequestStatus } from './sheetsSync.js';
 import { sendText as waSendText } from './whatsapp/api.js';
 import { tg, sendMessage, inlineKeyboard, answerCallback, displayName, parseCommand } from './telegram/api.js';
+import { sendMorningSummary } from './morning.js';
 
 export function getStaffChatId() {
   return config.telegram.staffChatId || db.getSetting('staff_chat_id');
+}
+
+// Последняя неудачная отправка в группу (null — после неё всё ушло) — для окна «Проблемы»
+let groupFailure = null;
+export const staffGroupFailure = () => groupFailure;
+
+/** Сообщение в рабочую группу с учётом сбоев */
+export async function sendToStaffGroup(text, extra = {}) {
+  const chatId = getStaffChatId();
+  if (!chatId) throw new Error('Staff group is not bound');
+  try {
+    const message = await sendMessage(chatId, text, extra);
+    groupFailure = null;
+    return message;
+  } catch (err) {
+    groupFailure = { at: new Date().toISOString(), message: err.message };
+    throw err;
+  }
 }
 
 function isStaffChat(chatId) {
@@ -49,7 +69,7 @@ export async function publishRequest(request) {
     console.warn(`Request #${request.id}: staff group is not bound yet (send /bind in the group)`);
     return false;
   }
-  const message = await sendMessage(chatId, formatStaffRequest(request), { reply_markup: staffButtons(request) });
+  const message = await sendToStaffGroup(formatStaffRequest(request), { reply_markup: staffButtons(request) });
   db.setStaffMessage(request.id, chatId, message.message_id);
   return true;
 }
@@ -155,6 +175,7 @@ export async function handleGroupMessage(msg) {
   const command = parseCommand(msg.text);
   if (command === 'bind') return bindGroup(msg);
   if (command === 'test') return createTestRequest(msg);
+  if (command === 'summary' && isStaffChat(msg.chat.id)) return sendMorningSummary();
 }
 
 export async function handleMyChatMember(update) {

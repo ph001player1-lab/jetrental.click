@@ -27,6 +27,7 @@ import { handleUpdate } from './telegram/handler.js';
 import { getStaffChatId } from './staff.js';
 import { fleetStatus, warmUpFleet } from './fleet.js';
 import { startWsSync, wsSyncStatus } from './ws/sync.js';
+import { startMorningSummary } from './morning.js';
 import { whatsappEnabled, knownPhoneNumberId } from './whatsapp/api.js';
 import { verifySignature, processWebhook, whatsappStatus } from './whatsapp/webhook.js';
 
@@ -149,6 +150,7 @@ server.listen(config.port, () => {
   console.log(`kokon-bot listening on port ${config.port}`);
   warmUpFleet();
   startWsSync();
+  startMorningSummary();
 
   if (telegramEnabled) {
     setupTelegram()

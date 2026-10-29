@@ -61,6 +61,7 @@ export const config = {
 
   // Сайт сотрудников (staff.jetrental.click): вход по коду из письма
   staff: {
+    url: (process.env.STAFF_URL || 'https://staff.jetrental.click').replace(/\/+$/, ''),
     sessionHours: 24,
     codeMinutes: 10,
     // Почты с доступом помимо листа Users (через запятую) — на случай, если таблица недоступна

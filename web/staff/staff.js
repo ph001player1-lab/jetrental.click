@@ -73,7 +73,10 @@
     // Вкладка Website: модели из листа Catalog и правка одной модели
     models: null,
     canEdit: false,
-    editing: null
+    editing: null,
+    // Обзор: проблемы и брони впереди (считает сервер)
+    dashboard: null,
+    allProblems: false
   };
 
   const $ = (sel) => document.querySelector(sel);
@@ -273,9 +276,14 @@
 
   async function loadData() {
     try {
-      const [fleet, requests] = await Promise.all([api('/fleet'), api('/requests')]);
+      const [fleet, requests, dashboard] = await Promise.all([
+        api('/fleet'), api('/requests'),
+        // Без проблем и прогноза обзор всё равно покажем
+        api('/dashboard').catch((err) => (err.status === 401 ? Promise.reject(err) : null))
+      ]);
       state.fleet = fleet;
       state.requests = requests.requests || [];
+      if (dashboard) state.dashboard = dashboard;
       showDataError(fleet.error ? `Avtoprokat sync problem: ${fleet.error}. Showing the last loaded data.` : '');
       render();
     } catch (err) {
@@ -358,21 +366,101 @@
 
   /* -------------------------------------------------------------- Overview */
 
+  /** Окно «Проблемы»: сначала ошибки, по нажатию — нужная машина, заявка или модель */
+  function renderProblems() {
+    const problems = state.dashboard?.problems;
+    if (!problems) return '';
+    if (!problems.length) return '<div class="ok-line">✅ No problems found</div>';
+    const errors = problems.filter((p) => p.level === 'error').length;
+    const shown = state.allProblems ? problems : problems.slice(0, 6);
+    const item = (p) => {
+      const level = p.level === 'error' ? '<span class="problem__level problem__level--error">● Error</span>' : '<span class="problem__level problem__level--warning">▲ Warning</span>';
+      const body = `${level}<span class="problem__main"><span class="problem__title">${esc(p.title)}</span><span class="problem__detail">${esc(p.detail || '')}</span></span>`;
+      return p.target
+        ? `<button type="button" class="problem" data-problem="${esc(p.target.tab)}" data-q="${esc(p.target.q || '')}">${body}<span class="problem__go" aria-hidden="true">›</span></button>`
+        : `<div class="problem">${body}</div>`;
+    };
+    return `
+      <section class="card problems" aria-labelledby="problems-title">
+        <div class="problems__head">
+          <h2 id="problems-title">Problems · ${problems.length}</h2>
+          <span class="muted">${errors ? `${errors} ${errors === 1 ? 'error' : 'errors'} · ` : ''}${problems.length - errors} ${problems.length - errors === 1 ? 'warning' : 'warnings'}</span>
+        </div>
+        <div class="problems__list">${shown.map(item).join('')}</div>
+        ${problems.length > 6 ? `<button type="button" class="btn btn--small problems__more" data-problems-toggle>${state.allProblems ? 'Show less' : `Show all ${problems.length}`}</button>` : ''}
+      </section>`;
+  }
+
+  /** Загрузка парка на 14 дней: доля техники в аренде и в брони по дням */
+  function renderLoadChart(load) {
+    if (!load?.length) return '';
+    const totals = load.map((d) => d.rent + d.reserve);
+    const peak = totals.indexOf(Math.max(...totals));
+    const cols = load.map((d, i) => {
+      const day = new Date(`${d.date}T00:00:00Z`);
+      const total = totals[i];
+      const label = (i === 0 || i === peak) && total ? `<span class="load__value">${total}%</span>` : '';
+      const segments = [['rent', d.rent], ['reserve', d.reserve]].filter(([, v]) => v > 0)
+        // Высота столбика — доля парка, внутри него части делятся пропорционально
+        .map(([kind, v]) => `<span class="load__seg load__seg--${kind}" style="flex-grow:${v}"></span>`).join('');
+      const align = i < 3 ? ' load__tip--left' : i > load.length - 4 ? ' load__tip--right' : '';
+      return `
+        <div class="load__col" tabindex="0" aria-label="${esc(`${fmtWeekday.format(day)} ${shortDate(d.date)}: rented ${d.rent}%, booked ${d.reserve}%`)}">
+          <div class="load__area">${label}<div class="load__stack" style="height:${Math.min(100, total)}%">${segments}</div></div>
+          <span class="load__x${i === 0 ? ' load__x--today' : ''}"><b>${day.getUTCDate()}</b><span class="load__wd">${esc(fmtWeekday.format(day).slice(0, 2))}</span></span>
+          <span class="load__tip${align}" role="tooltip"><b>${esc(`${fmtWeekday.format(day)} ${shortDate(d.date)}`)}</b>
+            <span><i class="sw sw--rent"></i>Rented ${d.rent}%</span><span><i class="sw sw--reserve"></i>Booked ${d.reserve}%</span>
+            <span class="muted">In service ${d.service}% · free ${Math.max(0, 100 - d.rent - d.reserve - d.service)}%</span></span>
+        </div>`;
+    }).join('');
+    const rows = load.map((d) => `<tr><td>${esc(`${fmtWeekday.format(new Date(`${d.date}T00:00:00Z`))} ${shortDate(d.date)}`)}</td><td>${d.rent}%</td><td>${d.reserve}%</td><td>${d.service}%</td></tr>`).join('');
+    return `
+      <div class="card load">
+        <div class="load__head">
+          <b>Fleet load · next 14 days</b>
+          <span class="load__legend"><span><i class="sw sw--rent"></i>Rented</span><span><i class="sw sw--reserve"></i>Booked</span></span>
+        </div>
+        <div class="load__plot">
+          <div class="load__grid" aria-hidden="true"><span style="bottom:100%">100%</span><span style="bottom:50%">50%</span><span style="bottom:0">0</span></div>
+          <div class="load__cols">${cols}</div>
+        </div>
+        <details class="load__table">
+          <summary>Show as table</summary>
+          <div class="table-wrap"><table class="type-table"><thead><tr><th>Day</th><th>Rented</th><th>Booked</th><th>Service</th></tr></thead><tbody>${rows}</tbody></table></div>
+        </details>
+      </div>`;
+  }
+
   function renderOverview() {
     if (!state.fleet) return '<div class="empty">Loading…</div>';
     const all = cars();
-    if (!all.length) return `<div class="empty">${state.fleet.enabled ? 'No data from Avtoprokat yet. It refreshes every 10 minutes.' : 'Avtoprokat is not connected on the server.'}</div>`;
+    if (!all.length) return `${renderProblems()}<div class="empty">${state.fleet.enabled ? 'No data from Avtoprokat yet. It refreshes every 10 minutes.' : 'Avtoprokat is not connected on the server.'}</div>`;
 
     const count = (status, type) => all.filter((c) => (!status || c.status === status) && (!type || c.type === type)).length;
-    const stats = ['free', 'rent', 'reserve', 'service'].map((s) => `
+    // «Сейчас»: свободна, в аренде, в сервисе. Брони — отдельным блоком ниже
+    const stats = ['free', 'rent', 'service'].map((s) => `
       <div class="stat">
         <div class="stat__value">${count(s)}</div>
         <div class="stat__label"><span class="dot dot--${s}"></span>${STATUS[s]}</div>
       </div>`).join('');
 
+    const weekAhead = Date.now() + 7 * DAY_MS;
+    const bookedSoon = (type) => all.filter((c) => c.type === type
+      && c.segments.some((seg) => seg.kind === 'reserve' && Date.parse(seg.to) > Date.now() && Date.parse(seg.from) <= weekAhead)).length;
     const typeRows = Object.keys(TYPES).map((type) => `
-      <tr><td>${TYPES[type]}</td><td>${count('free', type)}</td><td>${count('rent', type)}</td><td>${count('reserve', type)}</td><td>${count('service', type)}</td><td><b>${count(null, type)}</b></td></tr>`).join('');
-    const unmatched = all.filter((c) => !c.type).length;
+      <tr><td>${TYPES[type]}</td><td>${count('free', type)}</td><td>${count('rent', type)}</td><td>${count('service', type)}</td><td>${bookedSoon(type)}</td><td><b>${count(null, type)}</b></td></tr>`).join('');
+
+    const outlook = state.dashboard?.outlook;
+    const plural = (n, one) => `${n} ${n === 1 ? one : `${one}s`}`;
+    const ahead = outlook ? `
+      <h2 class="section-title">Bookings ahead</h2>
+      <div class="stats stats--3">
+        <div class="stat"><div class="stat__value">${outlook.next7.bookings}</div><div class="stat__label"><span class="dot dot--reserve"></span>next 7 days · ${plural(outlook.next7.vehicles, 'vehicle')}</div></div>
+        <div class="stat"><div class="stat__value">${outlook.next30.bookings}</div><div class="stat__label"><span class="dot dot--reserve"></span>next 30 days · ${plural(outlook.next30.vehicles, 'vehicle')}</div></div>
+        <div class="stat"><div class="stat__value">${outlook.bookedDays30}</div><div class="stat__label">booked vehicle-days in 30 days</div></div>
+      </div>
+      ${outlook.waitingNow ? `<p class="muted note">🕒 Pickup time has come for ${plural(outlook.waitingNow, 'booked vehicle')} — not rented out in Avtoprokat yet.</p>` : ''}
+      ${renderLoadChart(outlook.load)}` : '';
 
     const now = Date.now();
     const soon = now + 48 * 3600000;
@@ -394,17 +482,18 @@
       </div>`;
 
     return `
+      ${renderProblems()}
       <h2 class="section-title">Right now · ${all.length} vehicles</h2>
-      <div class="stats">${stats}</div>
+      <div class="stats stats--3">${stats}</div>
+      ${ahead}
 
       <h2 class="section-title">By type</h2>
       <div class="card table-wrap">
         <table class="type-table">
-          <thead><tr><th></th><th>Free</th><th>Rented</th><th>Booked</th><th>Service</th><th>All</th></tr></thead>
+          <thead><tr><th></th><th>Free</th><th>Rented</th><th>Service</th><th>Booked · 7 d</th><th>All</th></tr></thead>
           <tbody>${typeRows}</tbody>
         </table>
       </div>
-      ${unmatched ? `<p class="muted" style="font-size:13px">⚠️ ${unmatched} ${unmatched === 1 ? 'vehicle is' : 'vehicles are'} not matched to the Vehicles sheet (no type/model). Fill in “Модель для клиента” by plate.</p>` : ''}
 
       <h2 class="section-title">New requests</h2>
       <div class="card">
@@ -1111,6 +1200,16 @@
     document.addEventListener('click', (event) => {
       const tab = event.target.closest('[data-tab]');
       if (tab) return setTab(tab.dataset.tab);
+      const problem = event.target.closest('[data-problem]');
+      if (problem) {
+        state.filters = { q: problem.dataset.q || '', type: 'all', status: 'all' };
+        if (problem.dataset.problem === 'requests') state.reqFilter = 'new';
+        return setTab(problem.dataset.problem);
+      }
+      if (event.target.closest('[data-problems-toggle]')) {
+        state.allProblems = !state.allProblems;
+        return render();
+      }
       const goto = event.target.closest('[data-goto]');
       if (goto) {
         state.reqFilter = 'new';
