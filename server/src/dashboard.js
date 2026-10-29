@@ -4,14 +4,16 @@
  * ============================================================================
  * Одни и те же проверки для окна «Проблемы» на сайте сотрудников и для
  * утренней сводки в рабочей группе Telegram (morning.js):
- *   - бронь не выдана: время выдачи прошло больше 3 часов назад;
- *   - долгий ремонт: больше 15 дней;
- *   - машина есть в Автопрокате, но нет в листе Vehicles, и наоборот;
- *   - модель на сайте без цены, фото или описания, описание не переведено;
- *   - прайс: госномер без цены, опечатка в строке, сезоны без проверки,
- *     дни года без сезона;
- *   - заявка без ответа дольше 30 минут рабочего времени (10:00–19:00 Бангкок);
- *   - техника: Автопрокат, Google-таблица, рабочая группа, почта.
+ * Четыре категории — у каждой свой ответственный:
+ *   sales     — продажи: заявка без ответа дольше 30 минут рабочего времени
+ *               (10:00–19:00 Бангкок) или не дошла до группы; бронь не выдана
+ *               через 3 часа после времени выдачи;
+ *   it        — сервер: Автопрокат, Google-таблица, рабочая группа, почта;
+ *   marketing — сайт: модель без цены, фото, описания или перевода описания,
+ *               прайс (госномер без цены, опечатка, сезоны без проверки,
+ *               дни года без сезона);
+ *   service   — парк: машина есть в Автопрокате, но нет в листе Vehicles,
+ *               и наоборот; ремонт дольше 15 дней без даты окончания (в конце).
  * Тексты — на языке сайта сотрудников (dashboardTexts.js), сводка — на языке группы.
  * ============================================================================
  */
@@ -86,16 +88,14 @@ function vehicleProblems(tx, snapshot, now) {
       });
     }
     if (current.kind === 'service') {
-      // Проблема — только ремонт дольше 15 дней (с датой окончания или без)
+      // Проблема — только ремонт дольше 15 дней И без даты окончания
+      // (окончание позже окна снимка в 30 дней считаем «без даты»)
       const noEnd = current.to >= windowTo - 60000;
-      if (now - current.from >= LIMITS.longServiceDays * DAY_MS) {
+      if (noEnd && now - current.from >= LIMITS.longServiceDays * DAY_MS) {
         problems.push({
           group: 'service', level: 'warning', target,
           title: tx.t('longService.title', { car: carName(car) }),
-          detail: tx.t('longService.detail', {
-            when: since(tx, current.from, now, windowFrom),
-            end: noEnd ? tx.t('longService.noEnd') : tx.t('longService.until', { until: tx.dateTime(current.to) })
-          })
+          detail: tx.t('longService.detail', { when: since(tx, current.from, now, windowFrom), end: tx.t('longService.noEnd') })
         });
       }
     }
@@ -288,11 +288,15 @@ function systemProblems(tx, now) {
   return problems;
 }
 
-const GROUP_ORDER = ['system', 'requests', 'bookings', 'service', 'data', 'prices', 'website'];
+// Вид проверки → категория (кто разбирается). Порядок групп — порядок в списке:
+// долгий ремонт — в самом конце
+const CATEGORY_OF = { requests: 'sales', bookings: 'sales', system: 'it', website: 'marketing', prices: 'marketing', data: 'service', service: 'service' };
+export const CATEGORIES = ['sales', 'it', 'marketing', 'service'];
+const GROUP_ORDER = ['requests', 'bookings', 'system', 'website', 'prices', 'data', 'service'];
 
 /**
- * Все проблемы, сначала важные: [{ group, level, title, detail, target? }].
- * lang — язык текстов (en / ru / th).
+ * Все проблемы по категориям: [{ category, group, level, title, detail, target? }],
+ * внутри категории сначала ошибки. lang — язык текстов (en / ru / th).
  */
 export async function collectProblems(now = Date.now(), lang = 'en') {
   const tx = dashboardTranslator(lang);
@@ -306,8 +310,13 @@ export async function collectProblems(now = Date.now(), lang = 'en') {
     ...priceProblems(tx, fleet),
     ...(await websiteProblems(tx, fleet).catch(() => []))
   ];
-  return problems.sort((a, b) => (a.level === b.level ? 0 : a.level === 'error' ? -1 : 1)
-    || GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group));
+  const level = (p) => (p.level === 'error' ? 0 : 1);
+  return problems
+    .map((p) => ({ category: CATEGORY_OF[p.group], ...p }))
+    .sort((a, b) => CATEGORIES.indexOf(a.category) - CATEGORIES.indexOf(b.category)
+      || (a.group === 'service') - (b.group === 'service')
+      || level(a) - level(b)
+      || GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group));
 }
 
 /* ------------------------------------------------------------ Брони впереди */

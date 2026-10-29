@@ -14,7 +14,7 @@ import { config } from './config.js';
 import * as db from './db.js';
 import { escapeHtml } from './format.js';
 import { todayIso } from './dates.js';
-import { collectProblems, bookingOutlook } from './dashboard.js';
+import { collectProblems, bookingOutlook, CATEGORIES } from './dashboard.js';
 import { getStaffChatId, sendToStaffGroup } from './staff.js';
 import { getWsSnapshot } from './ws/sync.js';
 import { wsEnabled } from './ws/api.js';
@@ -24,7 +24,9 @@ import { g, gn, groupLang, groupLocale } from './groupTexts.js';
 const SEND_HOUR = 10;
 // Сразу после перезапуска ждём данные Автопроката, но не дольше этой минуты
 const WAIT_DATA_UNTIL_MINUTE = 45;
-const MAX_PROBLEMS = 15;
+// В каждой категории показываем первые 5, остальные — на сайте сотрудников
+const MAX_PER_CATEGORY = 5;
+const CATEGORY_ICON = { sales: '💼', it: '🖥', marketing: '🌐', service: '🔧' };
 const BANGKOK_MS = 7 * 3600000;
 
 /** Текст сводки (HTML для Telegram) на языке рабочей группы */
@@ -46,9 +48,13 @@ export function formatSummary(problems, outlook, snapshot, now = Date.now()) {
   if (!problems.length) {
     lines.push(g('sum.none'));
   } else {
-    lines.push(g('sum.problems', { n: problems.length }));
-    for (const p of problems.slice(0, MAX_PROBLEMS)) lines.push(`${p.level === 'error' ? '🔴' : '🟡'} ${escapeHtml(p.title)}`);
-    if (problems.length > MAX_PROBLEMS) lines.push(g('sum.more', { n: problems.length - MAX_PROBLEMS }));
+    const byCategory = CATEGORIES.map((c) => [c, problems.filter((p) => p.category === c)]);
+    lines.push(g('sum.problems', { n: problems.length, counts: byCategory.map(([c, list]) => `${g(`cat.${c}`)} ${list.length}`).join(' · ') }));
+    for (const [c, list] of byCategory.filter(([, l]) => l.length)) {
+      lines.push('', `${CATEGORY_ICON[c]} <b>${g(`cat.${c}`)} — ${list.length}</b>`);
+      for (const p of list.slice(0, MAX_PER_CATEGORY)) lines.push(`${p.level === 'error' ? '🔴' : '🟡'} ${escapeHtml(p.title)}`);
+      if (list.length > MAX_PER_CATEGORY) lines.push(g('sum.more', { n: list.length - MAX_PER_CATEGORY }));
+    }
   }
   lines.push('', `👉 ${escapeHtml(config.staff.url)}`);
   return lines.join('\n');

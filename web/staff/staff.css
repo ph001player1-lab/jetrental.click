@@ -204,14 +204,23 @@ a { color: var(--brand); }
 .problem { display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 11px 14px; border: 0; border-top: 1px solid var(--line); background: none; color: var(--text); font: inherit; text-align: left; }
 button.problem { cursor: pointer; }
 button.problem:hover { background: var(--surface-2); }
-.problem__level { flex: none; width: 74px; font-size: 12px; font-weight: 700; padding-top: 2px; }
+.problem__level { flex: none; width: 96px; font-size: 12px; font-weight: 700; padding-top: 2px; white-space: nowrap; }
 .problem__level--error { color: var(--rent); }
 .problem__level--warning { color: var(--warn); }
 .problem__main { display: grid; gap: 2px; min-width: 0; flex: 1; }
 .problem__title { font-weight: 700; font-size: 14px; }
 .problem__detail { font-size: 13px; color: var(--muted); }
 .problem__go { flex: none; font-size: 20px; color: var(--muted); line-height: 1; padding-top: 2px; }
-.problems__more { margin: 0 14px 12px; }
+.pchips { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 14px; border-top: 1px solid var(--line); }
+.pchip { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--text); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.pchip b { font-variant-numeric: tabular-nums; }
+.pchip[aria-pressed="true"] { border-color: var(--text); background: var(--text); color: var(--surface); }
+.pchip:disabled { opacity: .45; cursor: default; }
+.pcat { border-top: 1px solid var(--line); }
+.pcat__title { margin: 0; padding: 10px 14px 4px; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.pcat .problem { border-top: 0; }
+.pcat .problem + .problem { border-top: 1px dashed var(--line); }
+.pcat__more { display: block; margin: 0 14px 10px; font-size: 13px; }
 @media (max-width: 420px) { .problem { flex-wrap: wrap; gap: 4px 10px; } .problem__level { width: auto; } .problem__main { flex-basis: 100%; order: 3; } .problem__go { margin-left: auto; } }
 
 /* График загрузки парка на 14 дней */

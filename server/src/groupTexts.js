@@ -45,8 +45,9 @@ const TEXTS = {
     'sum.vehicles': { one: '{n} ед.', other: '{n} ед.' },
     'sum.fleet': '<b>Парк сейчас:</b> {free} свободно · {rent} в аренде · {service} в сервисе',
     'sum.none': '✅ <b>Проблем нет</b>',
-    'sum.problems': '⚠️ <b>Проблемы: {n}</b>',
-    'sum.more': '…и ещё {n}'
+    'sum.problems': '⚠️ <b>Проблемы: {n}</b> — {counts}',
+    'sum.more': '…и ещё {n}',
+    'cat.sales': 'Продажи', 'cat.it': 'IT', 'cat.marketing': 'Сайт', 'cat.service': 'Сервис'
   },
   en: {
     'card.title': '🆕 <b>Request #{id}</b>',
@@ -86,8 +87,9 @@ const TEXTS = {
     'sum.vehicles': { one: '{n} vehicle', other: '{n} vehicles' },
     'sum.fleet': '<b>Fleet now:</b> {free} free · {rent} rented · {service} in service',
     'sum.none': '✅ <b>No problems</b>',
-    'sum.problems': '⚠️ <b>Problems: {n}</b>',
-    'sum.more': '…and {n} more'
+    'sum.problems': '⚠️ <b>Problems: {n}</b> — {counts}',
+    'sum.more': '…and {n} more',
+    'cat.sales': 'Sales', 'cat.it': 'IT', 'cat.marketing': 'Website', 'cat.service': 'Service'
   }
 };
 

@@ -96,7 +96,10 @@
     editing: null,
     // Обзор: проблемы и брони впереди (считает сервер)
     dashboard: null,
-    allProblems: false
+    dashboardFailed: false,
+    offline: false,
+    problemCat: 'all',
+    openCats: new Set()
   };
 
   const $ = (sel) => document.querySelector(sel);
@@ -364,11 +367,16 @@
       state.fleet = fleet;
       state.requests = requests.requests || [];
       if (dashboard) state.dashboard = dashboard;
+      state.dashboardFailed = !dashboard;
+      state.offline = false;
       showDataError(fleet.error ? t('app.syncProblem', { error: fleet.error }) : '');
       render();
     } catch (err) {
       if (err.status === 401) return showLogin('email', err.code === 'no_access' ? ERRORS.no_access : '');
+      // Связи с сервером нет — это проблема IT, показываем её в окне «Проблемы»
+      state.offline = true;
       showDataError(t('app.loadFailed'));
+      render();
     }
   }
 
@@ -447,13 +455,34 @@
 
   /* -------------------------------------------------------------- Overview */
 
-  /** Окно «Проблемы»: сначала ошибки, по нажатию — нужная машина, заявка или модель */
+  // Категории проблем — у каждой свой ответственный; порядок — порядок в списке
+  const CATEGORIES = ['sales', 'it', 'marketing', 'service'];
+  const CATEGORY_ICON = { sales: '💼', it: '🖥', marketing: '🌐', service: '🔧' };
+  const PER_CATEGORY = 3;
+
+  /** Проблемы самого портала: нет связи с сервером или список проблем не обновился */
+  function clientProblems() {
+    if (state.offline) {
+      return [{ category: 'it', level: 'error', title: t('it.offline'), detail: t('it.offlineDetail', { time: state.fleet?.updatedAt ? dateTime(state.fleet.updatedAt) : '—' }) }];
+    }
+    if (state.dashboardFailed) return [{ category: 'it', level: 'warning', title: t('it.dashFailed'), detail: t('it.dashFailedDetail') }];
+    return [];
+  }
+
+  /**
+   * Окно «Проблемы»: счётчики по категориям (продажи, IT, сайт, сервис) и всего,
+   * по нажатию на категорию — только она; в каждой сначала ошибки,
+   * по нажатию на проблему — нужная машина, заявка или модель
+   */
   function renderProblems() {
-    const problems = state.dashboard?.problems;
-    if (!problems) return '';
+    if (!state.dashboard && !state.offline && !state.dashboardFailed) return '';
+    const problems = [...clientProblems(), ...(state.dashboard?.problems || [])];
     if (!problems.length) return `<div class="ok-line">${esc(t('ov.noProblems'))}</div>`;
     const errors = problems.filter((p) => p.level === 'error').length;
-    const shown = state.allProblems ? problems : problems.slice(0, 6);
+    const byCategory = CATEGORIES.map((c) => [c, problems.filter((p) => (p.category || 'it') === c)]);
+    const filter = state.problemCat;
+    const chips = [['all', problems.length], ...byCategory.map(([c, list]) => [c, list.length])].map(([id, n]) => `
+      <button type="button" class="pchip" data-pcat="${id}" aria-pressed="${filter === id}"${n || id === 'all' ? '' : ' disabled'}>${id === 'all' ? '' : `${CATEGORY_ICON[id]} `}${esc(id === 'all' ? t('ov.allCats') : t(`catShort.${id}`))} <b>${n}</b></button>`).join('');
     const item = (p) => {
       const level = p.level === 'error'
         ? `<span class="problem__level problem__level--error">● ${esc(t('ov.error'))}</span>`
@@ -463,14 +492,23 @@
         ? `<button type="button" class="problem" data-problem="${esc(p.target.tab)}" data-q="${esc(p.target.q || '')}">${body}<span class="problem__go" aria-hidden="true">›</span></button>`
         : `<div class="problem">${body}</div>`;
     };
+    const sections = byCategory.filter(([c, list]) => list.length && (filter === 'all' || filter === c)).map(([c, list]) => {
+      const open = filter === c || state.openCats.has(c);
+      return `
+        <div class="pcat" data-category="${c}">
+          <h3 class="pcat__title">${CATEGORY_ICON[c]} ${esc(t(`cat.${c}`))} · ${list.length}</h3>
+          ${(open ? list : list.slice(0, PER_CATEGORY)).map(item).join('')}
+          ${list.length > PER_CATEGORY && filter !== c ? `<button type="button" class="link pcat__more" data-pmore="${c}">${esc(open ? t('ov.showLess') : t('ov.showAll', { n: list.length }))}</button>` : ''}
+        </div>`;
+    }).join('');
     return `
       <section class="card problems" aria-labelledby="problems-title">
         <div class="problems__head">
           <h2 id="problems-title">${esc(t('ov.problems', { n: problems.length }))}</h2>
           <span class="muted">${errors ? `${esc(tn('n.errors', errors))} · ` : ''}${esc(tn('n.warnings', problems.length - errors))}</span>
         </div>
-        <div class="problems__list">${shown.map(item).join('')}</div>
-        ${problems.length > 6 ? `<button type="button" class="btn btn--small problems__more" data-problems-toggle>${esc(state.allProblems ? t('ov.showLess') : t('ov.showAll', { n: problems.length }))}</button>` : ''}
+        <div class="pchips" role="group">${chips}</div>
+        ${sections}
       </section>`;
   }
 
@@ -1344,8 +1382,16 @@
         if (problem.dataset.problem === 'requests') state.reqFilter = 'new';
         return setTab(problem.dataset.problem);
       }
-      if (event.target.closest('[data-problems-toggle]')) {
-        state.allProblems = !state.allProblems;
+      const pcat = event.target.closest('[data-pcat]');
+      if (pcat) {
+        state.problemCat = pcat.dataset.pcat;
+        return render();
+      }
+      const pmore = event.target.closest('[data-pmore]');
+      if (pmore) {
+        const c = pmore.dataset.pmore;
+        if (state.openCats.has(c)) state.openCats.delete(c);
+        else state.openCats.add(c);
         return render();
       }
       const goto = event.target.closest('[data-goto]');
