@@ -156,12 +156,22 @@
     return Math.floor((ms + TZ_OFFSET_MS) / DAY_MS) * DAY_MS - TZ_OFFSET_MS;
   }
 
+  /**
+   * Меньше суток — «через 5 ч»; дальше «завтра», «послезавтра», «через 4 дня» — дни
+   * по календарю Бангкока, как считают люди: 01.11 при сегодняшнем 30.10 — «послезавтра»
+   */
   function relative(iso) {
-    const diff = Date.parse(iso) - Date.now();
-    const hours = Math.round(diff / 3600000);
+    const at = Date.parse(iso);
+    const now = Date.now();
+    const hours = Math.round((at - now) / 3600000);
     if (Math.abs(hours) < 1) return t('rel.withinHour');
-    if (Math.abs(hours) < 36) return hours > 0 ? t('rel.inHours', { n: hours }) : t('rel.hoursAgo', { n: -hours });
-    const days = Math.round(diff / DAY_MS);
+    const days = Math.round((bangkokDayStart(at) - bangkokDayStart(now)) / DAY_MS);
+    // Меньше суток — в часах («через 20 ч»), дальше — «завтра», «послезавтра», «через N дней»
+    if (Math.abs(at - now) < DAY_MS) return hours > 0 ? t('rel.inHours', { n: hours }) : t('rel.hoursAgo', { n: -hours });
+    if (days === 1) return t('rel.tomorrow');
+    if (days === 2) return t('rel.dayAfter');
+    if (days === -1) return t('rel.yesterday');
+    if (days === -2) return t('rel.dayBefore');
     return t(days > 0 ? 'rel.in' : 'rel.ago', { days: tn('n.days', Math.abs(days)) });
   }
 

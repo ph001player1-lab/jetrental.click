@@ -27,6 +27,10 @@ window.STAFF_I18N = {
     'rel.withinHour': 'within an hour',
     'rel.inHours': 'in {n} h',
     'rel.hoursAgo': '{n} h ago',
+    'rel.tomorrow': 'tomorrow',
+    'rel.dayAfter': 'the day after tomorrow',
+    'rel.yesterday': 'yesterday',
+    'rel.dayBefore': 'two days ago',
     'rel.in': 'in {days}',
     'rel.ago': '{days} ago',
 
@@ -232,6 +236,10 @@ window.STAFF_I18N = {
     'rel.withinHour': 'в течение часа',
     'rel.inHours': 'через {n} ч',
     'rel.hoursAgo': '{n} ч назад',
+    'rel.tomorrow': 'завтра',
+    'rel.dayAfter': 'послезавтра',
+    'rel.yesterday': 'вчера',
+    'rel.dayBefore': 'позавчера',
     'rel.in': 'через {days}',
     'rel.ago': '{days} назад',
 
@@ -437,6 +445,10 @@ window.STAFF_I18N = {
     'rel.withinHour': 'ภายในหนึ่งชั่วโมง',
     'rel.inHours': 'อีก {n} ชม.',
     'rel.hoursAgo': '{n} ชม. ที่แล้ว',
+    'rel.tomorrow': 'พรุ่งนี้',
+    'rel.dayAfter': 'มะรืนนี้',
+    'rel.yesterday': 'เมื่อวาน',
+    'rel.dayBefore': 'เมื่อวานซืน',
     'rel.in': 'อีก {days}',
     'rel.ago': '{days} ที่แล้ว',
 
