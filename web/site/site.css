@@ -1,4 +1,4 @@
-/* JetRental — публичный сайт. Палитра: ночное море (navy), Андаманская бирюза, закатный коралл, песок. */
+/* Публичный сайт (KokonCar / JetRental). Палитра: ночное море (navy), Андаманская бирюза, закатный коралл, песок. */
 
 :root {
   --navy: #0b1f33;
@@ -83,12 +83,12 @@ h3 { font-size: 19px; font-weight: 700; }
 a.topbar__item:hover { color: var(--white); }
 .topbar__address { margin-right: auto; }
 .lang { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: rgba(255, 255, 255, .08); }
-.lang button {
-  border: 0; background: none; color: #c9d6e3; font: 700 12px var(--font); padding: 4px 10px;
-  border-radius: 999px; cursor: pointer; min-height: 26px;
+.lang a {
+  display: inline-flex; align-items: center; color: #c9d6e3; font: 700 12px var(--font); padding: 4px 10px;
+  border-radius: 999px; min-height: 26px; text-decoration: none;
 }
-.lang button:hover { color: var(--white); }
-.lang button[aria-pressed="true"] { background: var(--white); color: var(--navy); }
+.lang a:hover { color: var(--white); }
+.lang a[aria-current="true"] { background: var(--white); color: var(--navy); }
 .staff-link {
   display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, .28); color: var(--white); text-decoration: none; font-weight: 700; font-size: 12px; white-space: nowrap;
@@ -141,7 +141,7 @@ a.topbar__item:hover { color: var(--white); }
 .hero__ctas { display: flex; flex-wrap: wrap; gap: 12px; }
 .hero__facts { list-style: none; padding: 0; margin: 34px 0 0; display: flex; flex-wrap: wrap; gap: 10px 26px; color: #b7c6d6; font-size: 14px; }
 .hero__facts b { color: var(--white); }
-.hero__media img { width: 100%; max-width: 560px; margin-left: auto; filter: drop-shadow(0 30px 40px rgba(0, 0, 0, .45)); animation: float 6s ease-in-out infinite; }
+.hero__media img { width: 100%; height: auto; max-width: 560px; margin-left: auto; filter: drop-shadow(0 30px 40px rgba(0, 0, 0, .45)); animation: float 6s ease-in-out infinite; }
 @keyframes float { 50% { transform: translateY(-10px); } }
 @media (prefers-reduced-motion: reduce) { .hero__media img { animation: none; } html { scroll-behavior: auto; } }
 
@@ -240,7 +240,7 @@ a.topbar__item:hover { color: var(--white); }
 .contact { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: start; }
 .contact__list { list-style: none; padding: 0; margin: 26px 0; display: grid; gap: 18px; }
 .contact__list li { display: flex; gap: 14px; }
-.contact__list span { font-size: 22px; }
+.contact__list li > span { font-size: 22px; }
 .contact__list a { color: var(--ink); font-weight: 700; text-decoration: none; }
 .contact__list a:hover { color: var(--sea); }
 .contact__messengers { display: flex; gap: 10px; flex-wrap: wrap; }
@@ -310,3 +310,70 @@ a.topbar__item:hover { color: var(--white); }
   .badge { top: 8px; left: 8px; font-size: 10px; padding: 3px 8px; }
   .skeleton { height: 250px; }
 }
+
+/* --- KokonCar: акцент в цвет логотипа --- */
+
+body[data-brand="kokoncar"] { --sun: #ff5a36; --sun-2: #ff9a5c; }
+body[data-brand="kokoncar"] .header .logo img { height: 56px; }
+@media (max-width: 560px) { body[data-brand="kokoncar"] .header .logo img { height: 46px; } }
+
+/* --- Разделы, хлебные крошки, ссылки карточек --- */
+
+.hero--page { padding: 48px 0 120px; }
+.hero--page h1 { font-size: clamp(34px, 5vw, 56px); }
+.hero--page .hero__media img { max-width: 480px; }
+@media (max-width: 860px) { .hero--page .hero__media img { max-width: 240px; margin-top: -4px; } }
+.crumbs ol { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 18px 0 0; font-size: 14px; color: var(--muted); }
+.crumbs li + li::before { content: "›"; margin-right: 6px; color: #9aa7b6; }
+.crumbs a { color: inherit; text-decoration: none; font-weight: 600; }
+.crumbs a:hover { color: var(--sea); }
+.crumbs--light ol { padding: 0 0 14px; color: #b7c6d6; }
+.crumbs--light a:hover { color: var(--white); }
+.section__more { flex: none; font-weight: 800; text-decoration: none; white-space: nowrap; }
+a.vcard__media { text-decoration: none; }
+.vcard h3 a { color: inherit; text-decoration: none; }
+.vcard h3 a:hover { color: var(--sea); }
+.search-wrap--plain { margin-top: 0; padding-top: 56px; }
+
+/* --- Страница модели --- */
+
+.model { display: grid; grid-template-columns: 1.1fr 1fr; gap: 40px; align-items: center; padding-top: 20px; padding-bottom: 64px; }
+.model__media { position: relative; aspect-ratio: 16 / 11; border-radius: 26px; display: grid; place-items: center; padding: 24px; background: radial-gradient(circle at 50% 70%, #ffffff 0, #eef3f7 70%); }
+.model__media img { width: 100%; height: 100%; object-fit: contain; }
+.model__media.vcard__media--photo { padding: 0; overflow: hidden; }
+.model__media.vcard__media--photo img { object-fit: cover; }
+.model__info h1 { font-size: clamp(30px, 4.4vw, 48px); font-weight: 800; }
+.model__lead { color: var(--muted); font-size: 17px; margin: 14px 0 0; }
+.model__price { margin-top: 18px; font-size: 17px; color: var(--muted); }
+.model__price b { font-size: 34px; color: var(--navy); font-weight: 800; letter-spacing: -.02em; }
+.model__actions { display: flex; gap: 10px; margin-top: 20px; }
+.model__actions .btn--primary { flex: 1; max-width: 280px; }
+.model__actions .btn--wa, .model__actions .btn--tg { width: 48px; min-height: 48px; padding: 0; }
+.model__facts { list-style: none; padding: 0; margin: 22px 0 0; display: flex; flex-wrap: wrap; gap: 8px 22px; color: var(--muted); font-size: 14px; }
+.model__facts b { color: var(--ink); }
+@media (max-width: 860px) {
+  .model { grid-template-columns: 1fr; gap: 24px; padding-bottom: 48px; }
+  .model__actions .btn--primary { max-width: none; }
+}
+
+/* --- Таблица цен по сезонам --- */
+
+.prices__lead { margin: -16px 0 20px; max-width: 720px; }
+.table-wrap { overflow-x: auto; border-radius: var(--radius); box-shadow: var(--shadow); background: var(--white); }
+.prices { width: 100%; border-collapse: collapse; min-width: 640px; font-size: 15px; }
+.prices caption { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.prices th, .prices td { padding: 14px 16px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.prices thead th { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); background: #f8fafc; }
+.prices th:first-child { text-align: left; }
+.prices tbody th { font-weight: 400; }
+.prices tbody th b { display: block; color: var(--navy); }
+.prices tbody th small { color: var(--muted); font-size: 12px; }
+.prices td { font-weight: 700; color: var(--navy); font-variant-numeric: tabular-nums; }
+.prices tbody tr:last-child th, .prices tbody tr:last-child td { border-bottom: 0; }
+.prices__deposit { margin: 16px 0 0; font-weight: 800; }
+.prices__note { margin: 6px 0 0; font-size: 14px; }
+
+/* --- Страница «не найдено» --- */
+
+.notfound h1 { font-size: clamp(32px, 5vw, 52px); margin-bottom: 12px; }
+.notfound .hero__ctas { margin-top: 26px; }

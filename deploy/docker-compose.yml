@@ -1,8 +1,8 @@
 # ============================================================================
 # KOKON — сервисы на сервере
 # ============================================================================
-#   caddy — HTTPS для bot / staff / основного домена; отдаёт сайты из папки
-#           web/ и проксирует API и вебхуки в bot
+#   caddy — HTTPS для bot / staff / сайтов; отдаёт файлы из папки web/
+#           и проксирует страницы, API и вебхуки в bot
 #   bot   — наш Node.js-сервер (папка server/)
 #
 # Секреты (токены, ключи) — только в /opt/kokon/.env на сервере, НЕ в git.
@@ -25,6 +25,7 @@ services:
       BOT_DOMAIN: ${BOT_DOMAIN:-bot.jetrental.click}
       STAFF_DOMAIN: ${STAFF_DOMAIN:-staff.jetrental.click}
       SITE_DOMAIN: ${SITE_DOMAIN:-jetrental.click}
+      KOKON_PREVIEW_DOMAIN: ${KOKON_PREVIEW_DOMAIN:-kokon.jetrental.click}
     volumes:
       - ./:/etc/caddy/kokon:ro
       - ../web:/srv/web:ro
@@ -39,8 +40,11 @@ services:
     environment:
       PORT: "3000"
       DATA_DIR: /data
+      # Страницы сайта собирает бот: тексты (i18n.js) и версии файлов — отсюда
+      SITE_DIR: /srv/web/site
     volumes:
       - bot_data:/data
+      - ../web:/srv/web:ro
       # Ключ служебного аккаунта Google (доступ к таблице). Файл кладётся на
       # сервер вручную через scp; если его нет, запуск остановится с ошибкой.
       - type: bind

@@ -1,8 +1,39 @@
 # Caddy сам получает и продлевает HTTPS-сертификаты (Let's Encrypt).
 #   bot.jetrental.click   — вебхуки ботов и /health → контейнер bot
 #   staff.jetrental.click — сайт сотрудников (web/staff) + /api/staff/* → bot
-#   jetrental.click       — сайт аренды (web/site) + /api/public/* → bot
+#   jetrental.click       — сайт аренды: страницы собирает bot, картинки,
+#                           стили и скрипты — из web/site
 #   www.jetrental.click   — переадресация на jetrental.click
+#   kokon.jetrental.click — тестовая копия сайта под брендом KokonCar
+#                           (до переезда kokoncar.com, закрыта от поисковиков)
+
+# Общие настройки публичного сайта (бренд бот выбирает по домену)
+(public_site) {
+	encode gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+	@images path /img/*
+	header @images Cache-Control "public, max-age=604800"
+	# site.js?v=<хеш> и т.п.: при изменении файла меняется адрес
+	@versioned query v=*
+	header @versioned Cache-Control "public, max-age=31536000, immutable"
+	handle /api/public/* {
+		reverse_proxy bot:3000
+	}
+	@static path /img/* *.css *.js
+	handle @static {
+		root * /srv/web/site
+		file_server
+	}
+	# Страницы, sitemap.xml, robots.txt, переадресации со старых адресов
+	handle {
+		reverse_proxy bot:3000
+	}
+}
 
 {$BOT_DOMAIN} {
 	encode gzip
@@ -31,25 +62,14 @@
 }
 
 {$SITE_DOMAIN} {
-	encode gzip
-	header {
-		Strict-Transport-Security "max-age=31536000"
-		X-Content-Type-Options nosniff
-		Referrer-Policy strict-origin-when-cross-origin
-		-Server
-	}
-	@images path /img/*
-	header @images Cache-Control "public, max-age=604800"
-	handle /api/public/* {
-		reverse_proxy bot:3000
-	}
-	handle {
-		root * /srv/web/site
-		try_files {path} /index.html
-		file_server
-	}
+	import public_site
 }
 
 www.{$SITE_DOMAIN} {
 	redir https://{$SITE_DOMAIN}{uri} permanent
+}
+
+{$KOKON_PREVIEW_DOMAIN} {
+	import public_site
+	header X-Robots-Tag "noindex, nofollow"
 }

@@ -8,7 +8,9 @@
  *   POST /webhooks/telegram  — обновления от Telegram (проверяется секрет)
  *   POST /webhooks/whatsapp  — сообщения WhatsApp от Kapso (проверяется подпись)
  *   /api/staff/*             — сайт сотрудников (staffPortal.js)
- *   /api/public/*            — открытое API сайта jetrental.click (publicApi.js)
+ *   /api/public/*            — открытое API сайта (publicApi.js)
+ *   остальные GET на доменах сайта (jetrental.click, kokoncar.com) — страницы
+ *                              сайта, sitemap.xml, robots.txt (site/index.js)
  * ============================================================================
  */
 
@@ -18,6 +20,7 @@ import { config } from './config.js';
 import { HttpError, sendJson, readBody } from './http.js';
 import { staffRoute } from './staffPortal.js';
 import { publicRoute } from './publicApi.js';
+import { handleSite } from './site/index.js';
 import { mailEnabled } from './mail.js';
 import { telegramEnabled, webhookSecret, setupTelegram } from './telegram/api.js';
 import { handleUpdate } from './telegram/handler.js';
@@ -128,6 +131,15 @@ const server = http.createServer((req, res) => {
       console.error('Telegram webhook error:', err);
       if (!res.headersSent) sendJson(res, 500, { error: 'Internal error' });
     });
+  }
+
+  if (req.method === 'GET' || req.method === 'HEAD') {
+    return handleSite(req, res, url)
+      .then((handled) => { if (!handled) sendJson(res, 404, { error: 'Not found' }); })
+      .catch((err) => {
+        console.error(`Site page ${pathname} failed:`, err);
+        if (!res.headersSent) sendJson(res, 500, { error: 'Internal error' });
+      });
   }
 
   return sendJson(res, 404, { error: 'Not found' });

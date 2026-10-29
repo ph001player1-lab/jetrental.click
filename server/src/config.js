@@ -3,6 +3,13 @@
  * окружения (на сервере — файл /opt/kokon/.env), в коде их нет.
  */
 
+import { fileURLToPath } from 'node:url';
+
+/** 'a.com, B.com' → ['a.com', 'b.com'] */
+function hostList(value, fallback) {
+  return String(value || fallback).split(',').map((h) => h.trim().toLowerCase()).filter(Boolean);
+}
+
 export const config = {
   port: Number(process.env.PORT) || 3000,
   publicBaseUrl: (process.env.PUBLIC_BASE_URL || 'https://bot.jetrental.click').replace(/\/+$/, ''),
@@ -55,6 +62,19 @@ export const config = {
     codeMinutes: 10,
     // Почты с доступом помимо листа Users (через запятую) — на случай, если таблица недоступна
     extraEmails: (process.env.STAFF_EMAILS || '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean)
+  },
+
+  // Публичный сайт: страницы собирает сервер (site/), картинки, стили и
+  // скрипты отдаёт Caddy из папки web/site. Бренд выбирается по домену.
+  site: {
+    dir: process.env.SITE_DIR || fileURLToPath(new URL('../../web/site/', import.meta.url)),
+    jetrentalHosts: hostList(process.env.JETRENTAL_HOSTS, 'jetrental.click,www.jetrental.click'),
+    kokonHosts: hostList(process.env.KOKON_HOSTS, 'www.kokoncar.com,kokoncar.com'),
+    // Тестовая копия KokonCar до переезда домена — закрыта от поисковиков
+    kokonPreviewHosts: hostList(process.env.KOKON_PREVIEW_HOSTS, 'kokon.jetrental.click'),
+    // Коды подтверждения Яндекс.Вебмастера / Google Search Console (через запятую)
+    yandexVerification: (process.env.YANDEX_VERIFICATION || '').split(',').map((s) => s.trim()).filter(Boolean),
+    googleVerification: (process.env.GOOGLE_VERIFICATION || '').split(',').map((s) => s.trim()).filter(Boolean)
   },
 
   telegram: {

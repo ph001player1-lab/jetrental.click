@@ -20,11 +20,11 @@ import { todayIso } from './dates.js';
 import { VEHICLE_TYPES } from './format.js';
 import { LANGUAGES } from './i18n.js';
 import { isValidEmail } from './staffUsers.js';
+import { slugify, TYPE_ORDER } from './site/urls.js';
 
 const CATALOG_CACHE_MS = 60 * 1000;
 const AVAILABILITY_CACHE_MS = 2 * 60 * 1000;
 const MAX_RENTAL_DAYS = 365;
-const TYPE_ORDER = ['scooter', 'motorcycle', 'car'];
 
 const availabilityLimiter = rateLimiter(60 * 1000, 30);
 const requestLimiter = rateLimiter(60 * 60 * 1000, 5);
@@ -32,11 +32,11 @@ const requestLimiter = rateLimiter(60 * 60 * 1000, 5);
 let catalogCache = null;
 const availabilityCache = new Map();
 
-/** Ссылка на фото: полный https-адрес или файл сайта из папки img/ */
+/** Ссылка на фото: полный https-адрес или файл сайта из папки img/ (от корня — страниц несколько) */
 function safePhoto(value) {
   const text = String(value || '').trim();
   if (/^https:\/\/[^\s"'<>]+$/.test(text)) return text;
-  if (/^\/?img\/[\w\-./]+$/.test(text) && !text.includes('..')) return text.replace(/^\//, '');
+  if (/^\/?img\/[\w\-./]+$/.test(text) && !text.includes('..')) return `/${text.replace(/^\//, '')}`;
   return '';
 }
 
@@ -58,6 +58,7 @@ async function buildCatalog() {
     const tiers = [entry.pricePerDay, entry.pricePerDayWeek, entry.pricePerDayMonth].filter(Boolean);
     models.push({
       model,
+      slug: slugify(model),
       type: entry.type,
       priceFrom: entry.priceFrom || (tiers.length ? Math.min(...tiers) : null),
       perDay: entry.pricePerDay,
@@ -78,11 +79,16 @@ async function buildCatalog() {
   return { updatedAt: snapshot?.updatedAt || null, models };
 }
 
-async function catalog(req, res) {
+/** Каталог для API и страниц сайта (кэш на минуту) */
+export async function getCatalog() {
   if (!catalogCache || Date.now() - catalogCache.at > CATALOG_CACHE_MS) {
     catalogCache = { at: Date.now(), data: await buildCatalog() };
   }
-  sendJson(res, 200, catalogCache.data, { 'Cache-Control': 'public, max-age=60' });
+  return catalogCache.data;
+}
+
+async function catalog(req, res) {
+  sendJson(res, 200, await getCatalog(), { 'Cache-Control': 'public, max-age=60' });
 }
 
 function isIsoDate(value) {

@@ -1,14 +1,15 @@
 /**
  * ============================================================================
- * JetRental — логика сайта
+ * Логика сайта в браузере (KokonCar / JetRental)
  * ============================================================================
- * - каталог: GET /api/public/catalog (модели, цены и фото — лист Catalog,
- *   «свободно сейчас» — Автопрокат);
+ * Страницы, тексты и каталог собирает сервер (server/src/site) — скрипт
+ * добавляет то, что зависит от действий посетителя:
  * - подбор по датам: GET /api/public/availability;
- * - заявки (бронь и форма «Contact us»): POST /api/public/request → рабочая
+ * - окно брони и форма «Contact us»: POST /api/public/request → рабочая
  *   группа в Telegram с кнопками Take / Can't (с пометкой языка клиента);
- * - языки EN / RU / TH / ZH: ?lang=ru в адресе → сохранённый выбор → язык
- *   браузера → английский. Тексты — в i18n.js.
+ * - данные моделей для окна брони: GET /api/public/catalog.
+ * Язык — из <html lang> (у каждого языка свои адреса: /ru, /th, /zh),
+ * тексты — в i18n.js.
  * ============================================================================
  */
 (() => {
@@ -18,26 +19,36 @@
   const TZ = 'Asia/Bangkok';
   const WHATSAPP = document.body.dataset.whatsapp;
   const TELEGRAM = `https://t.me/${document.body.dataset.telegram}`;
+  const BRAND = document.body.dataset.brandName;
+  // Языковой префикс адресов страниц: '' (английский), '/ru', '/th', '/zh'
+  const PREFIX = document.body.dataset.prefix || '';
   const DICT = window.JR_I18N;
-  const LANGS = Object.keys(DICT);
   const LOCALES = { en: 'en-GB', ru: 'ru-RU', th: 'th-TH', zh: 'zh-CN' };
   const TYPE_ICON = { scooter: '🛵', motorcycle: '🏍', car: '🚗' };
+  const CATEGORY = { scooter: 'scooters', motorcycle: 'motorbikes', car: 'cars' };
   const DAY_MS = 86400000;
-  const STORAGE_KEY = 'jr_lang';
 
   const $ = (sel, root = document) => root.querySelector(sel);
-  const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
   const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const money = (n) => `${new Intl.NumberFormat('en-US').format(n)} ฿`;
 
-  const state = { lang: 'en', models: null, catalog: new Map(), search: null, results: null, booking: null };
+  const state = {
+    lang: DICT[document.documentElement.lang] ? document.documentElement.lang : 'en',
+    catalog: new Map(),
+    search: null,
+    results: null,
+    booking: null
+  };
 
   /* ---------------------------------------------------------------- Языки */
 
-  /** Текст по ключу с подстановкой {параметров}; значения параметров не экранируются */
+  /** Текст по ключу с подстановкой {параметров} и {brand}; значения параметров не экранируются */
   function t(key, params = {}) {
     const text = DICT[state.lang]?.[key] ?? DICT.en[key] ?? key;
-    return text.replace(/\{(\w+)\}/g, (m, name) => (name in params ? String(params[name]) : m));
+    return text.replace(/\{(\w+)\}/g, (m, name) => {
+      if (name in params) return String(params[name]);
+      return name === 'brand' && BRAND ? BRAND : m;
+    });
   }
 
   function daysText(n) {
@@ -58,55 +69,6 @@
   const niceDate = (iso) => new Intl.DateTimeFormat(LOCALES[state.lang], { timeZone: 'UTC', day: 'numeric', month: 'short' })
     .format(new Date(`${iso}T00:00:00Z`));
 
-  function storedLang() {
-    try {
-      return localStorage.getItem(STORAGE_KEY);
-    } catch {
-      return null;
-    }
-  }
-
-  function detectLang() {
-    const fromUrl = new URLSearchParams(location.search).get('lang');
-    if (LANGS.includes(fromUrl)) return fromUrl;
-    const saved = storedLang();
-    if (LANGS.includes(saved)) return saved;
-    for (const browserLang of navigator.languages || [navigator.language]) {
-      const code = String(browserLang || '').slice(0, 2).toLowerCase();
-      if (LANGS.includes(code)) return code;
-    }
-    return 'en';
-  }
-
-  function applyStatic() {
-    document.documentElement.lang = state.lang;
-    document.title = t('meta.title');
-    $('#meta-description').setAttribute('content', t('meta.description'));
-    $$('[data-i18n]').forEach((el) => { el.textContent = t(el.dataset.i18n); });
-    $$('[data-i18n-html]').forEach((el) => { el.innerHTML = t(el.dataset.i18nHtml); });
-    $$('[data-i18n-ph]').forEach((el) => { el.placeholder = t(el.dataset.i18nPh); });
-    $$('[data-i18n-aria]').forEach((el) => { el.setAttribute('aria-label', t(el.dataset.i18nAria)); });
-    $$('[data-type-option]').forEach((el) => { el.textContent = `${TYPE_ICON[el.dataset.typeOption]} ${typeLabel(el.dataset.typeOption)}`; });
-    $$('[data-wa]').forEach((el) => { el.href = waLink(t(el.dataset.wa)); });
-    $$('[data-lang]').forEach((el) => el.setAttribute('aria-pressed', String(el.dataset.lang === state.lang)));
-  }
-
-  function setLang(lang, { save = true } = {}) {
-    state.lang = LANGS.includes(lang) ? lang : 'en';
-    if (save) {
-      try { localStorage.setItem(STORAGE_KEY, state.lang); } catch { /* приватный режим — не страшно */ }
-      // Ссылкой с ?lang= можно поделиться; при смене языка обновляем адрес
-      const url = new URL(location.href);
-      url.searchParams.set('lang', state.lang);
-      history.replaceState(null, '', url);
-    }
-    applyStatic();
-    if (state.models) renderCatalog();
-    if (state.results) renderResults();
-    if (dialog.open && state.booking) refreshBookingTexts();
-    $$('.form__status').forEach((el) => { el.textContent = ''; });
-  }
-
   /* ------------------------------------------------------------------ API */
 
   async function api(path, body) {
@@ -125,8 +87,6 @@
     return `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(text)}`;
   }
 
-  const waAnchor = (text) => `<a href="${esc(waLink(text))}" target="_blank" rel="noopener">WhatsApp</a>`;
-
   /* ---------------------------------------------------------------- Шапка */
 
   function bindHeader() {
@@ -143,8 +103,6 @@
         burger.setAttribute('aria-expanded', 'false');
       }
     });
-    $$('[data-lang]').forEach((button) => button.addEventListener('click', () => setLang(button.dataset.lang)));
-    $('#year').textContent = new Date().getFullYear();
   }
 
   /* ------------------------------------------------------------- Карточки */
@@ -154,12 +112,19 @@
   /** Фото с фоном (.jpg) заполняют карточку целиком, вырезанные (.webp/.png) — по центру */
   const isFullPhoto = (photo) => /\.jpe?g$/i.test(photo || '');
 
+  /** Адрес страницы модели на текущем языке (как на сервере: /ru/cars/honda-city) */
+  const modelUrl = (item) => (item.slug && CATEGORY[item.type] ? `${PREFIX}/${CATEGORY[item.type]}/${item.slug}` : null);
+
   function media(item, badge = '') {
     const icon = TYPE_ICON[item.type] || '🚘';
     const img = item.photo
       ? `<img src="${esc(item.photo)}" alt="${esc(item.model)}" loading="lazy" width="320" height="220" data-icon="${icon}" />`
       : `<span class="vcard__placeholder" aria-hidden="true">${icon}</span>`;
-    return `<div class="vcard__media${isFullPhoto(item.photo) ? ' vcard__media--photo' : ''}">${badge}${img}</div>`;
+    const cls = `vcard__media${isFullPhoto(item.photo) ? ' vcard__media--photo' : ''}`;
+    const href = modelUrl(item);
+    return href
+      ? `<a class="${cls}" href="${esc(href)}" tabindex="-1" aria-hidden="true">${badge}${img}</a>`
+      : `<div class="${cls}">${badge}${img}</div>`;
   }
 
   // Файла по ссылке из Catalog нет (опечатка, ещё не выложен) → значок вместо пустой рамки
@@ -173,12 +138,6 @@
     img.outerHTML = `<span class="vcard__placeholder" aria-hidden="true">${img.dataset.icon || '🚘'}</span>`;
   }, true);
 
-  function availabilityBadge(item) {
-    if (item.availableNow === true) return `<span class="badge badge--free">${esc(t('badge.free'))}</span>`;
-    if (item.availableNow === false) return `<span class="badge badge--busy">${esc(t('badge.busy'))}</span>`;
-    return '';
-  }
-
   function actions(model, type, waText) {
     return `
       <div class="vcard__actions">
@@ -186,22 +145,6 @@
         <a class="btn btn--wa btn--sm" href="${esc(waLink(waText))}" target="_blank" rel="noopener" aria-label="${esc(model)} — WhatsApp">${icon('wa')}</a>
         <a class="btn btn--tg btn--sm" href="${TELEGRAM}" target="_blank" rel="noopener" aria-label="${esc(model)} — Telegram">${icon('tg')}</a>
       </div>`;
-  }
-
-  function catalogCard(item) {
-    const price = item.priceFrom
-      ? t('card.from', { price: money(item.priceFrom) })
-      : `<span class="vcard__ask">${esc(t('card.ask'))}</span>`;
-    return `
-      <article class="vcard">
-        ${media(item, availabilityBadge(item))}
-        <div class="vcard__body">
-          ${item.description ? `<div class="vcard__spec">${esc(item.description)}</div>` : ''}
-          <h3>${esc(item.model)}</h3>
-          <div class="vcard__price">${price}</div>
-          ${actions(item.model, null, t('wa.model', { model: item.model }))}
-        </div>
-      </article>`;
   }
 
   function priceLines(price, days) {
@@ -222,7 +165,7 @@
         ${media({ ...info, model: option.model }, `<span class="badge badge--free">${esc(t('badge.dates'))}</span>`)}
         <div class="vcard__body">
           ${info.description ? `<div class="vcard__spec">${esc(info.description)}</div>` : ''}
-          <h3>${esc(option.model)}</h3>
+          <h3>${modelUrl(info) ? `<a href="${esc(modelUrl(info))}">${esc(option.model)}</a>` : esc(option.model)}</h3>
           ${priceLines(option.price, search.days)}
           ${actions(option.model, search.type, waText)}
         </div>
@@ -231,28 +174,15 @@
 
   /* --------------------------------------------------------------- Каталог */
 
-  function renderCatalog() {
-    for (const grid of $$('[data-catalog]')) {
-      if (!state.models) {
-        grid.innerHTML = `<p class="muted">${t('catalog.error', { link: waAnchor(t('wa.which')) })}</p>`;
-        continue;
-      }
-      const items = state.models.filter((m) => m.type === grid.dataset.catalog);
-      grid.innerHTML = items.length
-        ? items.map(catalogCard).join('')
-        : `<p class="muted">${t('catalog.empty', { link: waAnchor(t('wa.which')) })}</p>`;
-    }
-  }
-
+  // Карточки на странице уже есть (их рисует сервер); данные моделей нужны
+  // для окна брони и результатов подбора — фото, цена «от», адрес страницы
   async function loadCatalog() {
     try {
       const { models } = await api('/catalog');
-      state.models = models;
       models.forEach((m) => state.catalog.set(m.model, m));
     } catch {
-      state.models = null;
+      /* без каталога окно брони покажет только название модели */
     }
-    renderCatalog();
   }
 
   /* ---------------------------------------------------- Подбор по датам */
@@ -293,6 +223,7 @@
 
   function bindSearch() {
     const form = $('#search-form');
+    if (!form) return; // на странице «не найдено» подбора нет
     const start = addDays(todayIso(), 1);
     setupDateInputs(form.from, form.to, start, addDays(start, 7));
 
@@ -462,6 +393,7 @@
 
   function bindContact() {
     const form = $('#contact-form');
+    if (!form) return;
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const button = $('button[type="submit"]', form);
@@ -491,6 +423,5 @@
   bindSearch();
   bindBooking();
   bindContact();
-  setLang(detectLang(), { save: false });
   loadCatalog();
 })();
