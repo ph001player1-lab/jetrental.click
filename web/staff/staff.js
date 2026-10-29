@@ -421,7 +421,7 @@
   function render() {
     const fleet = state.fleet;
     $('#updated').innerHTML = fleet?.updatedAt
-      ? `${esc(t('app.dataAt'))} <b>${esc(fmtTime.format(new Date(fleet.updatedAt)))}</b> <span class="muted">(${esc(relative(fleet.updatedAt))})</span>`
+      ? esc(t('app.dataAt', { time: '\u0001' })).replace('\u0001', `<b>${esc(fmtTime.format(new Date(fleet.updatedAt)))}</b>`)
       : esc(fleet ? (fleet.enabled ? t('app.loadingWs') : t('app.wsOff')) : t('app.loading'));
     renderTabs();
     const view = $('#view');
@@ -515,7 +515,7 @@
       <section class="card problems" aria-labelledby="problems-title">
         <div class="problems__head">
           <h2 id="problems-title">${esc(t('ov.problems', { n: problems.length }))}</h2>
-          <span class="muted">${errors ? `${esc(tn('n.errors', errors))} · ` : ''}${esc(tn('n.warnings', problems.length - errors))}</span>
+          ${errors ? `<span class="problems__errors">${esc(t('ov.errorsOf', { n: errors }))}</span>` : ''}
         </div>
         <div class="pchips" role="group">${chips}</div>
         ${sections}
@@ -562,6 +562,48 @@
       </div>`;
   }
 
+  const SOURCE_ICON = { telegram: '✈️', site: '🌐', whatsapp: '💬', instagram: '📷', facebook: '👍' };
+
+  /**
+   * Заявки: новые (не взяты в работу), взятые сегодня, всего за сегодня;
+   * источники — подключённые и ещё не подключённые каналы; список новых
+   */
+  function renderRequestsBlock(fresh) {
+    const stats = state.dashboard?.requests;
+    const list = fresh.length ? `
+      <h3 class="subsection-title">${esc(t('ov.waitingList'))}</h3>
+      <div class="card">
+        ${fresh.slice(0, 5).map((r) => `
+          <div class="row" data-goto="requests">
+            <div class="row__main">
+              <div class="row__title">#${r.id} · ${esc(r.model || TYPE_ONE[r.vehicleType] || t('ov.question'))}</div>
+              <div class="row__sub">${esc(r.clientName || '')} · ${SOURCE_ICON[r.channel] || ''} ${esc(CHANNELS[r.channel] || r.channel)}</div>
+            </div>
+            <div class="row__side">${r.dateFrom ? `${esc(shortDate(r.dateFrom))} – ${esc(shortDate(r.dateTo))}` : ''}</div>
+          </div>`).join('')}
+      </div>` : '';
+    if (!stats) return `<h2 class="section-title">${esc(t('req.section'))}</h2>${list || `<p class="muted note">${esc(t('ov.noNew'))}</p>`}`;
+    const offline = stats.sources.filter((s) => !s.connected);
+    return `
+      <h2 class="section-title">${esc(t('req.section'))}</h2>
+      <div class="stats stats--3">
+        <div class="stat${stats.waiting ? ' stat--alert' : ''}" data-goto="requests"><div class="stat__value">${stats.waiting}</div><div class="stat__label"><span class="dot dot--rent"></span>${esc(t('req.waiting'))}</div></div>
+        <div class="stat"><div class="stat__value">${stats.takenToday}</div><div class="stat__label"><span class="dot dot--free"></span>${esc(t('req.takenToday'))}</div></div>
+        <div class="stat"><div class="stat__value">${stats.today}</div><div class="stat__label">${esc(t('req.today'))}</div></div>
+      </div>
+      <div class="card sources">
+        <div class="sources__row sources__row--head"><span>${esc(t('src.title'))}</span><span>${esc(t('src.today'))}</span><span>${esc(t('src.days30'))}</span></div>
+        ${stats.sources.map((s) => `
+          <div class="sources__row${s.connected ? '' : ' is-off'}">
+            <span class="sources__name">${SOURCE_ICON[s.id]} ${esc(t(`src.${s.id}`))}<small class="sources__state">${esc(t(s.connected ? 'src.connected' : 'src.off'))}</small></span>
+            <span>${s.connected ? s.today : '—'}</span>
+            <span>${s.connected ? s.days30 : '—'}</span>
+          </div>`).join('')}
+        ${offline.length ? `<p class="sources__hint">${esc(t('src.offHint'))}</p>` : ''}
+      </div>
+      ${list}`;
+  }
+
   function renderOverview() {
     if (!state.fleet) return loadingBox();
     const all = cars();
@@ -578,8 +620,15 @@
     const weekAhead = Date.now() + 7 * DAY_MS;
     const bookedSoon = (type) => all.filter((c) => c.type === type
       && c.segments.some((seg) => seg.kind === 'reserve' && Date.parse(seg.to) > Date.now() && Date.parse(seg.from) <= weekAhead)).length;
+    // На компьютере — таблица, на телефоне — название и «всего» строкой, под ними 4 числа с подписями
+    const typeCols = [['free', STATUS.free, (type) => count('free', type)], ['rent', STATUS.rent, (type) => count('rent', type)],
+      ['service', STATUS.service, (type) => count('service', type)], ['reserve', t('ov.booked7'), bookedSoon]];
     const typeRows = Object.keys(TYPES).map((type) => `
-      <tr><td>${esc(TYPES[type])}</td><td>${count('free', type)}</td><td>${count('rent', type)}</td><td>${count('service', type)}</td><td>${bookedSoon(type)}</td><td><b>${count(null, type)}</b></td></tr>`).join('');
+      <div class="types__row">
+        <span class="types__name">${esc(TYPES[type])}</span>
+        ${typeCols.map(([kind, label, value]) => `<span class="types__cell"><b>${value(type)}</b><small><i class="dot dot--${kind}"></i>${esc(label)}</small></span>`).join('')}
+        <span class="types__total"><b>${count(null, type)}</b><small>${esc(t('ov.all'))}</small></span>
+      </div>`).join('');
 
     const outlook = state.dashboard?.outlook;
     const ahead = outlook ? `
@@ -613,28 +662,15 @@
 
     return `
       ${renderProblems()}
+      ${renderRequestsBlock(fresh)}
       <h2 class="section-title">${esc(t('ov.rightNow', { vehicles: tn('n.vehicles', all.length) }))}</h2>
       <div class="stats stats--3">${stats}</div>
       ${ahead}
 
       <h2 class="section-title">${esc(t('ov.byType'))}</h2>
-      <div class="card table-wrap">
-        <table class="type-table">
-          <thead><tr><th></th><th>${esc(STATUS.free)}</th><th>${esc(STATUS.rent)}</th><th>${esc(STATUS.service)}</th><th>${esc(t('ov.booked7'))}</th><th>${esc(t('ov.all'))}</th></tr></thead>
-          <tbody>${typeRows}</tbody>
-        </table>
-      </div>
-
-      <h2 class="section-title">${esc(t('ov.newRequests'))}</h2>
-      <div class="card">
-        ${fresh.length ? fresh.slice(0, 5).map((r) => `
-          <div class="row" data-goto="requests">
-            <div class="row__main">
-              <div class="row__title">#${r.id} · ${esc(r.model || TYPE_ONE[r.vehicleType] || t('ov.question'))}</div>
-              <div class="row__sub">${esc(r.clientName || '')} · ${esc(CHANNELS[r.channel] || r.channel)}</div>
-            </div>
-            <div class="row__side">${r.dateFrom ? `${esc(shortDate(r.dateFrom))} – ${esc(shortDate(r.dateTo))}` : ''}</div>
-          </div>`).join('') : `<div class="empty">${esc(t('ov.noNew'))}</div>`}
+      <div class="card types">
+        <div class="types__row types__row--head" aria-hidden="true"><span></span>${typeCols.map(([, label]) => `<span>${esc(label)}</span>`).join('')}<span>${esc(t('ov.all'))}</span></div>
+        ${typeRows}
       </div>
 
       <h2 class="section-title">${esc(t('ov.returning'))}</h2>

@@ -32,7 +32,7 @@ import { getFleet, sheetsEnabled, plateKey } from './fleet.js';
 import { tariffOn } from './pricing.js';
 import { todayIso } from './dates.js';
 import { canEdit, listModels, saveDescription, uploadPhoto, uploadThumb, saveGallery } from './staffCatalog.js';
-import { collectProblems, bookingOutlook, LIMITS } from './dashboard.js';
+import { collectProblems, bookingOutlook, requestStats, LIMITS } from './dashboard.js';
 
 const COOKIE = 'jr_staff';
 const MAX_ATTEMPTS = 5;
@@ -264,7 +264,7 @@ async function requests(req, res) {
 async function dashboard(req, res, url) {
   await requireStaff(req);
   const problems = await collectProblems(Date.now(), url.searchParams.get('lang') || 'en');
-  sendJson(res, 200, { problems, outlook: bookingOutlook(), limits: LIMITS });
+  sendJson(res, 200, { problems, outlook: bookingOutlook(), requests: requestStats(), limits: LIMITS });
 }
 
 /** Обработчик, которому нужен вошедший сотрудник: handler(staff, req, res, url) */

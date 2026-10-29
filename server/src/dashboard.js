@@ -25,6 +25,8 @@ import { getFleet, fleetStatus, sheetsEnabled, plateKey } from './fleet.js';
 import { getCatalog } from './publicApi.js';
 import { getStaffChatId, staffGroupFailure } from './staff.js';
 import { mailEnabled, mailFailure } from './mail.js';
+import { telegramEnabled } from './telegram/api.js';
+import { whatsappEnabled } from './whatsapp/api.js';
 import { dashboardTranslator } from './dashboardTexts.js';
 
 const HOUR_MS = 3600000;
@@ -317,6 +319,40 @@ export async function collectProblems(now = Date.now(), lang = 'en') {
       || (a.group === 'service') - (b.group === 'service')
       || level(a) - level(b)
       || GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group));
+}
+
+/* ----------------------------------------------------------------- Заявки */
+
+// Каналы заявок: подключённые считаем, остальные показываем как «не подключён»,
+// чтобы было видно, какие маркетинговые каналы ещё не приходят в дашборд
+const REQUEST_SOURCES = [
+  { id: 'telegram', connected: () => telegramEnabled },
+  { id: 'site', connected: () => true },
+  { id: 'whatsapp', connected: () => whatsappEnabled },
+  { id: 'instagram', connected: () => false },
+  { id: 'facebook', connected: () => false }
+];
+
+/**
+ * Заявки на дашборде: новые (не взяты в работу), взятые сегодня, всего за
+ * сегодня; по каналам — сегодня и за 30 дней. «Сегодня» — по Бангкоку.
+ */
+export function requestStats(now = Date.now()) {
+  const today = new Date(bangkokDayStart(now)).toISOString();
+  const since30 = new Date(now - 30 * DAY_MS).toISOString();
+  const rows = db.requestsForStats(since30 < today ? since30 : today);
+  const createdToday = rows.filter((r) => r.created_at >= today);
+  return {
+    waiting: rows.filter((r) => r.status === 'new').length,
+    takenToday: rows.filter((r) => r.taken_at && r.taken_at >= today).length,
+    today: createdToday.length,
+    sources: REQUEST_SOURCES.map((s) => ({
+      id: s.id,
+      connected: s.connected(),
+      today: createdToday.filter((r) => r.channel === s.id).length,
+      days30: rows.filter((r) => r.channel === s.id && r.created_at >= since30).length
+    }))
+  };
 }
 
 /* ------------------------------------------------------------ Брони впереди */

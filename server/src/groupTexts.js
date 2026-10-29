@@ -35,7 +35,7 @@ const TEXTS = {
     'hello': '👋 Здравствуйте! Я помощник по заявкам на аренду.\nЧтобы заявки приходили в эту группу, администратор отправляет /bind',
     'cmd.bind': 'Получать заявки в эту группу',
     'cmd.test': 'Тестовая заявка',
-    'cmd.summary': 'Сводка: брони и проблемы',
+    'cmd.summary': 'Сводка: брони и предупреждения',
 
     'sum.title': '☀️ <b>Доброе утро! {date}</b>',
     'sum.today': '<b>Сегодня:</b> {pickups} · {returns}',
@@ -44,8 +44,8 @@ const TEXTS = {
     'sum.ahead': '<b>Брони впереди:</b> 7 дней — {b7} ({v7}) · 30 дней — {b30} ({v30})',
     'sum.vehicles': { one: '{n} ед.', other: '{n} ед.' },
     'sum.fleet': '<b>Парк сейчас:</b> {free} свободно · {rent} в аренде · {service} в сервисе',
-    'sum.none': '✅ <b>Проблем нет</b>',
-    'sum.problems': '⚠️ <b>Проблемы: {n}</b> — {counts}',
+    'sum.none': '✅ <b>Предупреждений нет</b>',
+    'sum.problems': '⚠️ <b>Предупреждения: {n}</b> — {counts}',
     'sum.more': '…и ещё {n}',
     'cat.sales': 'Продажи', 'cat.it': 'IT', 'cat.marketing': 'Сайт', 'cat.service': 'Сервис'
   },
@@ -77,7 +77,7 @@ const TEXTS = {
     'hello': '👋 Hi! I’m the rental requests assistant.\nTo receive new requests in this group, an admin sends /bind',
     'cmd.bind': 'Receive requests in this group',
     'cmd.test': 'Test request',
-    'cmd.summary': 'Summary: bookings and problems',
+    'cmd.summary': 'Summary: bookings and warnings',
 
     'sum.title': '☀️ <b>Good morning! {date}</b>',
     'sum.today': '<b>Today:</b> {pickups} · {returns}',
@@ -86,8 +86,8 @@ const TEXTS = {
     'sum.ahead': '<b>Bookings ahead:</b> 7 days — {b7} ({v7}) · 30 days — {b30} ({v30})',
     'sum.vehicles': { one: '{n} vehicle', other: '{n} vehicles' },
     'sum.fleet': '<b>Fleet now:</b> {free} free · {rent} rented · {service} in service',
-    'sum.none': '✅ <b>No problems</b>',
-    'sum.problems': '⚠️ <b>Problems: {n}</b> — {counts}',
+    'sum.none': '✅ <b>No warnings</b>',
+    'sum.problems': '⚠️ <b>Warnings: {n}</b> — {counts}',
     'sum.more': '…and {n} more',
     'cat.sales': 'Sales', 'cat.it': 'IT', 'cat.marketing': 'Website', 'cat.service': 'Service'
   }

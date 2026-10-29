@@ -285,6 +285,29 @@ export function listRecentRequests(limit = 100) {
   return db.prepare("SELECT * FROM requests WHERE channel != 'test' ORDER BY id DESC LIMIT ?").all(Number(limit));
 }
 
+/** Заявки для дашборда (без тестовых): все новые и всё, что создано или взято с sinceIso */
+export function requestsForStats(sinceIso) {
+  return db.prepare(`
+    SELECT id, status, channel, created_at, taken_at FROM requests
+    WHERE channel != 'test' AND (status = 'new' OR created_at >= ? OR taken_at >= ?)
+  `).all(sinceIso, sinceIso);
+}
+
+export function requestsByStatus(status) {
+  return db.prepare('SELECT * FROM requests WHERE status = ? ORDER BY id').all(String(status));
+}
+
+/** Забыть строки листа Requests (после ручной чистки листа номера строк сдвинулись) */
+export function clearSheetRows() {
+  return Number(db.prepare('UPDATE requests SET sheet_row = NULL WHERE sheet_row IS NOT NULL').run().changes);
+}
+
+/** Удаление заявок (тестовых) по номерам */
+export function deleteRequests(ids) {
+  const remove = db.prepare('DELETE FROM requests WHERE id = ?');
+  for (const id of ids) remove.run(Number(id));
+}
+
 /* --- Изменения каталога с сайта сотрудников --- */
 
 export function logCatalogChange({ model, field, oldValue, newValue, email, name }) {
