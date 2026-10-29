@@ -13,7 +13,7 @@ import { SITE_LANGS } from './texts.js';
 import { pagePath, langPrefix, CATEGORY_BY_TYPE } from './urls.js';
 import {
   NAV_KEY, esc, icon, isFullPhoto, waLink, tgLink, head, SPRITE, LOCK, crumbs, search,
-  modelUrl, badge, photoTag, REVIEWS, bookingDialog, dayMonth, homeMeta, categoryMeta, modelCrumbs, modelMeta, notFoundMeta
+  modelUrl, badge, photoTag, galleryBlock, REVIEWS, bookingDialog, dayMonth, homeMeta, categoryMeta, modelCrumbs, modelMeta, notFoundMeta
 } from './common.js';
 
 // Как на старом сайте: меню — авто, мотоциклы, скутеры; на главной — мотоциклы, авто (бордовая полоса), скутеры
@@ -359,7 +359,7 @@ export function renderModel(ctx, data, item, tariffs) {
       <div class="cl-wrap">
         ${crumbs(ctx, modelCrumbs(ctx, item))}
         <div class="cl-model">
-          <div class="cl-model__media${isFullPhoto(item.photo) ? ' is-photo' : ''}" data-reveal>${badge(ctx, item)}${photoTag(item, { width: 640, height: 440, lazy: false, priority: true })}</div>
+          ${galleryBlock(ctx, item, { frame: 'cl-model__media', photoClass: 'is-photo' })}
           <div class="cl-model__info" data-reveal>
             <h1><b>${esc(make)}</b>${name ? ` <span>${esc(name)}</span>` : ''}</h1>
             <p class="cl-model__from">${item.priceFrom ? esc(t('cl.from', { price: baht(item.priceFrom) })) : esc(t('card.ask'))}</p>

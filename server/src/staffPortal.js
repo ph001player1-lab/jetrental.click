@@ -13,7 +13,7 @@
  *   GET  /api/staff/me                        — кто вошёл
  *   GET  /api/staff/fleet                     — парк из Автопроката + цены
  *   GET  /api/staff/requests                  — заявки из ботов и сайта
- *   /api/staff/models…                        — фото и описания моделей
+ *   /api/staff/models…                        — фото, галерея и описания моделей
  *                                               для сайта (staffCatalog.js)
  *
  * В базе храним только хэши кодов и сессий.
@@ -30,7 +30,7 @@ import { getWsSnapshot, wsSyncStatus } from './ws/sync.js';
 import { getFleet, sheetsEnabled, plateKey } from './fleet.js';
 import { tariffOn } from './pricing.js';
 import { todayIso } from './dates.js';
-import { canEdit, listModels, saveDescription, uploadPhoto } from './staffCatalog.js';
+import { canEdit, listModels, saveDescription, uploadPhoto, uploadThumb, saveGallery } from './staffCatalog.js';
 
 const COOKIE = 'jr_staff';
 const MAX_ATTEMPTS = 5;
@@ -246,7 +246,9 @@ const ROUTES = {
   'GET /api/staff/requests': requests,
   'GET /api/staff/models': signedIn(listModels),
   'POST /api/staff/models/description': signedIn(saveDescription),
-  'POST /api/staff/models/photo': signedIn(uploadPhoto)
+  'POST /api/staff/models/photo': signedIn(uploadPhoto),
+  'POST /api/staff/models/thumb': signedIn(uploadThumb),
+  'POST /api/staff/models/gallery': signedIn(saveGallery)
 };
 
 /** Обработчик для пути /api/staff/*; null — такого маршрута нет */

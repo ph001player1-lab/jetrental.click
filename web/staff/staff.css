@@ -298,3 +298,21 @@ a { color: var(--brand); }
 .md-status.is-ok { color: var(--free); }
 .md-status.is-error { color: var(--rent); }
 .md-buttons { display: flex; gap: 10px; justify-content: flex-end; }
+
+/* Галерея модели в окне правки */
+.md-gallery { display: grid; gap: 8px; padding-top: 4px; border-top: 1px solid var(--line); }
+.md-gallery__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding-top: 10px; }
+.md-gallery__head h3 { margin: 0; font-size: 15px; }
+.md-gallery__head .btn { cursor: pointer; }
+.md-ggrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
+.md-ggrid:empty::before { content: "No extra photos yet"; color: var(--muted); font-size: 13px; }
+.md-gitem { position: relative; border-radius: 12px; overflow: hidden; background: var(--surface-2); }
+.md-gitem .mframe { padding: 6px; }
+.md-gitem .mframe.is-photo { padding: 0; }
+.md-gitem__new { position: absolute; top: 6px; left: 6px; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; background: var(--free); color: #fff; }
+.md-gitem__link { font-size: 12px; color: var(--muted); padding: 8px; text-align: center; word-break: break-all; }
+.md-gitem__tools { display: grid; grid-template-columns: repeat(4, 1fr); }
+.md-gitem__tools button { min-height: 34px; border: 0; background: none; color: var(--text); font-size: 15px; cursor: pointer; }
+.md-gitem__tools button:hover:not(:disabled) { background: var(--line); }
+.md-gitem__tools button:disabled { opacity: .3; cursor: default; }
+.md-gitem__tools [data-gdel] { color: var(--rent); }

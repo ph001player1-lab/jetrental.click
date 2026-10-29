@@ -39,6 +39,8 @@
     image_required: 'Please choose a photo (JPG, PNG or WEBP).',
     too_many_uploads: 'Too many photos uploaded this hour. Please try later.',
     body_too_large: 'The photo is too large. Try another one.',
+    unknown_photo: 'One of the photos is no longer on the server. Close the window and try again.',
+    too_many_photos: 'Too many photos for one model.',
     sheets_not_configured: 'Google Sheets is not connected on the server.'
   };
 
@@ -628,6 +630,7 @@
       const data = await api('/models');
       state.models = data.models || [];
       state.canEdit = Boolean(data.canEdit);
+      state.maxGallery = data.maxGallery || 12;
       if (state.tab === 'site') render();
     } catch (err) {
       if (err.status === 401) return showLogin('email', err.code === 'no_access' ? ERRORS.no_access : '');
@@ -669,7 +672,7 @@
         <div class="mcard__body">
           <div class="mcard__title">${esc(m.model)}</div>
           <div class="mcard__desc">${m.description ? esc(m.description) : '<span class="muted">No description</span>'}</div>
-          <div class="mcard__meta">${esc(TYPE_ONE[m.type] || '—')} · ${m.units} in fleet</div>
+          <div class="mcard__meta">${esc(TYPE_ONE[m.type] || '—')} · ${m.units} in fleet${m.gallery?.length ? ` · 📷 ${m.gallery.length + 1} photos` : ''}</div>
           ${m.onSite ? '' : '<div><span class="tag">Not on the website — no vehicles</span></div>'}
           ${change ? `<div class="mcard__meta">${change}</div>` : ''}
           ${state.canEdit ? `<button type="button" class="btn btn--small" data-edit-model="${esc(m.model)}">Edit</button>` : ''}
@@ -830,11 +833,152 @@
     $('#md-white-wrap').hidden = ed.mode !== 'cutout' || ed.info.hasAlpha;
   }
 
-  function encode(canvas, mode) {
-    const toBlob = (type, quality) => new Promise((resolve) => canvas.toBlob(resolve, type, quality));
-    if (mode === 'photo') return toBlob('image/jpeg', 0.86);
+  function encode(canvas, mode, quality = 0.86) {
+    const toBlob = (type, q) => new Promise((resolve) => canvas.toBlob(resolve, type, q));
+    if (mode === 'photo') return toBlob('image/jpeg', quality);
     // Не все браузеры умеют сохранять webp (старый Safari) — тогда png
     return toBlob('image/webp', 0.88).then((blob) => (blob && blob.type === 'image/webp' ? blob : toBlob('image/png')));
+  }
+
+  /* Галерея: обычные фото уменьшаем до 1280 px (jpg), прозрачные — как
+     главное фото (webp). К каждому — миниатюра для ряда под каруселью. */
+
+  const GALLERY_MAX = 1280;
+  const THUMB_BOX = { w: 320, h: 220 };
+
+  async function galleryItem(file) {
+    const source = await decodeFile(file);
+    const { hasAlpha } = analyze(toCanvas(source, 400));
+    const mode = hasAlpha ? 'cutout' : 'photo';
+    let result;
+    if (hasAlpha) {
+      result = fitInto(trim(toCanvas(source, MAX_SOURCE)), CUTOUT_BOX.w, CUTOUT_BOX.h);
+    } else {
+      const work = toCanvas(source, GALLERY_MAX);
+      result = document.createElement('canvas');
+      result.width = work.width;
+      result.height = work.height;
+      const ctx = result.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, result.width, result.height);
+      ctx.drawImage(work, 0, 0);
+    }
+    source.close?.();
+    const blob = await encode(result, mode, 0.82);
+    const thumb = await encode(fitInto(result, THUMB_BOX.w, THUMB_BOX.h), mode, 0.8);
+    if (!blob) throw new Error('encode');
+    return { src: '', blob, thumb, preview: URL.createObjectURL(blob), full: mode === 'photo' };
+  }
+
+  const itemImage = (item) => item.preview || item.src;
+  const isLocal = (src) => /^\/(img|uploads)\//.test(src || '');
+
+  function renderGallery() {
+    const ed = state.editing;
+    if (!ed) return;
+    const last = ed.gallery.length - 1;
+    $('#md-gcount').textContent = `· ${ed.gallery.length} of ${state.maxGallery || 12}`;
+    $('#md-ggrid').innerHTML = ed.gallery.map((item, i) => {
+      const src = itemImage(item);
+      const picture = item.preview || isLocal(src)
+        ? `<img src="${esc(src)}" alt="" loading="lazy" />`
+        : `<span class="md-gitem__link">🔗 ${esc(src)}</span>`;
+      return `
+        <div class="md-gitem">
+          <div class="mframe${item.full ? ' is-photo' : ''}">${picture}${item.src ? '' : '<span class="md-gitem__new">New</span>'}</div>
+          <div class="md-gitem__tools">
+            <button type="button" data-gmove="-1" data-i="${i}" aria-label="Move left"${i === 0 ? ' disabled' : ''}>◀</button>
+            <button type="button" data-gmain data-i="${i}" aria-label="Make main photo" title="Make main photo">★</button>
+            <button type="button" data-gmove="1" data-i="${i}" aria-label="Move right"${i === last ? ' disabled' : ''}>▶</button>
+            <button type="button" data-gdel data-i="${i}" aria-label="Remove" title="Remove">✕</button>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  /** Главное фото в рамке сверху: уже сохранённое или выбранное из галереи */
+  function showMain() {
+    const ed = state.editing;
+    const src = ed.main ? itemImage(ed.main) : '';
+    const current = $('#md-current');
+    current.hidden = !src;
+    if (src) current.src = src;
+    $('#md-canvas').hidden = true;
+    $('#md-empty').hidden = Boolean(src);
+    $('#md-frame').classList.toggle('is-photo', Boolean(ed.main?.full));
+  }
+
+  async function addGalleryFiles(files) {
+    const ed = state.editing;
+    if (!ed || !files.length) return;
+    const room = (state.maxGallery || 12) - ed.gallery.length;
+    const list = [...files].slice(0, Math.max(0, room));
+    let failed = 0;
+    for (const [i, file] of list.entries()) {
+      setModelStatus(`Preparing photo ${i + 1} of ${list.length}…`);
+      try {
+        const item = await galleryItem(file);
+        if (state.editing !== ed) return URL.revokeObjectURL(item.preview);
+        ed.gallery.push(item);
+        ed.galleryChanged = true;
+        renderGallery();
+      } catch {
+        failed++;
+      }
+    }
+    const notes = [];
+    if (files.length > list.length) notes.push(`Only ${state.maxGallery || 12} photos fit — the rest were skipped.`);
+    if (failed) notes.push(`${failed} file(s) could not be opened.`);
+    setModelStatus(notes.join(' ') || 'Photos added. Press Save to publish them.', notes.length ? 'error' : '');
+  }
+
+  function galleryAction(button) {
+    const ed = state.editing;
+    const i = Number(button.dataset.i);
+    const item = ed?.gallery[i];
+    if (!item) return;
+    if (button.dataset.gmove) {
+      const j = i + Number(button.dataset.gmove);
+      if (j < 0 || j >= ed.gallery.length) return;
+      [ed.gallery[i], ed.gallery[j]] = [ed.gallery[j], item];
+    } else if ('gmain' in button.dataset) {
+      // Прежнее главное фото встаёт на место выбранного; новое, ещё не сохранённое главное — отменяется
+      ed.gallery.splice(i, 1, ...(ed.main ? [ed.main] : []));
+      ed.main = item;
+      ed.source = null;
+      ed.result = null;
+      $('#md-file').value = '';
+      $('#md-options').hidden = true;
+      showMain();
+    } else if ('gdel' in button.dataset) {
+      ed.gallery.splice(i, 1);
+      if (item.preview) URL.revokeObjectURL(item.preview);
+    }
+    ed.galleryChanged = true;
+    renderGallery();
+  }
+
+  async function uploadImage(url, blob) {
+    if (blob.size > MAX_UPLOAD) throw Object.assign(new Error(), { code: 'body_too_large' });
+    const response = await fetch(`${API}${url}`, {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': blob.type }, body: blob
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw Object.assign(new Error(), { status: response.status, code: data.error });
+    return data;
+  }
+
+  /** Новые фото галереи → на сервер (с миниатюрами), у каждого появляется адрес */
+  async function uploadNewPhotos(ed) {
+    const pending = [ed.main, ...ed.gallery].filter((item) => item && !item.src);
+    for (const [i, item] of pending.entries()) {
+      setModelStatus(`Uploading photo ${i + 1} of ${pending.length}…`);
+      const model = encodeURIComponent(ed.model);
+      const data = await uploadImage(`/models/photo?model=${model}&gallery=1`, item.blob);
+      item.src = data.photo;
+      // Без миниатюры сайт покажет в ряду само фото — не повод останавливаться
+      if (item.thumb) await uploadImage(`/models/thumb?model=${model}&photo=${encodeURIComponent(item.src)}`, item.thumb).catch(() => {});
+    }
   }
 
   function setModelStatus(text, kind = '') {
@@ -846,18 +990,20 @@
   function openModel(name) {
     const m = (state.models || []).find((x) => x.model === name);
     if (!m) return;
-    state.editing = { model: m.model, source: null, result: null, mode: 'cutout', removeWhite: true, info: null };
+    state.editing = {
+      model: m.model, source: null, result: null, mode: 'cutout', removeWhite: true, info: null,
+      main: m.photo ? { src: m.photo, full: isPhotoFill(m.photo) } : null,
+      gallery: (m.gallery || []).map((src) => ({ src, full: isPhotoFill(src) })),
+      galleryChanged: false
+    };
     $('#md-title').textContent = m.model;
     $('#md-type').textContent = TYPE_ONE[m.type] || '';
     $('#md-desc').value = m.description || '';
     $('#md-file').value = '';
     $('#md-options').hidden = true;
-    $('#md-canvas').hidden = true;
-    const current = $('#md-current');
-    current.hidden = !m.photo;
-    if (m.photo) current.src = m.photo;
-    $('#md-empty').hidden = Boolean(m.photo);
-    $('#md-frame').classList.toggle('is-photo', isPhotoFill(m.photo));
+    $('#md-gfile').value = '';
+    showMain();
+    renderGallery();
     setModelStatus('');
     $('#model-dialog').showModal();
   }
@@ -889,18 +1035,22 @@
     const button = $('#md-save');
     button.disabled = true;
     try {
+      await uploadNewPhotos(ed);
       if (ed.result) {
-        setModelStatus('Uploading the photo…');
+        setModelStatus('Uploading the main photo…');
         const blob = await encode(ed.result, ed.mode);
         if (!blob) throw Object.assign(new Error(), { code: 'bad_image' });
-        if (blob.size > MAX_UPLOAD) throw Object.assign(new Error(), { code: 'body_too_large' });
-        const response = await fetch(`${API}/models/photo?model=${encodeURIComponent(ed.model)}`, {
-          method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': blob.type }, body: blob
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw Object.assign(new Error(), { status: response.status, code: data.error });
+        const data = await uploadImage(`/models/photo?model=${encodeURIComponent(ed.model)}`, blob);
         m.photo = data.photo;
+        ed.main = { src: data.photo, full: ed.mode === 'photo' };
         ed.result = null;
+      }
+      if (ed.galleryChanged) {
+        setModelStatus('Saving the photo order…');
+        const data = await api('/models/gallery', { body: { model: ed.model, photo: ed.main?.src || '', gallery: ed.gallery.map((item) => item.src) } });
+        m.photo = data.photo;
+        m.gallery = data.gallery;
+        ed.galleryChanged = false;
       }
       const description = $('#md-desc').value.trim();
       if (description !== (m.description || '')) {
@@ -911,7 +1061,7 @@
       setModelStatus('✓ Saved. The website will show it within 2 minutes.', 'ok');
       render();
       loadModels();
-      setTimeout(() => { if ($('#model-dialog').open && !state.editing?.result) $('#model-dialog').close(); }, 1200);
+      setTimeout(() => { if ($('#model-dialog').open && !state.editing?.result && !state.editing?.galleryChanged) $('#model-dialog').close(); }, 1200);
     } catch (err) {
       if (err.status === 401) { $('#model-dialog').close(); return showLogin('email'); }
       setModelStatus(ERRORS[err.code] || 'Could not save. Please try again.', 'error');
@@ -931,6 +1081,15 @@
       }
     });
     $('#md-file').addEventListener('change', (event) => choosePhoto(event.target.files[0]));
+    $('#md-gfile').addEventListener('change', (event) => {
+      const files = [...event.target.files];
+      event.target.value = ''; // те же файлы можно будет выбрать ещё раз
+      addGalleryFiles(files);
+    });
+    $('#md-ggrid').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-gmove], [data-gmain], [data-gdel]');
+      if (button) galleryAction(button);
+    });
     $('#md-white').addEventListener('change', (event) => {
       if (!state.editing) return;
       state.editing.removeWhite = event.target.checked;
@@ -940,7 +1099,10 @@
       event.preventDefault();
       saveModel();
     });
-    dialog.addEventListener('close', () => { state.editing = null; });
+    dialog.addEventListener('close', () => {
+      for (const item of [state.editing?.main, ...(state.editing?.gallery || [])]) if (item?.preview) URL.revokeObjectURL(item.preview);
+      state.editing = null;
+    });
   }
 
   /* --------------------------------------------------------------- События */

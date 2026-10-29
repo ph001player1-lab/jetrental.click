@@ -21,6 +21,7 @@ import { VEHICLE_TYPES } from './format.js';
 import { LANGUAGES } from './i18n.js';
 import { isValidEmail } from './staffUsers.js';
 import { slugify, TYPE_ORDER } from './site/urls.js';
+import { safePhoto, photoExists, thumbOf, parseGallery, MAX_GALLERY } from './photos.js';
 
 const CATALOG_CACHE_MS = 60 * 1000;
 const AVAILABILITY_CACHE_MS = 2 * 60 * 1000;
@@ -31,14 +32,6 @@ const requestLimiter = rateLimiter(60 * 60 * 1000, 5);
 
 let catalogCache = null;
 const availabilityCache = new Map();
-
-/** Ссылка на фото: полный https-адрес, файл сайта из img/ или загруженный с сайта сотрудников (uploads/) */
-function safePhoto(value) {
-  const text = String(value || '').trim();
-  if (/^https:\/\/[^\s"'<>]+$/.test(text)) return text;
-  if (/^\/?(img|uploads)\/[\w\-./]+$/.test(text) && !text.includes('..')) return `/${text.replace(/^\//, '')}`;
-  return '';
-}
 
 async function buildCatalog() {
   if (!sheetsEnabled) return { updatedAt: null, models: [] };
@@ -56,6 +49,10 @@ async function buildCatalog() {
   for (const [model, entry] of catalog) {
     if (!unitCount.get(model) || !entry.type) continue;
     const tiers = [entry.pricePerDay, entry.pricePerDayWeek, entry.pricePerDayMonth].filter(Boolean);
+    // Удалённые с сервера файлы не показываем; нет главного фото — берём первое из галереи
+    const gallery = parseGallery(entry.gallery).filter(photoExists);
+    const main = safePhoto(entry.photo);
+    const photo = photoExists(main) ? main : gallery[0] || '';
     models.push({
       model,
       slug: slugify(model),
@@ -66,7 +63,10 @@ async function buildCatalog() {
       perDayMonth: entry.pricePerDayMonth,
       deposit: entry.deposit,
       description: entry.description,
-      photo: safePhoto(entry.photo),
+      photo,
+      // Кадры карусели на странице модели: главное фото, затем галерея
+      gallery: [photo, ...gallery.filter((src) => src !== photo)].filter(Boolean).slice(0, MAX_GALLERY + 1)
+        .map((src) => ({ src, thumb: thumbOf(src) })),
       // null — данных из Автопроката пока нет
       availableNow: snapshot ? (freeNow.get(model) || 0) > 0 : null
     });

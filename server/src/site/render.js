@@ -12,7 +12,7 @@ import { SITE_LANGS } from './texts.js';
 import { pagePath, langPrefix, CATEGORY_BY_TYPE, TYPE_ORDER } from './urls.js';
 import {
   TYPE_ICON, LANG_LABEL, NAV_KEY, esc, money, icon, isFullPhoto, waLink, tgLink, head, SPRITE, LOCK, crumbs, search,
-  modelUrl, badge, photoTag, REVIEWS, bookingDialog, dayMonth, homeMeta, categoryMeta, modelCrumbs, modelMeta, notFoundMeta
+  modelUrl, badge, photoTag, galleryBlock, REVIEWS, bookingDialog, dayMonth, homeMeta, categoryMeta, modelCrumbs, modelMeta, notFoundMeta
 } from './common.js';
 
 const SECTION_ID = { scooter: 'scooters', motorcycle: 'motorbikes', car: 'cars' };
@@ -391,7 +391,7 @@ export function renderModel(ctx, data, item, tariffs) {
   const main = `
     <div class="container">${crumbs(ctx, crumbItems)}</div>
     <section class="model container">
-      <div class="model__media${isFullPhoto(item.photo) ? ' vcard__media--photo' : ''}">${badge(ctx, item)}${photoTag(item, { width: 640, height: 440, lazy: false, priority: true })}</div>
+      ${galleryBlock(ctx, item, { frame: 'model__media', photoClass: 'vcard__media--photo' })}
       <div class="model__info">
         <p class="eyebrow eyebrow--dark">${esc(t(`type.${type}`))}${item.description ? ` · ${esc(item.description)}` : ''}</p>
         <h1>${esc(t('model.h1', { model: item.model }))}</h1>

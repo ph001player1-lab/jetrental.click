@@ -358,6 +358,36 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
   .cl-btn--big { font-size: 18px; flex: 1 1 100%; }
 }
 
+/* Фото модели: карусель — большое фото со стрелками, ниже миниатюры (как на Wix) */
+.gal { min-width: 0; }
+.gal__view { display: block; padding: 0; overflow: hidden; }
+.gal__track { position: absolute; inset: 0; display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; overscroll-behavior-x: contain; }
+.gal__track::-webkit-scrollbar { display: none; }
+.gal__track:focus-visible { outline: 2px solid var(--text); outline-offset: -2px; }
+.gal__slide { flex: 0 0 100%; height: 100%; scroll-snap-align: start; display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); padding: 16px; }
+.gal__slide.is-photo { padding: 0; background: #000; }
+.cl-model__media .gal__slide img { width: 100%; height: 100%; object-fit: contain; }
+.gal .badge { z-index: 2; }
+.gal__arrow { position: absolute; top: 50%; z-index: 2; width: 46px; height: 46px; margin-top: -23px; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center; background: rgba(8, 13, 17, .55); color: var(--text); cursor: pointer; transition: opacity .2s, background .2s; }
+.gal__arrow:hover { background: var(--red); }
+.gal__arrow:disabled { opacity: 0; pointer-events: none; }
+.gal__arrow--prev { left: 10px; }
+.gal__arrow--next { right: 10px; }
+.gal__count { position: absolute; right: 12px; bottom: 12px; z-index: 2; padding: 3px 10px; background: rgba(8, 13, 17, .7); font: 500 13px var(--font); }
+.gal__thumbs { position: relative; display: flex; gap: 8px; margin-top: 10px; overflow-x: auto; scrollbar-width: none; }
+.gal__thumbs::-webkit-scrollbar { display: none; }
+.gal__thumb { flex: 0 0 92px; aspect-ratio: 16 / 9; padding: 3px; border: 2px solid transparent; background: var(--bg-2); cursor: pointer; opacity: .55; transition: opacity .2s, border-color .2s; }
+.gal__thumb.is-photo { padding: 0; }
+.gal__thumb img { width: 100%; height: 100%; object-fit: contain; }
+.gal__thumb.is-photo img { object-fit: cover; }
+.gal__thumb:hover, .gal__thumb.is-active { opacity: 1; }
+.gal__thumb.is-active { border-color: var(--text); }
+.gal__thumb .vcard__placeholder { font-size: 22px; }
+@media (max-width: 640px) {
+  .gal__arrow { width: 38px; height: 38px; margin-top: -19px; }
+  .gal__thumb { flex-basis: 74px; }
+}
+
 /* Бордовая таблица цен */
 .cl-prices__wrap { overflow-x: auto; background: var(--maroon); }
 .cl-prices { width: 100%; min-width: 760px; border-collapse: collapse; }

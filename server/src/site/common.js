@@ -168,6 +168,39 @@ export function photoTag(item, { width = 320, height = 220, lazy = true, priorit
   return `<img src="${esc(item.photo)}" alt="${esc(item.model)}"${lazy ? ' loading="lazy"' : ''}${priority ? ' fetchpriority="high"' : ''} width="${width}" height="${height}" data-icon="${typeIcon}" />`;
 }
 
+/**
+ * Фото на странице модели. Одно фото — просто картинка; несколько — карусель:
+ * большое фото со стрелками и счётчиком, ниже ряд миниатюр. Кадры листаются
+ * и без скрипта (прокрутка с прилипанием), site.js добавляет стрелки и миниатюры.
+ * frame — класс рамки в дизайне (model__media, cl-model__media),
+ * photoClass — класс рамки для полноразмерного фото (не вырезанного на фоне).
+ */
+export function galleryBlock(ctx, item, { frame, photoClass }) {
+  const { t } = ctx;
+  const slides = item.gallery?.length ? item.gallery : [];
+  if (slides.length < 2) {
+    return `<div class="${frame}${isFullPhoto(item.photo) ? ` ${photoClass}` : ''}" data-reveal>${badge(ctx, item)}${photoTag(item, { width: 640, height: 440, lazy: false, priority: true })}</div>`;
+  }
+  const typeIcon = TYPE_ICON[item.type] || '🚘';
+  const alt = (i) => (i ? t('gal.photo', { model: item.model, n: i + 1 }) : item.model);
+  const frames = slides.map(({ src }, i) => `
+            <div class="gal__slide${isFullPhoto(src) ? ' is-photo' : ''}"><img src="${esc(src)}" alt="${esc(alt(i))}" width="1280" height="880"${i ? ' loading="lazy" decoding="async"' : ' fetchpriority="high"'} data-icon="${typeIcon}" /></div>`).join('');
+  const thumbs = slides.map(({ thumb, src }, i) => `
+          <button class="gal__thumb${isFullPhoto(src) ? ' is-photo' : ''}${i ? '' : ' is-active'}" type="button" data-gal-to="${i}" aria-label="${esc(t('gal.show', { n: i + 1 }))}"${i ? '' : ' aria-current="true"'}><img src="${esc(thumb)}" alt="" width="120" height="82" loading="lazy" decoding="async" /></button>`).join('');
+  return `<div class="gal" data-gallery data-reveal>
+        <div class="${frame} gal__view">
+          ${badge(ctx, item)}
+          <div class="gal__track" tabindex="0" role="group" aria-label="${esc(item.model)}">${frames}
+          </div>
+          <button class="gal__arrow gal__arrow--prev" type="button" data-gal="-1" aria-label="${esc(t('gal.prev'))}" disabled><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M15 5l-7 7 7 7"/></svg></button>
+          <button class="gal__arrow gal__arrow--next" type="button" data-gal="1" aria-label="${esc(t('gal.next'))}"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg></button>
+          <span class="gal__count" aria-hidden="true"><b>1</b> / ${slides.length}</span>
+        </div>
+        <div class="gal__thumbs">${thumbs}
+        </div>
+      </div>`;
+}
+
 // Оригинальные отзывы клиентов (не переводятся)
 export const REVIEWS = [
   ['Брал два мото в аренду, супер выгодные условия и шикарный подход к клиенту! Буду обращаться снова, спасибо за быструю доставку!', 'Egor Bobrov'],
@@ -288,7 +321,8 @@ export function modelMeta(ctx, item) {
       ? t(`page.model.desc.${item.type}`, { model: item.model, price: money(item.priceFrom) })
       : t(`page.model.descAsk.${item.type}`, { model: item.model }),
     alternates: alternatesFor({ kind: 'model', type: item.type, slug: item.slug }),
-    image: item.photo && !/^https:/.test(item.photo) ? item.photo : null,
+    // Для превью в мессенджерах лучше настоящее фото, чем вырезанное на фоне
+    image: [...(item.gallery || []).map((g) => g.src).filter(isFullPhoto), item.photo].find((src) => src && !/^https:/.test(src)) || null,
     ld: [breadcrumbLd(ctx, modelCrumbs(ctx, item))]
   };
 }

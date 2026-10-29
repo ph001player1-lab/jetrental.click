@@ -134,7 +134,7 @@
     const img = event.target;
     if (!(img instanceof HTMLImageElement)) return;
     if (img.id === 'book-photo') { img.hidden = true; return; }
-    const box = img.closest('.vcard__media, .cl-card__media, .cl-model__media');
+    const box = img.closest('.gal__slide, .gal__thumb, .vcard__media, .cl-card__media, .cl-model__media');
     if (!box) return;
     box.classList.remove('vcard__media--photo', 'is-photo');
     img.outerHTML = `<span class="vcard__placeholder" aria-hidden="true">${img.dataset.icon || '🚘'}</span>`;
@@ -497,11 +497,67 @@
     });
   }
 
+  // Фото на странице модели: стрелки, миниатюры, счётчик, клавиши ← →.
+  // Листать пальцем можно и без скрипта — это обычная прокрутка с прилипанием
+  function bindGalleries() {
+    document.querySelectorAll('[data-gallery]').forEach((gallery) => {
+      const track = $('.gal__track', gallery);
+      const slides = track.children.length;
+      const thumbs = [...gallery.querySelectorAll('[data-gal-to]')];
+      const row = $('.gal__thumbs', gallery);
+      const prev = $('[data-gal="-1"]', gallery);
+      const next = $('[data-gal="1"]', gallery);
+      const count = $('.gal__count b', gallery);
+      let current = 0;
+
+      const show = (index) => {
+        const i = Math.max(0, Math.min(slides - 1, index));
+        track.scrollTo({ left: i * track.clientWidth, behavior: 'smooth' });
+      };
+      const mark = () => {
+        const i = Math.max(0, Math.min(slides - 1, Math.round(track.scrollLeft / track.clientWidth)));
+        if (i === current) return;
+        current = i;
+        count.textContent = i + 1;
+        prev.disabled = i === 0;
+        next.disabled = i === slides - 1;
+        thumbs.forEach((thumb, j) => {
+          thumb.classList.toggle('is-active', j === i);
+          if (j === i) thumb.setAttribute('aria-current', 'true');
+          else thumb.removeAttribute('aria-current');
+        });
+        // Активная миниатюра — посередине ряда
+        const thumb = thumbs[i];
+        if (thumb) row.scrollTo({ left: thumb.offsetLeft - (row.clientWidth - thumb.offsetWidth) / 2, behavior: 'smooth' });
+      };
+
+      let frame = 0;
+      track.addEventListener('scroll', () => {
+        cancelAnimationFrame(frame);
+        frame = requestAnimationFrame(mark);
+      }, { passive: true });
+      prev.addEventListener('click', () => show(current - 1));
+      next.addEventListener('click', () => show(current + 1));
+      row.addEventListener('click', (e) => {
+        const thumb = e.target.closest('[data-gal-to]');
+        if (thumb) show(Number(thumb.dataset.galTo));
+      });
+      track.addEventListener('keydown', (e) => {
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+        e.preventDefault();
+        show(current + (e.key === 'ArrowRight' ? 1 : -1));
+      });
+      // При повороте экрана остаёмся на том же кадре
+      window.addEventListener('resize', () => track.scrollTo({ left: current * track.clientWidth }));
+    });
+  }
+
   bindHeader();
   bindSearch();
   bindBooking();
   bindContact();
   bindReveal();
   bindSliders();
+  bindGalleries();
   loadCatalog();
 })();
