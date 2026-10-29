@@ -12,7 +12,7 @@
  *     дни года без сезона;
  *   - заявка без ответа дольше 30 минут рабочего времени (10:00–19:00 Бангкок);
  *   - техника: Автопрокат, Google-таблица, рабочая группа, почта.
- * Тексты на английском — как и весь сайт сотрудников.
+ * Тексты — на языке сайта сотрудников (dashboardTexts.js), сводка — на английском.
  * ============================================================================
  */
 
@@ -23,6 +23,7 @@ import { getFleet, fleetStatus, sheetsEnabled, plateKey } from './fleet.js';
 import { getCatalog } from './publicApi.js';
 import { getStaffChatId, staffGroupFailure } from './staff.js';
 import { mailEnabled, mailFailure } from './mail.js';
+import { dashboardTranslator } from './dashboardTexts.js';
 
 const HOUR_MS = 3600000;
 const DAY_MS = 24 * HOUR_MS;
@@ -42,11 +43,6 @@ const LOAD_DAYS = 14;
 /** Начало дня по Бангкоку, в который попадает ms */
 export const bangkokDayStart = (ms) => Math.floor((ms + BANGKOK_MS) / DAY_MS) * DAY_MS - BANGKOK_MS;
 const bangkokIso = (ms) => new Date(ms + BANGKOK_MS).toISOString().slice(0, 10);
-const bangkokTime = (ms) => new Date(ms + BANGKOK_MS).toISOString().slice(11, 16);
-const bangkokDateTime = (ms) => {
-  const d = new Date(ms + BANGKOK_MS);
-  return `${d.getUTCDate()} ${d.toLocaleString('en-GB', { month: 'short', timeZone: 'UTC' })}, ${bangkokTime(ms)}`;
-};
 
 /** Минуты рабочего времени (10:00–19:00 по Бангкоку) между from и to */
 export function workingMinutes(from, to) {
@@ -60,18 +56,20 @@ export function workingMinutes(from, to) {
   return Math.floor(total / 60000);
 }
 
-function ago(ms, now) {
-  const hours = Math.floor((now - ms) / HOUR_MS);
-  if (hours < 48) return `${hours} h ago`;
-  return `${Math.floor(hours / 24)} days ago`;
-}
-
 const carName = (car) => `${car.model || car.wsModel || 'Vehicle'} · ${car.plate}`;
 const parsed = (car) => car.segments.map((s) => ({ kind: s.kind, from: Date.parse(s.from), to: Date.parse(s.to) }));
 
 /* ---------------------------------------------------------------- Проверки */
 
-function vehicleProblems(snapshot, now) {
+/** «29 Oct, 13:27 (12 h ago)»; начало раньше окна снимка — «больше недели назад» */
+function since(tx, ms, now, windowFrom) {
+  if (ms <= windowFrom + 60000) return tx.t('time.weekAgo');
+  const hours = Math.floor((now - ms) / HOUR_MS);
+  const ago = hours < 48 ? tx.t('time.hoursAgo', { n: hours }) : tx.t('time.daysAgo', { n: Math.floor(hours / 24) });
+  return tx.t('time.at', { date: tx.dateTime(ms), ago });
+}
+
+function vehicleProblems(tx, snapshot, now) {
   const problems = [];
   const windowFrom = Date.parse(snapshot.windowFrom);
   const windowTo = Date.parse(snapshot.windowTo);
@@ -79,13 +77,11 @@ function vehicleProblems(snapshot, now) {
     const current = parsed(car).find((s) => s.from <= now && now < s.to);
     if (!current) continue;
     const target = { tab: 'fleet', q: car.plate };
-    // Начало раньше окна снимка — значит, давно (точную дату Автопрокат не отдал)
-    const since = current.from <= windowFrom + 60000 ? 'more than a week ago' : ago(current.from, now);
     if (current.kind === 'reserve' && now - current.from >= LIMITS.bookingNotIssuedHours * HOUR_MS) {
       problems.push({
         group: 'bookings', level: 'error', target,
-        title: `Booking not issued: ${carName(car)}`,
-        detail: `Pickup time was ${current.from <= windowFrom + 60000 ? since : `${bangkokDateTime(current.from)} (${since})`}, but the vehicle is not rented out in Avtoprokat.`
+        title: tx.t('bookingNotIssued.title', { car: carName(car) }),
+        detail: tx.t('bookingNotIssued.detail', { when: since(tx, current.from, now, windowFrom) })
       });
     }
     if (current.kind === 'service') {
@@ -94,8 +90,11 @@ function vehicleProblems(snapshot, now) {
       if (noEnd || long) {
         problems.push({
           group: 'service', level: 'warning', target,
-          title: `Long service: ${carName(car)}`,
-          detail: `In service since ${current.from <= windowFrom + 60000 ? since : `${bangkokDateTime(current.from)} (${since})`}${noEnd ? ', no end date' : `, until ${bangkokDateTime(current.to)}`}.`
+          title: tx.t('longService.title', { car: carName(car) }),
+          detail: tx.t('longService.detail', {
+            when: since(tx, current.from, now, windowFrom),
+            end: noEnd ? tx.t('longService.noEnd') : tx.t('longService.until', { until: tx.dateTime(current.to) })
+          })
         });
       }
     }
@@ -103,13 +102,13 @@ function vehicleProblems(snapshot, now) {
   return problems;
 }
 
-function matchProblems(snapshot, fleet) {
+function matchProblems(tx, snapshot, fleet) {
   const problems = [];
   for (const car of snapshot.cars.filter((c) => !c.model)) {
     problems.push({
       group: 'data', level: 'warning', target: { tab: 'fleet', q: car.plate },
-      title: `Not in the Vehicles sheet: ${car.wsModel || 'vehicle'} · ${car.plate}`,
-      detail: 'Avtoprokat has this vehicle, but the Vehicles sheet has no row with this plate — it is not on the website and the bots do not offer it.'
+      title: tx.t('notInSheet.title', { car: `${car.wsModel || 'Vehicle'} · ${car.plate}` }),
+      detail: tx.t('notInSheet.detail')
     });
   }
   if (!fleet) return problems;
@@ -119,14 +118,14 @@ function matchProblems(snapshot, fleet) {
     if (!key || wsPlates.has(key)) continue;
     problems.push({
       group: 'data', level: 'warning',
-      title: `Not in Avtoprokat: ${unit.model || 'vehicle'} · ${unit.plate}`,
-      detail: 'The Vehicles sheet has this plate, but Avtoprokat does not — check the plate or remove the row.'
+      title: tx.t('notInWs.title', { car: `${unit.model || 'Vehicle'} · ${unit.plate}` }),
+      detail: tx.t('notInWs.detail')
     });
   }
   return problems;
 }
 
-async function websiteProblems(fleet) {
+async function websiteProblems(tx, fleet) {
   const problems = [];
   if (!fleet) return problems;
   const unitModels = new Set(fleet.units.map((u) => u.model).filter(Boolean));
@@ -134,8 +133,8 @@ async function websiteProblems(fleet) {
     if (fleet.catalog.has(model)) continue;
     problems.push({
       group: 'website', level: 'warning', target: { tab: 'site', q: model },
-      title: `Not in the Catalog sheet: ${model}`,
-      detail: 'Vehicles of this model are in the fleet, but the Catalog sheet has no row for it — it is not on the website.'
+      title: tx.t('notInCatalog.title', { model }),
+      detail: tx.t('notInCatalog.detail')
     });
   }
   const { models } = await getCatalog();
@@ -144,8 +143,8 @@ async function websiteProblems(fleet) {
     if (!missing.length) continue;
     problems.push({
       group: 'website', level: 'warning', target: { tab: 'site', q: m.model },
-      title: `${m.model}: no ${missing.join(', ')} on the website`,
-      detail: missing.includes('price') ? 'Clients see “price on request”. Add the price in the Catalog sheet or the price lists.' : 'Add it in the Website tab.'
+      title: tx.t('website.title', { model: m.model, missing: missing.map((k) => tx.t(`missing.${k}`)).join(tx.t('list.sep')) }),
+      detail: tx.t(missing.includes('price') ? 'website.detailPrice' : 'website.detailOther')
     });
   }
   return problems;
@@ -174,50 +173,52 @@ function seasonGaps(seasons) {
 
 const dm = (md) => `${md.slice(3)}.${md.slice(0, 2)}`;
 
-function priceProblems(fleet) {
+function priceProblems(tx, fleet) {
   const problems = [];
   const pricing = fleet?.pricing;
   if (!pricing) return problems;
   const sheets = [...new Set(pricing.seasons.map((s) => s.sheet))];
+  const quoted = (list) => list.map((s) => `“${s}”`).join(tx.t('list.sep'));
   for (const unit of fleet.units) {
     const plate = plateKey(unit.plate);
     if (!plate) continue;
     const missing = sheets.filter((sheet) => !pricing.prices.get(sheet)?.has(plate));
     const typos = sheets.filter((sheet) => pricing.prices.get(sheet)?.get(plate)?.suspicious);
-    const name = `${unit.model || 'vehicle'} · ${unit.plate}`;
+    const car = `${unit.model || 'Vehicle'} · ${unit.plate}`;
     if (missing.length) {
       problems.push({
         group: 'prices', level: 'warning', target: { tab: 'fleet', q: unit.plate },
-        title: `No price: ${name}`,
-        detail: `This plate is missing in ${missing.map((s) => `“${s}”`).join(', ')}.`
+        title: tx.t('noPrice.title', { car }),
+        detail: tx.t('noPrice.detail', { sheets: quoted(missing) })
       });
     }
     if (typos.length) {
       problems.push({
         group: 'prices', level: 'warning', target: { tab: 'fleet', q: unit.plate },
-        title: `Typo in the price row: ${name}`,
-        detail: `In ${typos.map((s) => `“${s}”`).join(', ')} the daily price grows with a longer rental or drops more than 3 times — the bots do not use this row.`
+        title: tx.t('typo.title', { car }),
+        detail: tx.t('typo.detail', { sheets: quoted(typos) })
       });
     }
   }
   for (const name of [...new Set(pricing.seasons.filter((s) => !s.verified).map((s) => s.name))]) {
+    const label = tx.t(`season.${name}`);
     problems.push({
       group: 'prices', level: 'warning',
-      title: `Prices not verified: ${name} season`,
-      detail: 'For these dates clients see “from …” prices only. Put “Да” in “Цены проверены” on the Сезоны sheet when the prices are checked.'
+      title: tx.t('unverified.title', { name: label === `season.${name}` ? name : label }),
+      detail: tx.t('unverified.detail')
     });
   }
   for (const [from, to] of seasonGaps(pricing.seasons)) {
     problems.push({
       group: 'prices', level: 'warning',
-      title: `No season for ${from === to ? dm(from) : `${dm(from)}–${dm(to)}`}`,
-      detail: 'These days are not covered on the Сезоны sheet — exact prices cannot be calculated for them.'
+      title: tx.t('seasonGap.title', { range: from === to ? dm(from) : `${dm(from)}–${dm(to)}` }),
+      detail: tx.t('seasonGap.detail')
     });
   }
   return problems;
 }
 
-function requestProblems(now) {
+function requestProblems(tx, now) {
   const problems = [];
   for (const r of db.listActiveRequests()) {
     if (r.status !== 'new') continue;
@@ -226,8 +227,8 @@ function requestProblems(now) {
     if (!r.staff_message_id) {
       problems.push({
         group: 'requests', level: 'error', target: { tab: 'requests' },
-        title: `Request not delivered to the staff group: ${what}`,
-        detail: `Received ${bangkokDateTime(created)}. Open the Requests tab and answer the client.`
+        title: tx.t('notDelivered.title', { what }),
+        detail: tx.t('notDelivered.detail', { when: tx.dateTime(created) })
       });
       continue;
     }
@@ -235,56 +236,61 @@ function requestProblems(now) {
     if (waited >= LIMITS.requestWaitMinutes) {
       problems.push({
         group: 'requests', level: 'error', target: { tab: 'requests' },
-        title: `No answer to request ${what}`,
-        detail: `Waiting ${waited >= 120 ? `${Math.floor(waited / 60)} h ${waited % 60} min` : `${waited} min`} of working time (since ${bangkokDateTime(created)}). Press “Take” in the staff group.`
+        title: tx.t('noAnswer.title', { what }),
+        detail: tx.t('noAnswer.detail', {
+          wait: waited >= 120 ? tx.t('wait.hm', { h: Math.floor(waited / 60), m: waited % 60 }) : tx.t('wait.m', { m: waited }),
+          when: tx.dateTime(created)
+        })
       });
     }
   }
   return problems;
 }
 
-function systemProblems(now) {
+function systemProblems(tx, now) {
   const problems = [];
+  const add = (level, key, detail) => problems.push({ group: 'system', level, title: tx.t(`${key}.title`, detail?.title), detail: detail?.text ?? tx.t(`${key}.detail`) });
+  const failure = (f) => ({ text: tx.t('failure.detail', { when: tx.dateTime(Date.parse(f.at)), error: f.message }) });
   const sync = wsSyncStatus();
   if (!wsEnabled) {
-    problems.push({ group: 'system', level: 'error', title: 'Avtoprokat is not connected', detail: 'WS_API_URL / WS_API_USER / WS_API_PASSWORD are not set on the server.' });
+    add('error', 'wsOff');
   } else if (!sync.lastSyncAt) {
-    problems.push({ group: 'system', level: 'error', title: 'No data from Avtoprokat yet', detail: sync.error ? `Last error: ${sync.error}` : 'The first sync is still running.' });
+    add('error', 'wsNoData', { text: sync.error ? tx.t('wsNoData.error', { error: sync.error }) : tx.t('wsNoData.first') });
   } else {
     const age = Math.round((now - Date.parse(sync.lastSyncAt)) / 60000);
     if (age >= LIMITS.syncStaleMinutes) {
-      problems.push({ group: 'system', level: 'error', title: `Avtoprokat data is ${age} min old`, detail: sync.error ? `Sync error: ${sync.error}` : 'The sync runs every 10 minutes — check the server.' });
+      add('error', 'wsStale', { title: { n: age }, text: sync.error ? tx.t('wsStale.error', { error: sync.error }) : tx.t('wsStale.hint') });
     } else if (sync.error) {
-      problems.push({ group: 'system', level: 'warning', title: 'Last Avtoprokat sync failed', detail: sync.error });
+      add('warning', 'wsLastFailed', { text: sync.error });
     }
   }
   const sheets = fleetStatus();
-  if (!sheetsEnabled) problems.push({ group: 'system', level: 'error', title: 'Google Sheets is not connected', detail: 'GOOGLE_SHEET_ID / service account are not set on the server.' });
-  else if (sheets.error) problems.push({ group: 'system', level: 'error', title: 'Google Sheets error', detail: `${sheets.error} — the server works on the last loaded data.` });
-  if (!getStaffChatId()) {
-    problems.push({ group: 'system', level: 'error', title: 'Staff group is not connected', detail: 'New requests do not reach Telegram. Send /bind in the staff group.' });
-  } else if (staffGroupFailure()) {
-    const f = staffGroupFailure();
-    problems.push({ group: 'system', level: 'error', title: 'Could not send to the staff group', detail: `${bangkokDateTime(Date.parse(f.at))}: ${f.message}` });
-  }
-  if (!mailEnabled) problems.push({ group: 'system', level: 'warning', title: 'Email is not set up', detail: 'Login codes for this site cannot be sent (RESEND_API_KEY).' });
-  else if (mailFailure()) problems.push({ group: 'system', level: 'warning', title: 'Last login email failed', detail: `${bangkokDateTime(Date.parse(mailFailure().at))}: ${mailFailure().message}` });
+  if (!sheetsEnabled) add('error', 'sheetsOff');
+  else if (sheets.error) add('error', 'sheetsError', { text: tx.t('sheetsError.detail', { error: sheets.error }) });
+  if (!getStaffChatId()) add('error', 'groupOff');
+  else if (staffGroupFailure()) add('error', 'groupFailed', failure(staffGroupFailure()));
+  if (!mailEnabled) add('warning', 'mailOff');
+  else if (mailFailure()) add('warning', 'mailFailed', failure(mailFailure()));
   return problems;
 }
 
 const GROUP_ORDER = ['system', 'requests', 'bookings', 'service', 'data', 'prices', 'website'];
 
-/** Все проблемы, сначала важные: [{ group, level, title, detail, target? }] */
-export async function collectProblems(now = Date.now()) {
+/**
+ * Все проблемы, сначала важные: [{ group, level, title, detail, target? }].
+ * lang — язык текстов (en / ru / th), сводка в группу — на английском.
+ */
+export async function collectProblems(now = Date.now(), lang = 'en') {
+  const tx = dashboardTranslator(lang);
   const snapshot = getWsSnapshot();
   const fleet = sheetsEnabled ? await getFleet().catch(() => null) : null;
   const problems = [
-    ...systemProblems(now),
-    ...requestProblems(now),
-    ...(snapshot ? vehicleProblems(snapshot, now) : []),
-    ...(snapshot ? matchProblems(snapshot, fleet) : []),
-    ...priceProblems(fleet),
-    ...(await websiteProblems(fleet).catch(() => []))
+    ...systemProblems(tx, now),
+    ...requestProblems(tx, now),
+    ...(snapshot ? vehicleProblems(tx, snapshot, now) : []),
+    ...(snapshot ? matchProblems(tx, snapshot, fleet) : []),
+    ...priceProblems(tx, fleet),
+    ...(await websiteProblems(tx, fleet).catch(() => []))
   ];
   return problems.sort((a, b) => (a.level === b.level ? 0 : a.level === 'error' ? -1 : 1)
     || GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group));

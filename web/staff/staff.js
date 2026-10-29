@@ -6,7 +6,8 @@
  * Website (фото и описания моделей для сайта — менять могут роли Editor/Admin).
  * Данные: GET /api/staff/fleet (снимок Автопроката, обновляется на сервере
  * раз в 10 минут), GET /api/staff/requests, GET /api/staff/models.
- * Время показываем по Бангкоку.
+ * Время показываем по Бангкоку. Языки: английский, русский, тайский
+ * (тексты — i18n.js; по умолчанию язык браузера, иначе английский).
  * ============================================================================
  */
 (() => {
@@ -18,31 +19,56 @@
   const DAY_MS = 86400000;
   const REFRESH_MS = 2 * 60 * 1000;
 
-  const TYPES = { scooter: 'Scooters', motorcycle: 'Motorbikes', car: 'Cars' };
-  const TYPE_ONE = { scooter: 'Scooter', motorcycle: 'Motorbike', car: 'Car' };
-  const STATUS = { free: 'Free', rent: 'Rented', reserve: 'Booked', service: 'Service' };
-  const CHANNELS = { telegram: 'Telegram', whatsapp: 'WhatsApp', site: 'Website' };
+  /* ---------------------------------------------------------------- Языки */
+
+  const I18N = window.STAFF_I18N;
+  const LANG_KEY = 'jr_staff_lang';
+  const LANG_NAMES = { en: 'English', ru: 'Русский', th: 'ไทย' };
+  const LANG_SHORT = { en: 'EN', ru: 'RU', th: 'ไทย' };
+  // Тайская локаль — с обычным календарём (по умолчанию в ней буддийский год)
+  const LOCALES = { en: 'en-GB', ru: 'ru-RU', th: 'th-TH-u-ca-gregory' };
+
+  /** Язык: выбранный раньше → язык браузера (если он из трёх) → английский */
+  function detectLang() {
+    try {
+      const saved = localStorage.getItem(LANG_KEY);
+      if (I18N[saved]) return saved;
+    } catch { /* хранилище недоступно */ }
+    for (const code of navigator.languages || [navigator.language || '']) {
+      const short = String(code).toLowerCase().slice(0, 2);
+      if (I18N[short]) return short;
+    }
+    return 'en';
+  }
+
+  let lang = detectLang();
+
+  /** Текст по ключу; {name} заменяются значениями params (без экранирования) */
+  function t(key, params = {}) {
+    const text = I18N[lang][key] ?? I18N.en[key] ?? key;
+    return String(text).replace(/\{(\w+)\}/g, (m, name) => (name in params ? params[name] : m));
+  }
+
+  /** Число с нужной формой слова: tn('n.days', 3) → «3 дня» */
+  function tn(key, n) {
+    const forms = I18N[lang][key] || I18N.en[key];
+    return (forms[new Intl.PluralRules(LOCALES[lang]).select(n)] || forms.other).replace('{n}', n);
+  }
+
+  /** Подписи, которые читаются на текущем языке при каждом обращении */
+  const labels = (prefix, keys) => Object.defineProperties({}, Object.fromEntries(
+    keys.map((key) => [key, { enumerable: true, get: () => t(`${prefix}.${key}`) }])));
+
+  const TYPES = labels('types', ['scooter', 'motorcycle', 'car']);
+  const TYPE_ONE = labels('type', ['scooter', 'motorcycle', 'car']);
+  const STATUS = labels('status', ['free', 'rent', 'reserve', 'service']);
+  const CHANNELS = { telegram: 'Telegram', whatsapp: 'WhatsApp', get site() { return t('channel.site'); } };
   const LANGS = { en: '🇬🇧 EN', ru: '🇷🇺 RU', th: '🇹🇭 TH', zh: '🇨🇳 ZH' };
-  const ERRORS = {
-    invalid_email: 'Please enter a valid email.',
-    invalid_code: 'Wrong or expired code. Try again or request a new one.',
-    too_many_attempts: 'Too many wrong attempts. Request a new code.',
-    wait_a_minute: 'A code was just sent. Please wait a minute before requesting another.',
-    too_many_codes: 'Too many codes requested. Try again in an hour.',
-    too_many_requests: 'Too many attempts. Please try again later.',
-    mail_not_configured: 'Email sending is not set up on the server yet.',
-    mail_failed: 'Could not send the email. Please try again in a minute.',
-    no_access: 'This email no longer has access.',
-    read_only: 'You can view only. Ask the owner to give you the Editor role in the Users sheet.',
-    model_not_found: 'This model is no longer in the Catalog sheet.',
-    bad_image: 'This file does not look like a photo. Try another one.',
-    image_required: 'Please choose a photo (JPG, PNG or WEBP).',
-    too_many_uploads: 'Too many photos uploaded this hour. Please try later.',
-    body_too_large: 'The photo is too large. Try another one.',
-    unknown_photo: 'One of the photos is no longer on the server. Close the window and try again.',
-    too_many_photos: 'Too many photos for one model.',
-    sheets_not_configured: 'Google Sheets is not connected on the server.'
-  };
+  const ERRORS = labels('err', [
+    'invalid_email', 'invalid_code', 'too_many_attempts', 'wait_a_minute', 'too_many_codes', 'too_many_requests',
+    'mail_not_configured', 'mail_failed', 'no_access', 'read_only', 'model_not_found', 'bad_image', 'image_required',
+    'too_many_uploads', 'body_too_large', 'unknown_photo', 'too_many_photos', 'sheets_not_configured'
+  ]);
 
   const ICONS = {
     overview: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>',
@@ -51,13 +77,7 @@
     requests: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z"/></svg>',
     site: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M21 19V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2zM8.5 13.5l2.5 3 3.5-4.5 4.5 6H5l3.5-4.5z"/></svg>'
   };
-  const TABS = [
-    { id: 'overview', title: 'Overview' },
-    { id: 'fleet', title: 'Fleet' },
-    { id: 'calendar', title: 'Calendar' },
-    { id: 'requests', title: 'Requests' },
-    { id: 'site', title: 'Website' }
-  ];
+  const TABS = ['overview', 'fleet', 'calendar', 'requests', 'site'].map((id) => ({ id, get title() { return t(`tab.${id}`); } }));
 
   const state = {
     user: null,
@@ -110,10 +130,16 @@
 
   /* -------------------------------------------------------------- Форматы */
 
-  const fmtDateTime = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
-  const fmtTime = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
-  const fmtDay = new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', day: '2-digit', month: 'short' });
-  const fmtWeekday = new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', weekday: 'short' });
+  let fmtDateTime, fmtTime, fmtDay, fmtWeekday;
+  /** Форматы дат на текущем языке */
+  function setFormats() {
+    const locale = LOCALES[lang];
+    fmtDateTime = new Intl.DateTimeFormat(locale, { timeZone: TZ, day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+    fmtTime = new Intl.DateTimeFormat(locale, { timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+    fmtDay = new Intl.DateTimeFormat(locale, { timeZone: 'UTC', day: '2-digit', month: 'short' });
+    fmtWeekday = new Intl.DateTimeFormat(locale, { timeZone: 'UTC', weekday: 'short' });
+  }
+  setFormats();
   const fmtMoney = new Intl.NumberFormat('en-US');
 
   const dateTime = (iso) => (iso ? fmtDateTime.format(new Date(iso)) : '—');
@@ -130,11 +156,53 @@
   function relative(iso) {
     const diff = Date.parse(iso) - Date.now();
     const hours = Math.round(diff / 3600000);
-    if (Math.abs(hours) < 1) return 'within an hour';
-    if (Math.abs(hours) < 36) return hours > 0 ? `in ${hours} h` : `${-hours} h ago`;
+    if (Math.abs(hours) < 1) return t('rel.withinHour');
+    if (Math.abs(hours) < 36) return hours > 0 ? t('rel.inHours', { n: hours }) : t('rel.hoursAgo', { n: -hours });
     const days = Math.round(diff / DAY_MS);
-    const label = `${Math.abs(days)} ${Math.abs(days) === 1 ? 'day' : 'days'}`;
-    return days > 0 ? `in ${label}` : `${label} ago`;
+    return t(days > 0 ? 'rel.in' : 'rel.ago', { days: tn('n.days', Math.abs(days)) });
+  }
+
+  const loadingBox = () => `<div class="empty">${esc(t('app.loading'))}</div>`;
+  const nothingFound = () => `<div class="empty">${esc(t('empty.nothing'))}</div>`;
+
+  /* ------------------------------------------------------ Выбор языка */
+
+  /** Переключатели языка: в шапке коротко (EN · RU · ไทย), в подвале — полными названиями */
+  function renderLangSwitches() {
+    document.querySelectorAll('[data-langs]').forEach((box) => {
+      const full = box.dataset.langs === 'full';
+      box.setAttribute('aria-label', t('lang.label'));
+      box.innerHTML = `${full ? `<span class="langs__label">🌐 ${esc(t('lang.label'))}:</span>` : ''}${Object.keys(LANG_NAMES).map((code) => `
+        <button type="button" data-lang="${code}" lang="${code}" aria-pressed="${code === lang}"${full ? '' : ` title="${esc(LANG_NAMES[code])}"`}>${esc(full ? LANG_NAMES[code] : LANG_SHORT[code])}</button>`).join('')}`;
+    });
+  }
+
+  /** Тексты из index.html: data-i18n — текст, data-i18n-ph — подсказка в поле, data-i18n-aria — подпись кнопки */
+  function applyStatic() {
+    document.documentElement.lang = lang;
+    document.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = t(el.dataset.i18n); });
+    document.querySelectorAll('[data-i18n-ph]').forEach((el) => { el.placeholder = t(el.dataset.i18nPh); });
+    document.querySelectorAll('[data-i18n-aria]').forEach((el) => {
+      el.setAttribute('aria-label', t(el.dataset.i18nAria));
+      if (el.hasAttribute('title')) el.title = t(el.dataset.i18nAria);
+    });
+    renderLangSwitches();
+  }
+
+  function setLang(code) {
+    if (!I18N[code] || code === lang) return;
+    lang = code;
+    try { localStorage.setItem(LANG_KEY, code); } catch { /* хранилище недоступно */ }
+    setFormats();
+    applyStatic();
+    if (!$('#code-form').hidden) renderCodeLead();
+    resendText();
+    if (state.user) {
+      render();
+      if (state.editing) renderGallery();
+      // Тексты проблем собирает сервер — берём их на новом языке
+      loadData();
+    }
   }
 
   /* ----------------------------------------------------------------- Вход */
@@ -148,11 +216,20 @@
     setLoginError(error);
     if (step === 'email') $('#email').focus();
     if (step === 'code') {
-      $('#code-email').textContent = state.loginEmail;
+      renderCodeLead();
       $('#code').value = '';
       $('#code').focus();
       startResendTimer();
     }
+  }
+
+  /** «Если у {email} есть доступ…» — почта жирным */
+  function renderCodeLead() {
+    const lead = $('#code-lead');
+    const [before, after = ''] = t('login.checkLead').split('{email}');
+    const email = document.createElement('b');
+    email.textContent = state.loginEmail;
+    lead.replaceChildren(before, email, after);
   }
 
   function setLoginError(message) {
@@ -160,26 +237,29 @@
     $('#login-error').textContent = message || '';
   }
 
+  let resendLeft = 0;
+  let resendTimer = null;
+  const resendText = () => ($('#resend').textContent = resendLeft > 0 ? t('login.resendIn', { n: resendLeft }) : t('login.resend'));
+
   function startResendTimer() {
     const button = $('#resend');
-    let left = 60;
+    clearInterval(resendTimer);
+    resendLeft = 60;
     button.disabled = true;
-    button.textContent = `Resend code (${left})`;
-    const timer = setInterval(() => {
-      left -= 1;
-      if (left <= 0) {
-        clearInterval(timer);
+    resendText();
+    resendTimer = setInterval(() => {
+      resendLeft -= 1;
+      if (resendLeft <= 0) {
+        clearInterval(resendTimer);
         button.disabled = false;
-        button.textContent = 'Resend code';
-      } else {
-        button.textContent = `Resend code (${left})`;
       }
+      resendText();
     }, 1000);
   }
 
   async function requestCode(email) {
     state.loginEmail = email.trim().toLowerCase();
-    await api('/login', { body: { email: state.loginEmail } });
+    await api('/login', { body: { email: state.loginEmail, lang } });
     savePending(state.loginEmail);
   }
 
@@ -214,7 +294,7 @@
       try {
         await fn();
       } catch (err) {
-        setLoginError(ERRORS[err.code] || 'Something went wrong. Please try again.');
+        setLoginError(ERRORS[err.code] || t('login.failed'));
       } finally {
         button.disabled = false;
       }
@@ -252,7 +332,7 @@
         setLoginError('');
         startResendTimer();
       } catch (err) {
-        setLoginError(ERRORS[err.code] || 'Could not send a new code.');
+        setLoginError(ERRORS[err.code] || t('login.resendFailed'));
       }
     });
     $('#change-email').addEventListener('click', () => { clearPending(); showLogin('email'); });
@@ -265,7 +345,7 @@
     $('#app').hidden = false;
     $('#who').textContent = state.user?.name || state.user?.email || '';
     const fromHash = location.hash.slice(1);
-    if (TABS.some((t) => t.id === fromHash)) state.tab = fromHash;
+    if (TABS.some((tab) => tab.id === fromHash)) state.tab = fromHash;
     renderTabs();
     render();
     loadData();
@@ -279,16 +359,16 @@
       const [fleet, requests, dashboard] = await Promise.all([
         api('/fleet'), api('/requests'),
         // Без проблем и прогноза обзор всё равно покажем
-        api('/dashboard').catch((err) => (err.status === 401 ? Promise.reject(err) : null))
+        api(`/dashboard?lang=${lang}`).catch((err) => (err.status === 401 ? Promise.reject(err) : null))
       ]);
       state.fleet = fleet;
       state.requests = requests.requests || [];
       if (dashboard) state.dashboard = dashboard;
-      showDataError(fleet.error ? `Avtoprokat sync problem: ${fleet.error}. Showing the last loaded data.` : '');
+      showDataError(fleet.error ? t('app.syncProblem', { error: fleet.error }) : '');
       render();
     } catch (err) {
       if (err.status === 401) return showLogin('email', err.code === 'no_access' ? ERRORS.no_access : '');
-      showDataError('Could not load data. Check your connection — retrying automatically.');
+      showDataError(t('app.loadFailed'));
     }
   }
 
@@ -303,10 +383,10 @@
 
   function renderTabs() {
     const count = newRequestsCount();
-    const html = TABS.map((t) => `
-      <button type="button" data-tab="${t.id}" ${state.tab === t.id ? 'aria-current="page"' : ''}>
-        ${ICONS[t.id]}<span>${t.title}</span>
-        ${t.id === 'requests' && count ? `<span class="count">${count}</span>` : ''}
+    const html = TABS.map((tab) => `
+      <button type="button" data-tab="${tab.id}" ${state.tab === tab.id ? 'aria-current="page"' : ''}>
+        ${ICONS[tab.id]}<span>${esc(tab.title)}</span>
+        ${tab.id === 'requests' && count ? `<span class="count">${count}</span>` : ''}
       </button>`).join('');
     document.querySelectorAll('.tabs').forEach((nav) => { nav.innerHTML = html; });
   }
@@ -323,8 +403,8 @@
   function render() {
     const fleet = state.fleet;
     $('#updated').innerHTML = fleet?.updatedAt
-      ? `Avtoprokat data: <b>${esc(fmtTime.format(new Date(fleet.updatedAt)))}</b> <span class="muted">(${esc(relative(fleet.updatedAt))})</span>`
-      : fleet ? (fleet.enabled ? 'Loading data from Avtoprokat…' : 'Avtoprokat is not connected') : 'Loading…';
+      ? `${esc(t('app.dataAt'))} <b>${esc(fmtTime.format(new Date(fleet.updatedAt)))}</b> <span class="muted">(${esc(relative(fleet.updatedAt))})</span>`
+      : esc(fleet ? (fleet.enabled ? t('app.loadingWs') : t('app.wsOff')) : t('app.loading'));
     renderTabs();
     const view = $('#view');
     if (state.tab === 'overview') view.innerHTML = renderOverview();
@@ -340,8 +420,8 @@
   const carName = (car) => car.model || car.wsModel || '—';
   const priceOf = (car) => state.fleet?.prices?.[car.model] || null;
   const tariffOf = (car) => state.fleet?.tariffs?.[car.id] || null;
-  const SEASON_NAMES = { 'Низкий': 'Low', 'Средний': 'Mid', 'Высокий': 'High', 'Пик': 'Peak' };
-  const TIER_LABELS = ['1–2 d', '3–6 d', '7–13 d', '14–30 d', '31+ d'];
+  const seasonName = (name) => (I18N.en[`season.${name}`] ? t(`season.${name}`) : name);
+  const tierLabels = () => ['1–2', '3–6', '7–13', '14–30', '31+'].map((range) => `${range} ${t('unit.d')}`);
 
   function filteredCars() {
     const q = state.filters.q.trim().toLowerCase();
@@ -359,9 +439,10 @@
   }
 
   function freeText(car) {
-    if (car.status === 'free') return car.freeWeek ? 'Free now · free next 7 days' : 'Free now';
-    if (car.freeFrom === 'later') return 'Busy for 30+ days';
-    return `Free from <b>${esc(dateTime(car.freeFrom))}</b> (${esc(relative(car.freeFrom))})`;
+    if (car.status === 'free') return esc(t(car.freeWeek ? 'free.nowWeek' : 'free.now'));
+    if (car.freeFrom === 'later') return esc(t('free.later'));
+    return esc(t('free.from', { date: '\u0001', rel: '\u0002' }))
+      .replace('\u0001', `<b>${esc(dateTime(car.freeFrom))}</b>`).replace('\u0002', esc(relative(car.freeFrom)));
   }
 
   /* -------------------------------------------------------------- Overview */
@@ -370,11 +451,13 @@
   function renderProblems() {
     const problems = state.dashboard?.problems;
     if (!problems) return '';
-    if (!problems.length) return '<div class="ok-line">✅ No problems found</div>';
+    if (!problems.length) return `<div class="ok-line">${esc(t('ov.noProblems'))}</div>`;
     const errors = problems.filter((p) => p.level === 'error').length;
     const shown = state.allProblems ? problems : problems.slice(0, 6);
     const item = (p) => {
-      const level = p.level === 'error' ? '<span class="problem__level problem__level--error">● Error</span>' : '<span class="problem__level problem__level--warning">▲ Warning</span>';
+      const level = p.level === 'error'
+        ? `<span class="problem__level problem__level--error">● ${esc(t('ov.error'))}</span>`
+        : `<span class="problem__level problem__level--warning">▲ ${esc(t('ov.warning'))}</span>`;
       const body = `${level}<span class="problem__main"><span class="problem__title">${esc(p.title)}</span><span class="problem__detail">${esc(p.detail || '')}</span></span>`;
       return p.target
         ? `<button type="button" class="problem" data-problem="${esc(p.target.tab)}" data-q="${esc(p.target.q || '')}">${body}<span class="problem__go" aria-hidden="true">›</span></button>`
@@ -383,11 +466,11 @@
     return `
       <section class="card problems" aria-labelledby="problems-title">
         <div class="problems__head">
-          <h2 id="problems-title">Problems · ${problems.length}</h2>
-          <span class="muted">${errors ? `${errors} ${errors === 1 ? 'error' : 'errors'} · ` : ''}${problems.length - errors} ${problems.length - errors === 1 ? 'warning' : 'warnings'}</span>
+          <h2 id="problems-title">${esc(t('ov.problems', { n: problems.length }))}</h2>
+          <span class="muted">${errors ? `${esc(tn('n.errors', errors))} · ` : ''}${esc(tn('n.warnings', problems.length - errors))}</span>
         </div>
         <div class="problems__list">${shown.map(item).join('')}</div>
-        ${problems.length > 6 ? `<button type="button" class="btn btn--small problems__more" data-problems-toggle>${state.allProblems ? 'Show less' : `Show all ${problems.length}`}</button>` : ''}
+        ${problems.length > 6 ? `<button type="button" class="btn btn--small problems__more" data-problems-toggle>${esc(state.allProblems ? t('ov.showLess') : t('ov.showAll', { n: problems.length }))}</button>` : ''}
       </section>`;
   }
 
@@ -405,61 +488,60 @@
         .map(([kind, v]) => `<span class="load__seg load__seg--${kind}" style="flex-grow:${v}"></span>`).join('');
       const align = i < 3 ? ' load__tip--left' : i > load.length - 4 ? ' load__tip--right' : '';
       return `
-        <div class="load__col" tabindex="0" aria-label="${esc(`${fmtWeekday.format(day)} ${shortDate(d.date)}: rented ${d.rent}%, booked ${d.reserve}%`)}">
+        <div class="load__col" tabindex="0" aria-label="${esc(t('ov.colAria', { day: `${fmtWeekday.format(day)} ${shortDate(d.date)}`, r: d.rent, b: d.reserve }))}">
           <div class="load__area">${label}<div class="load__stack" style="height:${Math.min(100, total)}%">${segments}</div></div>
           <span class="load__x${i === 0 ? ' load__x--today' : ''}"><b>${day.getUTCDate()}</b><span class="load__wd">${esc(fmtWeekday.format(day).slice(0, 2))}</span></span>
           <span class="load__tip${align}" role="tooltip"><b>${esc(`${fmtWeekday.format(day)} ${shortDate(d.date)}`)}</b>
-            <span><i class="sw sw--rent"></i>Rented ${d.rent}%</span><span><i class="sw sw--reserve"></i>Booked ${d.reserve}%</span>
-            <span class="muted">In service ${d.service}% · free ${Math.max(0, 100 - d.rent - d.reserve - d.service)}%</span></span>
+            <span><i class="sw sw--rent"></i>${esc(STATUS.rent)} ${d.rent}%</span><span><i class="sw sw--reserve"></i>${esc(STATUS.reserve)} ${d.reserve}%</span>
+            <span class="muted">${esc(t('ov.inService', { s: d.service, f: Math.max(0, 100 - d.rent - d.reserve - d.service) }))}</span></span>
         </div>`;
     }).join('');
     const rows = load.map((d) => `<tr><td>${esc(`${fmtWeekday.format(new Date(`${d.date}T00:00:00Z`))} ${shortDate(d.date)}`)}</td><td>${d.rent}%</td><td>${d.reserve}%</td><td>${d.service}%</td></tr>`).join('');
     return `
       <div class="card load">
         <div class="load__head">
-          <b>Fleet load · next 14 days</b>
-          <span class="load__legend"><span><i class="sw sw--rent"></i>Rented</span><span><i class="sw sw--reserve"></i>Booked</span></span>
+          <b>${esc(t('ov.loadTitle'))}</b>
+          <span class="load__legend"><span><i class="sw sw--rent"></i>${esc(STATUS.rent)}</span><span><i class="sw sw--reserve"></i>${esc(STATUS.reserve)}</span></span>
         </div>
         <div class="load__plot">
           <div class="load__grid" aria-hidden="true"><span style="bottom:100%">100%</span><span style="bottom:50%">50%</span><span style="bottom:0">0</span></div>
           <div class="load__cols">${cols}</div>
         </div>
         <details class="load__table">
-          <summary>Show as table</summary>
-          <div class="table-wrap"><table class="type-table"><thead><tr><th>Day</th><th>Rented</th><th>Booked</th><th>Service</th></tr></thead><tbody>${rows}</tbody></table></div>
+          <summary>${esc(t('ov.asTable'))}</summary>
+          <div class="table-wrap"><table class="type-table"><thead><tr><th>${esc(t('ov.day'))}</th><th>${esc(STATUS.rent)}</th><th>${esc(STATUS.reserve)}</th><th>${esc(STATUS.service)}</th></tr></thead><tbody>${rows}</tbody></table></div>
         </details>
       </div>`;
   }
 
   function renderOverview() {
-    if (!state.fleet) return '<div class="empty">Loading…</div>';
+    if (!state.fleet) return loadingBox();
     const all = cars();
-    if (!all.length) return `${renderProblems()}<div class="empty">${state.fleet.enabled ? 'No data from Avtoprokat yet. It refreshes every 10 minutes.' : 'Avtoprokat is not connected on the server.'}</div>`;
+    if (!all.length) return `${renderProblems()}<div class="empty">${esc(t(state.fleet.enabled ? 'ov.noWsData' : 'ov.wsOff'))}</div>`;
 
     const count = (status, type) => all.filter((c) => (!status || c.status === status) && (!type || c.type === type)).length;
     // «Сейчас»: свободна, в аренде, в сервисе. Брони — отдельным блоком ниже
     const stats = ['free', 'rent', 'service'].map((s) => `
       <div class="stat">
         <div class="stat__value">${count(s)}</div>
-        <div class="stat__label"><span class="dot dot--${s}"></span>${STATUS[s]}</div>
+        <div class="stat__label"><span class="dot dot--${s}"></span>${esc(STATUS[s])}</div>
       </div>`).join('');
 
     const weekAhead = Date.now() + 7 * DAY_MS;
     const bookedSoon = (type) => all.filter((c) => c.type === type
       && c.segments.some((seg) => seg.kind === 'reserve' && Date.parse(seg.to) > Date.now() && Date.parse(seg.from) <= weekAhead)).length;
     const typeRows = Object.keys(TYPES).map((type) => `
-      <tr><td>${TYPES[type]}</td><td>${count('free', type)}</td><td>${count('rent', type)}</td><td>${count('service', type)}</td><td>${bookedSoon(type)}</td><td><b>${count(null, type)}</b></td></tr>`).join('');
+      <tr><td>${esc(TYPES[type])}</td><td>${count('free', type)}</td><td>${count('rent', type)}</td><td>${count('service', type)}</td><td>${bookedSoon(type)}</td><td><b>${count(null, type)}</b></td></tr>`).join('');
 
     const outlook = state.dashboard?.outlook;
-    const plural = (n, one) => `${n} ${n === 1 ? one : `${one}s`}`;
     const ahead = outlook ? `
-      <h2 class="section-title">Bookings ahead</h2>
+      <h2 class="section-title">${esc(t('ov.bookingsAhead'))}</h2>
       <div class="stats stats--3">
-        <div class="stat"><div class="stat__value">${outlook.next7.bookings}</div><div class="stat__label"><span class="dot dot--reserve"></span>next 7 days · ${plural(outlook.next7.vehicles, 'vehicle')}</div></div>
-        <div class="stat"><div class="stat__value">${outlook.next30.bookings}</div><div class="stat__label"><span class="dot dot--reserve"></span>next 30 days · ${plural(outlook.next30.vehicles, 'vehicle')}</div></div>
-        <div class="stat"><div class="stat__value">${outlook.bookedDays30}</div><div class="stat__label">booked vehicle-days in 30 days</div></div>
+        <div class="stat"><div class="stat__value">${outlook.next7.bookings}</div><div class="stat__label"><span class="dot dot--reserve"></span>${esc(t('ov.next7', { vehicles: tn('n.vehicles', outlook.next7.vehicles) }))}</div></div>
+        <div class="stat"><div class="stat__value">${outlook.next30.bookings}</div><div class="stat__label"><span class="dot dot--reserve"></span>${esc(t('ov.next30', { vehicles: tn('n.vehicles', outlook.next30.vehicles) }))}</div></div>
+        <div class="stat"><div class="stat__value">${outlook.bookedDays30}</div><div class="stat__label">${esc(t('ov.bookedDays'))}</div></div>
       </div>
-      ${outlook.waitingNow ? `<p class="muted note">🕒 Pickup time has come for ${plural(outlook.waitingNow, 'booked vehicle')} — not rented out in Avtoprokat yet.</p>` : ''}
+      ${outlook.waitingNow ? `<p class="muted note">${esc(t('ov.waiting', { vehicles: tn('n.bookedVehicles', outlook.waitingNow) }))}</p>` : ''}
       ${renderLoadChart(outlook.load)}` : '';
 
     const now = Date.now();
@@ -483,38 +565,38 @@
 
     return `
       ${renderProblems()}
-      <h2 class="section-title">Right now · ${all.length} vehicles</h2>
+      <h2 class="section-title">${esc(t('ov.rightNow', { vehicles: tn('n.vehicles', all.length) }))}</h2>
       <div class="stats stats--3">${stats}</div>
       ${ahead}
 
-      <h2 class="section-title">By type</h2>
+      <h2 class="section-title">${esc(t('ov.byType'))}</h2>
       <div class="card table-wrap">
         <table class="type-table">
-          <thead><tr><th></th><th>Free</th><th>Rented</th><th>Service</th><th>Booked · 7 d</th><th>All</th></tr></thead>
+          <thead><tr><th></th><th>${esc(STATUS.free)}</th><th>${esc(STATUS.rent)}</th><th>${esc(STATUS.service)}</th><th>${esc(t('ov.booked7'))}</th><th>${esc(t('ov.all'))}</th></tr></thead>
           <tbody>${typeRows}</tbody>
         </table>
       </div>
 
-      <h2 class="section-title">New requests</h2>
+      <h2 class="section-title">${esc(t('ov.newRequests'))}</h2>
       <div class="card">
         ${fresh.length ? fresh.slice(0, 5).map((r) => `
           <div class="row" data-goto="requests">
             <div class="row__main">
-              <div class="row__title">#${r.id} · ${esc(r.model || TYPE_ONE[r.vehicleType] || 'Question')}</div>
+              <div class="row__title">#${r.id} · ${esc(r.model || TYPE_ONE[r.vehicleType] || t('ov.question'))}</div>
               <div class="row__sub">${esc(r.clientName || '')} · ${esc(CHANNELS[r.channel] || r.channel)}</div>
             </div>
             <div class="row__side">${r.dateFrom ? `${esc(shortDate(r.dateFrom))} – ${esc(shortDate(r.dateTo))}` : ''}</div>
-          </div>`).join('') : '<div class="empty">No new requests 👌</div>'}
+          </div>`).join('') : `<div class="empty">${esc(t('ov.noNew'))}</div>`}
       </div>
 
-      <h2 class="section-title">Returning in the next 48 h</h2>
+      <h2 class="section-title">${esc(t('ov.returning'))}</h2>
       <div class="card">
-        ${freeing.length ? freeing.map((c) => carRow(c, `${esc(dateTime(c.freeFrom))}<br><span class="muted">${esc(relative(c.freeFrom))}</span>`)).join('') : '<div class="empty">Nothing is returning in the next 48 hours</div>'}
+        ${freeing.length ? freeing.map((c) => carRow(c, `${esc(dateTime(c.freeFrom))}<br><span class="muted">${esc(relative(c.freeFrom))}</span>`)).join('') : `<div class="empty">${esc(t('ov.noReturning'))}</div>`}
       </div>
 
-      <h2 class="section-title">Bookings starting in the next 48 h</h2>
+      <h2 class="section-title">${esc(t('ov.pickups'))}</h2>
       <div class="card">
-        ${pickups.length ? pickups.map(({ car, seg }) => carRow(car, `${esc(dateTime(seg.from))}<br><span class="muted">${esc(relative(seg.from))}</span>`)).join('') : '<div class="empty">No bookings start in the next 48 hours</div>'}
+        ${pickups.length ? pickups.map(({ car, seg }) => carRow(car, `${esc(dateTime(seg.from))}<br><span class="muted">${esc(relative(seg.from))}</span>`)).join('') : `<div class="empty">${esc(t('ov.noPickups'))}</div>`}
       </div>`;
   }
 
@@ -522,26 +604,26 @@
 
   function renderFilters({ withStatus }) {
     const f = state.filters;
-    const typeChips = [['all', 'All types'], ...Object.entries(TYPES)].map(([id, label]) =>
-      `<button type="button" class="chip" data-filter="type" data-value="${id}" aria-pressed="${f.type === id}">${label}</button>`).join('');
-    const statusChips = withStatus ? [['all', 'Any status'], ...Object.entries(STATUS)].map(([id, label]) =>
-      `<button type="button" class="chip" data-filter="status" data-value="${id}" aria-pressed="${f.status === id}">${id !== 'all' ? `<span class="dot dot--${id}"></span>` : ''}${label}</button>`).join('') : '';
+    const typeChips = [['all', t('filter.allTypes')], ...Object.entries(TYPES)].map(([id, label]) =>
+      `<button type="button" class="chip" data-filter="type" data-value="${id}" aria-pressed="${f.type === id}">${esc(label)}</button>`).join('');
+    const statusChips = withStatus ? [['all', t('filter.anyStatus')], ...Object.entries(STATUS)].map(([id, label]) =>
+      `<button type="button" class="chip" data-filter="status" data-value="${id}" aria-pressed="${f.status === id}">${id !== 'all' ? `<span class="dot dot--${id}"></span>` : ''}${esc(label)}</button>`).join('') : '';
     return `
       <div class="toolbar">
-        <input class="search" type="search" placeholder="Search plate or model" value="${esc(f.q)}" data-search autocomplete="off" />
+        <input class="search" type="search" placeholder="${esc(t('fleet.search'))}" value="${esc(f.q)}" data-search autocomplete="off" />
         <div class="chips">${typeChips}</div>
         ${withStatus ? `<div class="chips">${statusChips}</div>` : ''}
       </div>`;
   }
 
   function renderFleet() {
-    if (!state.fleet) return '<div class="empty">Loading…</div>';
+    if (!state.fleet) return loadingBox();
     const list = filteredCars();
     return `
       ${renderFilters({ withStatus: true })}
-      <div class="result-count">${list.length} of ${cars().length} vehicles</div>
+      <div class="result-count">${esc(t('fleet.count', { n: list.length, total: cars().length }))}</div>
       <div class="list" style="margin-top:10px">
-        ${list.length ? list.map(renderCar).join('') : '<div class="empty">Nothing found</div>'}
+        ${list.length ? list.map(renderCar).join('') : nothingFound()}
       </div>`;
   }
 
@@ -551,22 +633,22 @@
     const tariff = tariffOf(car);
     const todayPrice = tariff?.tiers?.[0];
     const priceText = todayPrice
-      ? `${money(todayPrice)}/day today${tariff.verified ? '' : ' ⚠️'}`
-      : price?.perDay ? `${money(price.perDay)}/day` : price?.priceFrom ? `from ${money(price.priceFrom)}/day` : '';
+      ? `${t('fleet.perDayToday', { price: money(todayPrice) })}${tariff.verified ? '' : ' ⚠️'}`
+      : price?.perDay ? t('fleet.perDay', { price: money(price.perDay) }) : price?.priceFrom ? t('fleet.fromPerDay', { price: money(price.priceFrom) }) : '';
     const deposit = tariff?.deposit || car.deposit || price?.deposit;
     const seasonText = tariff
-      ? `${SEASON_NAMES[tariff.season] || tariff.season}${tariff.verified ? '' : ' — ⚠️ prices not verified yet'}${tariff.suspicious ? ' — ⚠️ typo in the price row' : ''}`
+      ? `${seasonName(tariff.season)}${tariff.verified ? '' : ` — ⚠️ ${t('fleet.notVerified')}`}${tariff.suspicious ? ` — ⚠️ ${t('fleet.typo')}` : ''}`
       : '';
     const seasonTiers = tariff?.tiers
-      ? tariff.tiers.map((v, i) => (v ? `${TIER_LABELS[i]}: ${money(v)}` : null)).filter(Boolean).join(' · ')
+      ? tariff.tiers.map((v, i) => (v ? `${tierLabels()[i]}: ${money(v)}` : null)).filter(Boolean).join(' · ')
       : '';
     const open = state.expanded.has(car.id);
     const upcoming = car.segments.filter((s) => Date.parse(s.to) > Date.now());
     const tariffs = car.tariffs.length
-      ? car.tariffs.map((t) => `${t.min}–${t.max >= 999 ? '∞' : t.max} d: ${money(t.cost)}`).join(' · ')
+      ? car.tariffs.map((x) => `${x.min}–${x.max >= 999 ? '∞' : x.max} ${t('unit.d')}: ${money(x.cost)}`).join(' · ')
       : '';
     const tiers = price && (price.perDay || price.perDayWeek || price.perDayMonth)
-      ? [price.perDay && `1–6 d: ${money(price.perDay)}`, price.perDayWeek && `7–29 d: ${money(price.perDayWeek)}`, price.perDayMonth && `30+ d: ${money(price.perDayMonth)}`].filter(Boolean).join(' · ')
+      ? [price.perDay && `1–6 ${t('unit.d')}: ${money(price.perDay)}`, price.perDayWeek && `7–29 ${t('unit.d')}: ${money(price.perDayWeek)}`, price.perDayMonth && `30+ ${t('unit.d')}: ${money(price.perDayMonth)}`].filter(Boolean).join(' · ')
       : '';
 
     return `
@@ -580,25 +662,25 @@
         </div>
         <div class="car__meta">
           <span>${freeText(car)}</span>
-          ${priceText ? `<span>Price <b>${esc(priceText)}</b></span>` : ''}
-          ${deposit ? `<span>Deposit <b>${esc(money(deposit))}</b></span>` : ''}
+          ${priceText ? `<span>${esc(t('fleet.price'))} <b>${esc(priceText)}</b></span>` : ''}
+          ${deposit ? `<span>${esc(t('fleet.deposit'))} <b>${esc(money(deposit))}</b></span>` : ''}
         </div>
         ${open ? `
           <div class="car__details">
             <dl>
-              <dt>In Avtoprokat</dt><dd>${esc(car.wsModel)} · ID ${esc(car.id)}</dd>
-              ${!car.model ? '<dt>Sheet</dt><dd class="warn">Not matched in the Vehicles sheet</dd>' : ''}
-              ${seasonText ? `<dt>Season today</dt><dd${tariff.verified && !tariff.suspicious ? '' : ' class="warn"'}>${esc(seasonText)}</dd>` : ''}
-              ${seasonTiers ? `<dt>Price list</dt><dd>${esc(seasonTiers)}${tariff.overKm ? ` · over-mileage ${esc(money(tariff.overKm))}/km` : ''}</dd>` : ''}
-              ${tariff && !tariff.tiers ? '<dt>Price list</dt><dd class="warn">No row for this plate</dd>' : ''}
-              ${tariffs ? `<dt>Tariffs</dt><dd>${esc(tariffs)}</dd>` : ''}
-              ${tiers ? `<dt>Catalog</dt><dd>${esc(tiers)}</dd>` : ''}
-              <dt>Next 7 days</dt><dd>${car.freeWeek ? 'Free the whole week' : 'Has bookings/rentals'}</dd>
+              <dt>${esc(t('fleet.inWs'))}</dt><dd>${esc(car.wsModel)} · ID ${esc(car.id)}</dd>
+              ${!car.model ? `<dt>${esc(t('fleet.sheet'))}</dt><dd class="warn">${esc(t('fleet.notMatched'))}</dd>` : ''}
+              ${seasonText ? `<dt>${esc(t('fleet.seasonToday'))}</dt><dd${tariff.verified && !tariff.suspicious ? '' : ' class="warn"'}>${esc(seasonText)}</dd>` : ''}
+              ${seasonTiers ? `<dt>${esc(t('fleet.priceList'))}</dt><dd>${esc(seasonTiers)}${tariff.overKm ? ` · ${esc(t('fleet.overKm', { price: money(tariff.overKm) }))}` : ''}</dd>` : ''}
+              ${tariff && !tariff.tiers ? `<dt>${esc(t('fleet.priceList'))}</dt><dd class="warn">${esc(t('fleet.noRow'))}</dd>` : ''}
+              ${tariffs ? `<dt>${esc(t('fleet.tariffs'))}</dt><dd>${esc(tariffs)}</dd>` : ''}
+              ${tiers ? `<dt>${esc(t('fleet.catalog'))}</dt><dd>${esc(tiers)}</dd>` : ''}
+              <dt>${esc(t('fleet.next7'))}</dt><dd>${esc(t(car.freeWeek ? 'fleet.freeWeek' : 'fleet.busyWeek'))}</dd>
             </dl>
-            <div><b>Next 30 days</b>
+            <div><b>${esc(t('fleet.next30'))}</b>
               ${upcoming.length ? `<ul class="seg-list">${upcoming.map((s) => `
-                <li><span class="dot dot--${s.kind}"></span>${STATUS[s.kind]}: ${esc(dateTime(s.from))} → ${esc(dateTime(s.to))}</li>`).join('')}</ul>`
-                : '<div class="muted">No rentals, bookings or service</div>'}
+                <li><span class="dot dot--${s.kind}"></span>${esc(STATUS[s.kind])}: ${esc(dateTime(s.from))} → ${esc(dateTime(s.to))}</li>`).join('')}</ul>`
+                : `<div class="muted">${esc(t('fleet.nothing30'))}</div>`}
             </div>
           </div>` : ''}
       </article>`;
@@ -607,7 +689,7 @@
   /* -------------------------------------------------------------- Calendar */
 
   function renderCalendar() {
-    if (!state.fleet) return '<div class="empty">Loading…</div>';
+    if (!state.fleet) return loadingBox();
     const days = state.calDays;
     const start = bangkokDayStart();
     const end = start + days * DAY_MS;
@@ -629,7 +711,7 @@
 
     const header = `
       <div class="cal__row cal__head">
-        <div class="cal__label">Vehicle</div>
+        <div class="cal__label">${esc(t('cal.vehicle'))}</div>
         <div class="cal__track" style="width:${width}px">
           ${dayCells.map((d) => `
             <div class="cal__date${d.i === 0 ? ' cal__date--today' : ''}" style="left:${d.i * dayWidth}px;width:${dayWidth}px">
@@ -642,7 +724,7 @@
     const groups = [...Object.keys(TYPES), null].map((type) => ({ type, cars: list.filter((c) => (c.type || null) === type) })).filter((g) => g.cars.length);
 
     const rows = groups.map((g) => `
-      <div class="cal__group" style="width:${width + 128}px">${g.type ? TYPES[g.type] : 'Not matched'} · ${g.cars.length}</div>
+      <div class="cal__group" style="width:${width + 128}px">${esc(g.type ? TYPES[g.type] : t('cal.notMatched'))} · ${g.cars.length}</div>
       ${g.cars.map((car) => `
         <div class="cal__row">
           <div class="cal__label"><b>${esc(carName(car))}</b><span class="muted">${esc(car.plate)}</span></div>
@@ -657,31 +739,31 @@
           </div>
         </div>`).join('')}`).join('');
 
-    const ranges = [7, 14, 30].map((n) => `<button type="button" class="chip" data-days="${n}" aria-pressed="${days === n}">${n} days</button>`).join('');
+    const ranges = [7, 14, 30].map((n) => `<button type="button" class="chip" data-days="${n}" aria-pressed="${days === n}">${esc(tn('n.days', n))}</button>`).join('');
 
     return `
       ${renderFilters({ withStatus: false })}
       <div class="chips" style="margin-bottom:10px">${ranges}</div>
-      ${list.length ? `<div class="cal"><div class="cal__grid">${header}${rows}</div></div>` : '<div class="empty">Nothing found</div>'}
+      ${list.length ? `<div class="cal"><div class="cal__grid">${header}${rows}</div></div>` : nothingFound()}
       <div class="legend">
-        <span><i style="background:var(--rent)"></i>Rental</span>
-        <span><i style="background:var(--reserve)"></i>Booking</span>
-        <span><i style="background:repeating-linear-gradient(135deg,var(--service),var(--service) 3px,transparent 3px,transparent 6px);border:1px solid var(--service)"></i>Service</span>
-        <span><i style="background:var(--brand);width:3px"></i>Now</span>
+        <span><i style="background:var(--rent)"></i>${esc(t('cal.rental'))}</span>
+        <span><i style="background:var(--reserve)"></i>${esc(t('cal.booking'))}</span>
+        <span><i style="background:repeating-linear-gradient(135deg,var(--service),var(--service) 3px,transparent 3px,transparent 6px);border:1px solid var(--service)"></i>${esc(t('cal.service'))}</span>
+        <span><i style="background:var(--brand);width:3px"></i>${esc(t('cal.now'))}</span>
       </div>`;
   }
 
   /* -------------------------------------------------------------- Requests */
 
   function renderRequests() {
-    const filters = [['all', 'All'], ['new', 'New'], ['taken', 'Taken']].map(([id, label]) =>
-      `<button type="button" class="chip" data-req="${id}" aria-pressed="${state.reqFilter === id}">${label}${id === 'new' && newRequestsCount() ? ` · ${newRequestsCount()}` : ''}</button>`).join('');
+    const filters = ['all', 'new', 'taken'].map((id) =>
+      `<button type="button" class="chip" data-req="${id}" aria-pressed="${state.reqFilter === id}">${esc(t(`req.${id}`))}${id === 'new' && newRequestsCount() ? ` · ${newRequestsCount()}` : ''}</button>`).join('');
     const list = state.requests.filter((r) => state.reqFilter === 'all' || r.status === state.reqFilter);
 
     return `
       <div class="chips" style="margin-bottom:12px">${filters}</div>
       <div class="list">
-        ${list.length ? list.map(renderRequest).join('') : '<div class="empty">No requests yet</div>'}
+        ${list.length ? list.map(renderRequest).join('') : `<div class="empty">${esc(t('req.none'))}</div>`}
       </div>`;
   }
 
@@ -693,19 +775,19 @@
       <article class="card req">
         <div class="req__head">
           <span class="req__id">#${r.id}</span>
-          <span class="pill pill--${r.status === 'new' ? 'new' : 'taken'}">${r.status === 'new' ? 'New' : `Taken · ${esc(r.takenBy || '')}`}</span>
+          <span class="pill pill--${r.status === 'new' ? 'new' : 'taken'}">${esc(r.status === 'new' ? t('req.newPill') : t('req.takenBy', { name: r.takenBy || '' }))}</span>
           <span class="muted" style="font-size:13px">${esc(CHANNELS[r.channel] || r.channel)}${r.lang ? ` · ${esc(LANGS[r.lang] || r.lang)}` : ''}</span>
           <span class="req__time">${esc(dateTime(r.createdAt))}</span>
         </div>
         ${what ? `<div class="req__line"><b>${esc(what)}</b></div>` : ''}
-        ${r.dateFrom ? `<div class="req__line">📅 ${esc(shortDate(r.dateFrom))} – ${esc(shortDate(r.dateTo))} · ${days} ${days === 1 ? 'day' : 'days'}${r.estimateThb ? ` · ≈ ${esc(money(r.estimateThb))}` : ''}</div>` : ''}
+        ${r.dateFrom ? `<div class="req__line">📅 ${esc(shortDate(r.dateFrom))} – ${esc(shortDate(r.dateTo))} · ${esc(tn('n.days', days))}${r.estimateThb ? ` · ≈ ${esc(money(r.estimateThb))}` : ''}</div>` : ''}
         <div class="req__line">👤 ${esc(r.clientName || '—')}${r.clientPhone ? ` · ${esc(r.clientPhone)}` : ''}</div>
-        ${r.freeUnits ? `<div class="req__line muted">🔑 Free plates: ${esc(r.freeUnits)}</div>` : ''}
+        ${r.freeUnits ? `<div class="req__line muted">${esc(t('req.freePlates', { list: r.freeUnits }))}</div>` : ''}
         ${r.comment ? `<div class="req__line">💬 ${esc(r.comment).replace(/\n/g, '<br>')}</div>` : ''}
-        ${r.declinedBy.length ? `<div class="req__line muted">🚫 Can't: ${esc(r.declinedBy.join(', '))}</div>` : ''}
+        ${r.declinedBy.length ? `<div class="req__line muted">${esc(t('req.cant', { names: r.declinedBy.join(', ') }))}</div>` : ''}
         ${phoneDigits ? `
           <div class="req__actions">
-            <a class="btn btn--small" href="tel:+${phoneDigits}">📞 Call</a>
+            <a class="btn btn--small" href="tel:+${phoneDigits}">${esc(t('req.call'))}</a>
             <a class="btn btn--small" href="https://wa.me/${phoneDigits}" target="_blank" rel="noopener">💬 WhatsApp</a>
           </div>` : ''}
       </article>`;
@@ -723,7 +805,7 @@
       if (state.tab === 'site') render();
     } catch (err) {
       if (err.status === 401) return showLogin('email', err.code === 'no_access' ? ERRORS.no_access : '');
-      showDataError('Could not load models. Check your connection.');
+      showDataError(t('site.loadFailed'));
     }
   }
 
@@ -737,22 +819,22 @@
   }
 
   function renderSite() {
-    if (!state.models) return '<div class="empty">Loading…</div>';
+    if (!state.models) return loadingBox();
     const list = filteredModels();
     const noPhoto = state.models.filter((m) => m.onSite && !m.photo).length;
-    const typeChips = [['all', 'All types'], ...Object.entries(TYPES)].map(([id, label]) =>
-      `<button type="button" class="chip" data-filter="type" data-value="${id}" aria-pressed="${state.filters.type === id}">${label}</button>`).join('');
+    const typeChips = [['all', t('filter.allTypes')], ...Object.entries(TYPES)].map(([id, label]) =>
+      `<button type="button" class="chip" data-filter="type" data-value="${id}" aria-pressed="${state.filters.type === id}">${esc(label)}</button>`).join('');
     return `
       <div class="toolbar">
-        <input class="search" type="search" placeholder="Search model" value="${esc(state.filters.q)}" data-search autocomplete="off" />
+        <input class="search" type="search" placeholder="${esc(t('site.search'))}" value="${esc(state.filters.q)}" data-search autocomplete="off" />
         <div class="chips">${typeChips}</div>
       </div>
-      <div class="result-count">${list.length} models${noPhoto ? ` · <span class="warn">${noPhoto} on the website without a photo</span>` : ''}${state.canEdit ? '' : ' · view only'}</div>
-      <div class="mgrid">${list.length ? list.map(renderModelCard).join('') : '<div class="empty">Nothing found</div>'}</div>`;
+      <div class="result-count">${esc(tn('n.models', list.length))}${noPhoto ? ` · <span class="warn">${esc(t('site.noPhoto', { n: noPhoto }))}</span>` : ''}${state.canEdit ? '' : ` · ${esc(t('site.viewOnly'))}`}</div>
+      <div class="mgrid">${list.length ? list.map(renderModelCard).join('') : nothingFound()}</div>`;
   }
 
   function renderModelCard(m) {
-    const change = m.lastChange ? `Edited by ${esc(m.lastChange.by)} · ${esc(dateTime(m.lastChange.at))}` : '';
+    const change = m.lastChange ? esc(t('site.editedBy', { name: m.lastChange.by, date: dateTime(m.lastChange.at) })) : '';
     return `
       <article class="card mcard">
         <div class="mframe${isPhotoFill(m.photo) ? ' is-photo' : ''}">
@@ -760,11 +842,11 @@
         </div>
         <div class="mcard__body">
           <div class="mcard__title">${esc(m.model)}</div>
-          <div class="mcard__desc">${m.description ? esc(m.description) : '<span class="muted">No description</span>'}</div>
-          <div class="mcard__meta">${esc(TYPE_ONE[m.type] || '—')} · ${m.units} in fleet${m.gallery?.length ? ` · 📷 ${m.gallery.length + 1} photos` : ''}</div>
-          ${m.onSite ? '' : '<div><span class="tag">Not on the website — no vehicles</span></div>'}
+          <div class="mcard__desc">${m.description ? esc(m.description) : `<span class="muted">${esc(t('site.noDesc'))}</span>`}</div>
+          <div class="mcard__meta">${esc(TYPE_ONE[m.type] || '—')} · ${esc(t('site.inFleet', { n: m.units }))}${m.gallery?.length ? ` · 📷 ${esc(tn('n.photos', m.gallery.length + 1))}` : ''}</div>
+          ${m.onSite ? '' : `<div><span class="tag">${esc(t('site.notOnSite'))}</span></div>`}
           ${change ? `<div class="mcard__meta">${change}</div>` : ''}
-          ${state.canEdit ? `<button type="button" class="btn btn--small" data-edit-model="${esc(m.model)}">Edit</button>` : ''}
+          ${state.canEdit ? `<button type="button" class="btn btn--small" data-edit-model="${esc(m.model)}">${esc(t('site.edit'))}</button>` : ''}
         </div>
       </article>`;
   }
@@ -966,7 +1048,7 @@
     const ed = state.editing;
     if (!ed) return;
     const last = ed.gallery.length - 1;
-    $('#md-gcount').textContent = `· ${ed.gallery.length} of ${state.maxGallery || 12}`;
+    $('#md-gcount').textContent = t('md.count', { n: ed.gallery.length, max: state.maxGallery || 12 });
     $('#md-ggrid').innerHTML = ed.gallery.map((item, i) => {
       const src = itemImage(item);
       const picture = item.preview || isLocal(src)
@@ -974,12 +1056,12 @@
         : `<span class="md-gitem__link">🔗 ${esc(src)}</span>`;
       return `
         <div class="md-gitem">
-          <div class="mframe${item.full ? ' is-photo' : ''}">${picture}${item.src ? '' : '<span class="md-gitem__new">New</span>'}</div>
+          <div class="mframe${item.full ? ' is-photo' : ''}">${picture}${item.src ? '' : `<span class="md-gitem__new">${esc(t('md.new'))}</span>`}</div>
           <div class="md-gitem__tools">
-            <button type="button" data-gmove="-1" data-i="${i}" aria-label="Move left"${i === 0 ? ' disabled' : ''}>◀</button>
-            <button type="button" data-gmain data-i="${i}" aria-label="Make main photo" title="Make main photo">★</button>
-            <button type="button" data-gmove="1" data-i="${i}" aria-label="Move right"${i === last ? ' disabled' : ''}>▶</button>
-            <button type="button" data-gdel data-i="${i}" aria-label="Remove" title="Remove">✕</button>
+            <button type="button" data-gmove="-1" data-i="${i}" aria-label="${esc(t('md.left'))}"${i === 0 ? ' disabled' : ''}>◀</button>
+            <button type="button" data-gmain data-i="${i}" aria-label="${esc(t('md.main'))}" title="${esc(t('md.main'))}">★</button>
+            <button type="button" data-gmove="1" data-i="${i}" aria-label="${esc(t('md.right'))}"${i === last ? ' disabled' : ''}>▶</button>
+            <button type="button" data-gdel data-i="${i}" aria-label="${esc(t('md.remove'))}" title="${esc(t('md.remove'))}">✕</button>
           </div>
         </div>`;
     }).join('');
@@ -1004,7 +1086,7 @@
     const list = [...files].slice(0, Math.max(0, room));
     let failed = 0;
     for (const [i, file] of list.entries()) {
-      setModelStatus(`Preparing photo ${i + 1} of ${list.length}…`);
+      setModelStatus(t('md.preparingN', { i: i + 1, n: list.length }));
       try {
         const item = await galleryItem(file);
         if (state.editing !== ed) return URL.revokeObjectURL(item.preview);
@@ -1016,9 +1098,9 @@
       }
     }
     const notes = [];
-    if (files.length > list.length) notes.push(`Only ${state.maxGallery || 12} photos fit — the rest were skipped.`);
-    if (failed) notes.push(`${failed} file(s) could not be opened.`);
-    setModelStatus(notes.join(' ') || 'Photos added. Press Save to publish them.', notes.length ? 'error' : '');
+    if (files.length > list.length) notes.push(t('md.onlyFit', { max: state.maxGallery || 12 }));
+    if (failed) notes.push(t('md.failedFiles', { n: failed }));
+    setModelStatus(notes.join(' ') || t('md.added'), notes.length ? 'error' : '');
   }
 
   function galleryAction(button) {
@@ -1061,7 +1143,7 @@
   async function uploadNewPhotos(ed) {
     const pending = [ed.main, ...ed.gallery].filter((item) => item && !item.src);
     for (const [i, item] of pending.entries()) {
-      setModelStatus(`Uploading photo ${i + 1} of ${pending.length}…`);
+      setModelStatus(t('md.uploadingN', { i: i + 1, n: pending.length }));
       const model = encodeURIComponent(ed.model);
       const data = await uploadImage(`/models/photo?model=${model}&gallery=1`, item.blob);
       item.src = data.photo;
@@ -1100,7 +1182,7 @@
   async function choosePhoto(file) {
     const ed = state.editing;
     if (!ed || !file) return;
-    setModelStatus('Preparing the photo…');
+    setModelStatus(t('md.preparing'));
     try {
       ed.source = await decodeFile(file);
       ed.info = analyze(toCanvas(ed.source, 400));
@@ -1113,7 +1195,7 @@
       setModelStatus('');
     } catch {
       ed.source = null;
-      setModelStatus('Could not open this file. Please choose a JPG or PNG photo.', 'error');
+      setModelStatus(t('md.badFile'), 'error');
     }
   }
 
@@ -1126,7 +1208,7 @@
     try {
       await uploadNewPhotos(ed);
       if (ed.result) {
-        setModelStatus('Uploading the main photo…');
+        setModelStatus(t('md.uploadingMain'));
         const blob = await encode(ed.result, ed.mode);
         if (!blob) throw Object.assign(new Error(), { code: 'bad_image' });
         const data = await uploadImage(`/models/photo?model=${encodeURIComponent(ed.model)}`, blob);
@@ -1135,7 +1217,7 @@
         ed.result = null;
       }
       if (ed.galleryChanged) {
-        setModelStatus('Saving the photo order…');
+        setModelStatus(t('md.savingOrder'));
         const data = await api('/models/gallery', { body: { model: ed.model, photo: ed.main?.src || '', gallery: ed.gallery.map((item) => item.src) } });
         m.photo = data.photo;
         m.gallery = data.gallery;
@@ -1143,17 +1225,17 @@
       }
       const description = $('#md-desc').value.trim();
       if (description !== (m.description || '')) {
-        setModelStatus('Saving the description…');
+        setModelStatus(t('md.savingDesc'));
         const data = await api('/models/description', { body: { model: ed.model, description } });
         m.description = data.description;
       }
-      setModelStatus('✓ Saved. The website will show it within 2 minutes.', 'ok');
+      setModelStatus(t('md.saved'), 'ok');
       render();
       loadModels();
       setTimeout(() => { if ($('#model-dialog').open && !state.editing?.result && !state.editing?.galleryChanged) $('#model-dialog').close(); }, 1200);
     } catch (err) {
       if (err.status === 401) { $('#model-dialog').close(); return showLogin('email'); }
-      setModelStatus(ERRORS[err.code] || 'Could not save. Please try again.', 'error');
+      setModelStatus(ERRORS[err.code] || t('md.saveFailed'), 'error');
     } finally {
       button.disabled = false;
     }
@@ -1198,6 +1280,8 @@
 
   function bindApp() {
     document.addEventListener('click', (event) => {
+      const langButton = event.target.closest('[data-lang]');
+      if (langButton) return setLang(langButton.dataset.lang);
       const tab = event.target.closest('[data-tab]');
       if (tab) return setTab(tab.dataset.tab);
       const problem = event.target.closest('[data-problem]');
@@ -1268,6 +1352,7 @@
   /* ----------------------------------------------------------------- Старт */
 
   async function init() {
+    applyStatic();
     bindLogin();
     bindApp();
     try {

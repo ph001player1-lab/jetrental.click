@@ -114,6 +114,31 @@ a { color: var(--brand); }
 .login__form h1 { margin: 0; font-size: 26px; letter-spacing: -.02em; }
 .login__form p { margin: 0; }
 .login__links { display: flex; justify-content: space-between; }
+.login__top { display: flex; justify-content: flex-end; margin-bottom: 18px; }
+
+/* --- Выбор языка: в шапке и в подвале --- */
+
+.langs { display: inline-flex; align-items: center; gap: 2px; padding: 3px; border-radius: 999px; background: var(--surface-2); }
+.langs button { min-width: 40px; min-height: 30px; padding: 0 10px; border: 0; border-radius: 999px; background: none; color: var(--muted); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.langs button:hover { color: var(--text); }
+.langs button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(15, 27, 42, .15); }
+.langs--top { margin-right: 6px; background: rgba(255, 255, 255, .1); }
+.langs--top button { color: #b8c7d8; min-width: 36px; padding: 0 8px; }
+.langs--top button:hover { color: #fff; }
+.langs--top button[aria-pressed="true"] { background: #fff; color: var(--navy); }
+.langs--full { flex-wrap: wrap; background: none; padding: 0; gap: 4px 6px; }
+.langs--full button { border: 1px solid var(--line); background: var(--surface); }
+.langs--full button[aria-pressed="true"] { border-color: var(--brand); color: var(--text); box-shadow: none; }
+.langs__label { font-size: 13px; color: var(--muted); font-weight: 600; margin-right: 2px; }
+.footer { display: grid; justify-items: center; gap: 8px; margin-top: 28px; font-size: 12px; color: var(--muted); text-align: center; }
+.footer--app { max-width: 1100px; margin: 8px auto 0; padding: 18px 16px 24px; border-top: 1px solid var(--line); }
+@media (max-width: 420px) { .langs--top button { min-width: 32px; padding: 0 6px; font-size: 12px; } .langs--top { margin-right: 2px; } }
+/* Узкие телефоны: в шапке остаются логотип, языки и две кнопки */
+@media (max-width: 380px) {
+  .topbar { gap: 6px; padding-left: 12px; padding-right: 8px; }
+  .topbar .brand__tag { display: none; }
+  .topbar .icon-btn { width: 34px; }
+}
 
 /* --- Каркас --- */
 

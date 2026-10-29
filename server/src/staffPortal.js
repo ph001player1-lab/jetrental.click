@@ -65,24 +65,49 @@ function sessionCookie(token, maxAgeSeconds) {
   return `${COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${maxAgeSeconds}`;
 }
 
-function codeEmail(code, name) {
-  const minutes = config.staff.codeMinutes;
-  const text =
-    `Hi ${name},\n\nYour JetRental staff login code: ${code}\n\n` +
-    `It is valid for ${minutes} minutes. After you sign in, access lasts ${config.staff.sessionHours} hours.\n` +
-    'If you did not request this code, just ignore this email.';
+// Письмо с кодом — на языке, выбранном на сайте сотрудников
+const CODE_EMAIL = {
+  en: {
+    subject: 'JetRental staff login code: {code}',
+    hi: 'Hi {name},',
+    lead: 'Your JetRental staff login code:',
+    valid: 'It is valid for {minutes} minutes. After you sign in, access lasts {hours} hours.',
+    ignore: 'If you did not request this code, just ignore this email.'
+  },
+  ru: {
+    subject: 'Код входа JetRental Staff: {code}',
+    hi: 'Здравствуйте, {name}!',
+    lead: 'Ваш код для входа на сайт сотрудников JetRental:',
+    valid: 'Код действует {minutes} минут. После входа доступ сохраняется {hours} часа.',
+    ignore: 'Если вы не запрашивали код, просто проигнорируйте это письмо.'
+  },
+  th: {
+    subject: 'รหัสเข้าสู่ระบบ JetRental Staff: {code}',
+    hi: 'สวัสดี {name}',
+    lead: 'รหัสเข้าสู่ระบบเว็บไซต์พนักงาน JetRental ของคุณ:',
+    valid: 'รหัสใช้ได้ {minutes} นาที หลังเข้าสู่ระบบแล้วจะใช้งานได้ {hours} ชั่วโมง',
+    ignore: 'หากคุณไม่ได้ขอรหัสนี้ ไม่ต้องทำอะไร'
+  }
+};
+
+function codeEmail(code, name, lang) {
+  const texts = CODE_EMAIL[lang] || CODE_EMAIL.en;
+  const fill = (text, params) => text.replace(/\{(\w+)\}/g, (m, key) => params[key] ?? m);
+  const params = { code, name, minutes: config.staff.codeMinutes, hours: config.staff.sessionHours };
+  const valid = fill(texts.valid, params);
+  const text = `${fill(texts.hi, params)}\n\n${texts.lead} ${code}\n\n${valid}\n${texts.ignore}`;
   const html =
     '<div style="font-family:Arial,sans-serif;font-size:15px;color:#0f172a">' +
-    `<p>Hi ${name.replace(/[<>&"]/g, '')},</p>` +
-    '<p>Your JetRental staff login code:</p>' +
+    `<p>${fill(texts.hi, { name: name.replace(/[<>&"]/g, '') })}</p>` +
+    `<p>${texts.lead}</p>` +
     `<p style="font-size:32px;font-weight:bold;letter-spacing:6px;margin:16px 0">${code}</p>` +
-    `<p>It is valid for ${minutes} minutes. After you sign in, access lasts ${config.staff.sessionHours} hours.</p>` +
-    '<p style="color:#64748b">If you did not request this code, just ignore this email.</p></div>';
-  return { subject: `JetRental staff login code: ${code}`, text, html };
+    `<p>${valid}</p>` +
+    `<p style="color:#64748b">${texts.ignore}</p></div>`;
+  return { subject: fill(texts.subject, params), text, html };
 }
 
 async function login(req, res) {
-  const { email: rawEmail } = await readJson(req);
+  const { email: rawEmail, lang } = await readJson(req);
   const email = normalizeEmail(rawEmail);
   if (!isValidEmail(email)) throw new HttpError(400, 'invalid_email');
   if (!loginLimiter.hit(clientIp(req))) throw new HttpError(429, 'too_many_requests');
@@ -101,7 +126,7 @@ async function login(req, res) {
     const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
     db.saveLoginCode(email, hmac(`${email}:${code}`), expiresAt);
     try {
-      await sendMail({ to: email, ...codeEmail(code, staff.name || email) });
+      await sendMail({ to: email, ...codeEmail(code, staff.name || email, lang) });
     } catch (err) {
       console.error('Login code email failed:', err.message);
       throw new HttpError(502, 'mail_failed');
@@ -236,9 +261,10 @@ async function requests(req, res) {
   sendJson(res, 200, { requests: rows });
 }
 
-async function dashboard(req, res) {
+async function dashboard(req, res, url) {
   await requireStaff(req);
-  sendJson(res, 200, { problems: await collectProblems(), outlook: bookingOutlook(), limits: LIMITS });
+  const problems = await collectProblems(Date.now(), url.searchParams.get('lang') || 'en');
+  sendJson(res, 200, { problems, outlook: bookingOutlook(), limits: LIMITS });
 }
 
 /** Обработчик, которому нужен вошедший сотрудник: handler(staff, req, res, url) */

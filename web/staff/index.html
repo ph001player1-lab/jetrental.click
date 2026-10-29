@@ -3,7 +3,8 @@
   JetRental Staff — сайт для сотрудников (staff.jetrental.click).
   Вход по коду из письма, данные — из WS.Автопрокат через /api/staff/*.
   При изменении staff.js / staff.css увеличивайте ?v=, чтобы телефоны не брали старый файл из кэша.
-  Без сторонних библиотек: HTML + CSS + JS.
+  Без сторонних библиотек: HTML + CSS + JS. Тексты на 3 языках — i18n.js
+  (data-i18n — текст элемента, data-i18n-ph — подсказка в поле, data-i18n-aria — подпись кнопки).
 -->
 <html lang="en">
 <head>
@@ -20,12 +21,13 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="JR Staff" />
-  <link rel="stylesheet" href="staff.css?v=4" />
+  <link rel="stylesheet" href="staff.css?v=5" />
 </head>
 <body>
   <!-- Вход -->
   <main id="login" class="login" hidden>
     <div class="login__card">
+      <div class="login__top"><div class="langs" data-langs role="group"></div></div>
       <div class="brand brand--big">
         <picture>
           <source srcset="logo-wordmark-light.webp" media="(prefers-color-scheme: dark)" />
@@ -35,30 +37,34 @@
       </div>
 
       <form id="email-form" class="login__form" novalidate>
-        <h1>Sign in</h1>
-        <p class="muted">Enter your work email. We'll send you a 6-digit code.</p>
+        <h1 data-i18n="login.title">Sign in</h1>
+        <p class="muted" data-i18n="login.lead">Enter your work email. We’ll send you a 6-digit code.</p>
         <label class="field">
-          <span>Email</span>
+          <span data-i18n="login.email">Email</span>
           <input id="email" type="email" inputmode="email" autocomplete="email" required placeholder="name@example.com" />
         </label>
-        <button class="btn btn--primary" type="submit">Send code</button>
+        <button class="btn btn--primary" type="submit" data-i18n="login.send">Send code</button>
       </form>
 
       <form id="code-form" class="login__form" novalidate hidden>
-        <h1>Check your email</h1>
-        <p class="muted">If <b id="code-email"></b> has access, a code is on its way. It is valid for 10 minutes.</p>
+        <h1 data-i18n="login.checkTitle">Check your email</h1>
+        <p class="muted" id="code-lead"></p>
         <label class="field">
-          <span>Code</span>
+          <span data-i18n="login.code">Code</span>
           <input id="code" class="code-input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="\d{6}" required placeholder="••••••" />
         </label>
-        <button class="btn btn--primary" type="submit">Sign in</button>
+        <button class="btn btn--primary" type="submit" data-i18n="login.signIn">Sign in</button>
         <div class="login__links">
           <button id="resend" class="link" type="button" disabled>Resend code</button>
-          <button id="change-email" class="link" type="button">Use another email</button>
+          <button id="change-email" class="link" type="button" data-i18n="login.otherEmail">Use another email</button>
         </div>
       </form>
 
       <p id="login-error" class="error" role="alert" hidden></p>
+      <footer class="footer">
+        <div class="langs langs--full" data-langs="full" role="group"></div>
+        <span data-i18n="footer.note">JetRental · for staff only</span>
+      </footer>
     </div>
   </main>
 
@@ -69,12 +75,13 @@
         <img src="logo-wordmark-light.webp" alt="JetRental" width="341" height="120" />
         <span class="brand__tag">Staff</span>
       </div>
-      <nav class="tabs tabs--top" aria-label="Sections"></nav>
+      <nav class="tabs tabs--top" aria-label="Sections" data-i18n-aria="app.sections"></nav>
       <div class="topbar__right">
-        <button id="refresh" class="icon-btn" type="button" title="Refresh" aria-label="Refresh">
+        <div class="langs langs--top" data-langs role="group"></div>
+        <button id="refresh" class="icon-btn" type="button" title="Refresh" aria-label="Refresh" data-i18n-aria="app.refresh">
           <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M17.65 6.35A7.96 7.96 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
         </button>
-        <button id="logout" class="icon-btn" type="button" title="Sign out" aria-label="Sign out">
+        <button id="logout" class="icon-btn" type="button" title="Sign out" aria-label="Sign out" data-i18n-aria="app.logout">
           <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M10 17v-3H3v-4h7V7l5 5-5 5zm9-14H12v2h7v14h-7v2h7a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/></svg>
         </button>
       </div>
@@ -88,7 +95,12 @@
 
     <main id="view" class="view"></main>
 
-    <nav class="tabs tabs--bottom" aria-label="Sections"></nav>
+    <footer class="footer footer--app">
+      <div class="langs langs--full" data-langs="full" role="group"></div>
+      <span data-i18n="footer.note">JetRental · for staff only</span>
+    </footer>
+
+    <nav class="tabs tabs--bottom" aria-label="Sections" data-i18n-aria="app.sections"></nav>
   </div>
 
   <!-- Фото и описание модели для сайта (вкладка Website) -->
@@ -99,50 +111,51 @@
           <div class="muted" id="md-type"></div>
           <h2 id="md-title"></h2>
         </div>
-        <button type="button" class="icon-btn icon-btn--plain" data-close aria-label="Close">×</button>
+        <button type="button" class="icon-btn icon-btn--plain" data-close aria-label="Close" data-i18n-aria="md.close">×</button>
       </div>
 
       <div class="md-frame" id="md-frame">
         <img id="md-current" alt="" hidden />
         <canvas id="md-canvas" hidden></canvas>
-        <span id="md-empty" class="muted">No photo yet</span>
+        <span id="md-empty" class="muted" data-i18n="md.noPhoto">No photo yet</span>
       </div>
-      <p class="md-caption muted">Main photo — this is how it looks on the website card.</p>
+      <p class="md-caption muted" data-i18n="md.caption">Main photo — this is how it looks on the website card.</p>
 
       <div class="md-photo">
-        <label class="btn">📷 Choose photo<input id="md-file" type="file" accept="image/*" hidden /></label>
+        <label class="btn"><span data-i18n="md.choose">📷 Choose photo</span><input id="md-file" type="file" accept="image/*" hidden /></label>
         <div id="md-options" hidden>
           <div class="chips">
-            <button type="button" class="chip" data-mode="cutout">Fit — vehicle only</button>
-            <button type="button" class="chip" data-mode="photo">Fill the card</button>
+            <button type="button" class="chip" data-mode="cutout" data-i18n="md.fit">Fit — vehicle only</button>
+            <button type="button" class="chip" data-mode="photo" data-i18n="md.fill">Fill the card</button>
           </div>
-          <label class="check" id="md-white-wrap"><input type="checkbox" id="md-white" checked /> Remove white background</label>
+          <label class="check" id="md-white-wrap"><input type="checkbox" id="md-white" checked /> <span data-i18n="md.white">Remove white background</span></label>
         </div>
       </div>
 
       <section class="md-gallery" aria-labelledby="md-gtitle">
         <div class="md-gallery__head">
-          <h3 id="md-gtitle">Photos on the model page <span class="muted" id="md-gcount"></span></h3>
-          <label class="btn btn--small">➕ Add photos<input id="md-gfile" type="file" accept="image/*" multiple hidden /></label>
+          <h3 id="md-gtitle"><span data-i18n="md.galleryTitle">Photos on the model page</span> <span class="muted" id="md-gcount"></span></h3>
+          <label class="btn btn--small"><span data-i18n="md.add">➕ Add photos</span><input id="md-gfile" type="file" accept="image/*" multiple hidden /></label>
         </div>
-        <p class="muted md-hint">The page shows the main photo first, then these. ◀ ▶ — change the order, ★ — make it the main photo, ✕ — remove.</p>
+        <p class="muted md-hint" data-i18n="md.galleryHint">The page shows the main photo first, then these. ◀ ▶ — change the order, ★ — make it the main photo, ✕ — remove.</p>
         <div class="md-ggrid" id="md-ggrid"></div>
       </section>
 
       <label class="field">
-        <span>Description on the card — e.g. “200 h.p. · Hybrid” or “350 cm³”</span>
+        <span data-i18n="md.desc">Description on the card — e.g. “200 h.p. · Hybrid” or “350 cm³”</span>
         <input id="md-desc" maxlength="100" autocomplete="off" />
       </label>
 
-      <p class="muted md-hint">Changes appear on the website within 2 minutes. Best photos: the whole vehicle, side or 3/4 view, on a white or transparent background.</p>
+      <p class="muted md-hint" data-i18n="md.hint">Changes appear on the website within 2 minutes. Best photos: the whole vehicle, side or 3/4 view, on a white or transparent background.</p>
       <p id="md-status" class="md-status" role="status"></p>
       <div class="md-buttons">
-        <button type="button" class="btn" data-close>Cancel</button>
-        <button type="submit" class="btn btn--primary" id="md-save">Save</button>
+        <button type="button" class="btn" data-close data-i18n="md.cancel">Cancel</button>
+        <button type="submit" class="btn btn--primary" id="md-save" data-i18n="md.save">Save</button>
       </div>
     </form>
   </dialog>
 
-  <script src="staff.js?v=4"></script>
+  <script src="i18n.js?v=5"></script>
+  <script src="staff.js?v=5"></script>
 </body>
 </html>
