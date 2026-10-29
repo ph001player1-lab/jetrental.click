@@ -5,6 +5,7 @@
 import crypto from 'node:crypto';
 import { config } from '../config.js';
 import { LANGUAGES, t } from '../i18n.js';
+import { g } from '../groupTexts.js';
 
 export const telegramEnabled = Boolean(config.telegram.token);
 
@@ -85,8 +86,9 @@ export async function setupTelegram() {
   }
   await tg('setMyCommands', {
     commands: [
-      { command: 'bind', description: 'Receive requests in this group' },
-      { command: 'test', description: 'Test request' }
+      { command: 'bind', description: g('cmd.bind') },
+      { command: 'test', description: g('cmd.test') },
+      { command: 'summary', description: g('cmd.summary') }
     ],
     scope: { type: 'all_group_chats' }
   });

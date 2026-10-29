@@ -5,8 +5,8 @@
  * - /bind  — админ группы подключает её: сюда будут приходить заявки
  * - /test  — тестовая заявка, чтобы проверить кнопки
  * - /summary — сводка: брони впереди и проблемы (сама приходит в 10:00)
- * - кнопки «Take» / «Can't» под каждой заявкой (на английском — в группе
- *   работают люди с разными языками)
+ * - кнопки «Беру» / «Не могу» под каждой заявкой
+ * Тексты — на языке группы (groupTexts.js, по умолчанию русский).
  *
  * Позже здесь же ассистент будет разбирать сообщения «сдал / выдал / ремонт».
  * ============================================================================
@@ -21,6 +21,7 @@ import { mirrorNewRequest, mirrorRequestStatus } from './sheetsSync.js';
 import { sendText as waSendText } from './whatsapp/api.js';
 import { tg, sendMessage, inlineKeyboard, answerCallback, displayName, parseCommand } from './telegram/api.js';
 import { sendMorningSummary } from './morning.js';
+import { g } from './groupTexts.js';
 
 export function getStaffChatId() {
   return config.telegram.staffChatId || db.getSetting('staff_chat_id');
@@ -52,8 +53,8 @@ function isStaffChat(chatId) {
 function staffButtons(request) {
   if (request.status !== 'new') return { inline_keyboard: [] };
   return inlineKeyboard([[
-    { text: '✋ Take', callback_data: `take:${request.id}` },
-    { text: "🚫 Can't", callback_data: `decline:${request.id}` }
+    { text: g('btn.take'), callback_data: `take:${request.id}` },
+    { text: g('btn.cant'), callback_data: `decline:${request.id}` }
   ]]);
 }
 
@@ -105,26 +106,26 @@ export async function handleStaffCallback(query, action, requestId) {
   if (!isStaffChat(query.message?.chat?.id)) return answerCallback(query);
 
   const request = db.getRequest(requestId);
-  if (!request) return answerCallback(query, 'Request not found');
+  if (!request) return answerCallback(query, g('cb.notFound'));
 
   const name = displayName(query.from);
 
   if (action === 'take') {
     if (!db.takeRequest(request.id, query.from.id, name)) {
-      return answerCallback(query, `Already taken by ${db.getRequest(request.id).taken_by_name}`);
+      return answerCallback(query, g('cb.alreadyTaken', { name: db.getRequest(request.id).taken_by_name }));
     }
     const taken = db.getRequest(request.id);
     await refreshStaffMessage(taken);
-    await answerCallback(query, `Request #${taken.id} is yours`);
+    await answerCallback(query, g('cb.yours', { id: taken.id }));
     await notifyClientTaken(taken);
     await mirrorRequestStatus(taken);
     return;
   }
 
   if (action === 'decline') {
-    if (request.status !== 'new') return answerCallback(query, 'Already taken');
+    if (request.status !== 'new') return answerCallback(query, g('cb.inWork'));
     await refreshStaffMessage(db.addDecline(request.id, name));
-    return answerCallback(query, 'OK, thanks');
+    return answerCallback(query, g('cb.thanks'));
   }
 
   return answerCallback(query);
@@ -132,21 +133,21 @@ export async function handleStaffCallback(query, action, requestId) {
 
 async function bindGroup(msg) {
   if (config.telegram.staffChatId) {
-    return sendMessage(msg.chat.id, 'The staff group is set in the server settings — /bind is not needed here.');
+    return sendMessage(msg.chat.id, g('bind.fromEnv'));
   }
 
   const member = await tg('getChatMember', { chat_id: msg.chat.id, user_id: msg.from.id });
   if (!['creator', 'administrator'].includes(member.status)) {
-    return sendMessage(msg.chat.id, 'Only a group admin can connect this group.');
+    return sendMessage(msg.chat.id, g('bind.adminOnly'));
   }
 
   db.setSetting('staff_chat_id', msg.chat.id);
-  return sendMessage(msg.chat.id, '✅ Done! New requests will come to this group.\nTry the buttons: /test');
+  return sendMessage(msg.chat.id, g('bind.done'));
 }
 
 async function createTestRequest(msg) {
   if (!isStaffChat(msg.chat.id)) {
-    return sendMessage(msg.chat.id, 'Connect this group first with /bind.');
+    return sendMessage(msg.chat.id, g('test.bindFirst'));
   }
 
   const start = new Date(`${todayIso()}T00:00:00Z`);
@@ -154,12 +155,12 @@ async function createTestRequest(msg) {
 
   const request = db.createRequest({
     channel: 'test',
-    clientName: 'Test client',
+    clientName: g('test.client'),
     clientPhone: '+66 00 000 0000',
     vehicleType: 'scooter',
     dateFrom: shift(3),
     dateTo: shift(10),
-    comment: `created by ${displayName(msg.from)}`
+    comment: g('test.by', { name: displayName(msg.from) })
   });
   await publishRequest(request);
 }
@@ -184,9 +185,6 @@ export async function handleMyChatMember(update) {
   const isIn = ['member', 'administrator'].includes(update.new_chat_member.status);
 
   if (isGroup && wasOut && isIn && !isStaffChat(update.chat.id)) {
-    await sendMessage(
-      update.chat.id,
-      '👋 Hi! I\'m the rental requests assistant.\nTo receive new requests in this group, an admin sends /bind'
-    );
+    await sendMessage(update.chat.id, g('hello'));
   }
 }

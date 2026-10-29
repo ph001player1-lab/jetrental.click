@@ -41,7 +41,11 @@ const CATALOG_COL = {
   pricePerDayWeek: 'Цена ฿/день (7–29 дней)',
   pricePerDayMonth: 'Цена ฿/день (от 30 дней)',
   deposit: 'Депозит ฿',
+  // «Описание для клиента» — английское, остальные языки — в своих колонках
   description: 'Описание для клиента',
+  descriptionRu: 'Описание RU',
+  descriptionTh: 'Описание TH',
+  descriptionZh: 'Описание ZH',
   photo: 'Фото (ссылка)',
   gallery: 'Фото — галерея'
 };
@@ -103,6 +107,12 @@ async function loadFleet() {
         pricePerDayMonth: parsePrice(row[CATALOG_COL.pricePerDayMonth]),
         deposit: parsePrice(row[CATALOG_COL.deposit]),
         description: String(row[CATALOG_COL.description] || '').trim(),
+        descriptions: {
+          en: String(row[CATALOG_COL.description] || '').trim(),
+          ru: String(row[CATALOG_COL.descriptionRu] || '').trim(),
+          th: String(row[CATALOG_COL.descriptionTh] || '').trim(),
+          zh: String(row[CATALOG_COL.descriptionZh] || '').trim()
+        },
         photo: String(row[CATALOG_COL.photo] || '').trim(),
         gallery: String(row[CATALOG_COL.gallery] || '').trim()
       });

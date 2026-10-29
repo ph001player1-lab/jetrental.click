@@ -5,14 +5,14 @@
  * Одни и те же проверки для окна «Проблемы» на сайте сотрудников и для
  * утренней сводки в рабочей группе Telegram (morning.js):
  *   - бронь не выдана: время выдачи прошло больше 3 часов назад;
- *   - долгий сервис: больше 5 дней или без даты окончания;
+ *   - долгий ремонт: больше 15 дней;
  *   - машина есть в Автопрокате, но нет в листе Vehicles, и наоборот;
- *   - модель на сайте без цены, фото или описания;
+ *   - модель на сайте без цены, фото или описания, описание не переведено;
  *   - прайс: госномер без цены, опечатка в строке, сезоны без проверки,
  *     дни года без сезона;
  *   - заявка без ответа дольше 30 минут рабочего времени (10:00–19:00 Бангкок);
  *   - техника: Автопрокат, Google-таблица, рабочая группа, почта.
- * Тексты — на языке сайта сотрудников (dashboardTexts.js), сводка — на английском.
+ * Тексты — на языке сайта сотрудников (dashboardTexts.js), сводка — на языке группы.
  * ============================================================================
  */
 
@@ -31,7 +31,7 @@ const BANGKOK_MS = 7 * HOUR_MS; // UTC+7, без перехода на летн�
 
 export const LIMITS = {
   bookingNotIssuedHours: 3,
-  longServiceDays: 5,
+  longServiceDays: 15,
   requestWaitMinutes: 30,
   workFromHour: 10,
   workToHour: 19,
@@ -39,6 +39,7 @@ export const LIMITS = {
 };
 
 const LOAD_DAYS = 14;
+const DESCRIPTION_LANGS = ['en', 'ru', 'th', 'zh'];
 
 /** Начало дня по Бангкоку, в который попадает ms */
 export const bangkokDayStart = (ms) => Math.floor((ms + BANGKOK_MS) / DAY_MS) * DAY_MS - BANGKOK_MS;
@@ -61,9 +62,9 @@ const parsed = (car) => car.segments.map((s) => ({ kind: s.kind, from: Date.pars
 
 /* ---------------------------------------------------------------- Проверки */
 
-/** «29 Oct, 13:27 (12 h ago)»; начало раньше окна снимка — «больше недели назад» */
+/** «29 Oct, 13:27 (12 h ago)»; начало раньше окна снимка — «больше 20 дней назад» */
 function since(tx, ms, now, windowFrom) {
-  if (ms <= windowFrom + 60000) return tx.t('time.weekAgo');
+  if (ms <= windowFrom + 60000) return tx.t('time.longAgo');
   const hours = Math.floor((now - ms) / HOUR_MS);
   const ago = hours < 48 ? tx.t('time.hoursAgo', { n: hours }) : tx.t('time.daysAgo', { n: Math.floor(hours / 24) });
   return tx.t('time.at', { date: tx.dateTime(ms), ago });
@@ -85,9 +86,9 @@ function vehicleProblems(tx, snapshot, now) {
       });
     }
     if (current.kind === 'service') {
+      // Проблема — только ремонт дольше 15 дней (с датой окончания или без)
       const noEnd = current.to >= windowTo - 60000;
-      const long = now - current.from >= LIMITS.longServiceDays * DAY_MS;
-      if (noEnd || long) {
+      if (now - current.from >= LIMITS.longServiceDays * DAY_MS) {
         problems.push({
           group: 'service', level: 'warning', target,
           title: tx.t('longService.title', { car: carName(car) }),
@@ -139,13 +140,26 @@ async function websiteProblems(tx, fleet) {
   }
   const { models } = await getCatalog();
   for (const m of models) {
-    const missing = [!m.priceFrom && 'price', !m.photo && 'photo', !m.description && 'description'].filter(Boolean);
-    if (!missing.length) continue;
-    problems.push({
-      group: 'website', level: 'warning', target: { tab: 'site', q: m.model },
-      title: tx.t('website.title', { model: m.model, missing: missing.map((k) => tx.t(`missing.${k}`)).join(tx.t('list.sep')) }),
-      detail: tx.t(missing.includes('price') ? 'website.detailPrice' : 'website.detailOther')
-    });
+    // Описания до подстановки английского вместо перевода
+    const own = fleet.catalog.get(m.model)?.descriptions || {};
+    const untranslated = DESCRIPTION_LANGS.filter((l) => !own[l]);
+    const hasDescription = untranslated.length < DESCRIPTION_LANGS.length;
+    const missing = [!m.priceFrom && 'price', !m.photo && 'photo', !hasDescription && 'description'].filter(Boolean);
+    const target = { tab: 'site', q: m.model };
+    if (missing.length) {
+      problems.push({
+        group: 'website', level: 'warning', target,
+        title: tx.t('website.title', { model: m.model, missing: missing.map((k) => tx.t(`missing.${k}`)).join(tx.t('list.sep')) }),
+        detail: tx.t(missing.includes('price') ? 'website.detailPrice' : 'website.detailOther')
+      });
+    }
+    if (hasDescription && untranslated.length) {
+      problems.push({
+        group: 'website', level: 'warning', target,
+        title: tx.t('translate.title', { model: m.model, langs: untranslated.map((l) => l.toUpperCase()).join(', ') }),
+        detail: tx.t('translate.detail')
+      });
+    }
   }
   return problems;
 }
@@ -278,7 +292,7 @@ const GROUP_ORDER = ['system', 'requests', 'bookings', 'service', 'data', 'price
 
 /**
  * Все проблемы, сначала важные: [{ group, level, title, detail, target? }].
- * lang — язык текстов (en / ru / th), сводка в группу — на английском.
+ * lang — язык текстов (en / ru / th).
  */
 export async function collectProblems(now = Date.now(), lang = 'en') {
   const tx = dashboardTranslator(lang);

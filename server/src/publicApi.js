@@ -33,6 +33,18 @@ const requestLimiter = rateLimiter(60 * 60 * 1000, 5);
 let catalogCache = null;
 const availabilityCache = new Map();
 
+const DESCRIPTION_LANGS = ['en', 'ru', 'th', 'zh'];
+
+/**
+ * Описание на каждом языке сайта. Нет перевода — показываем английское,
+ * а если и его нет — любое заполненное.
+ */
+function descriptionsFor(entry) {
+  const own = entry.descriptions || { en: entry.description };
+  const any = DESCRIPTION_LANGS.map((l) => own[l]).find(Boolean) || '';
+  return Object.fromEntries(DESCRIPTION_LANGS.map((l) => [l, own[l] || own.en || any]));
+}
+
 async function buildCatalog() {
   if (!sheetsEnabled) return { updatedAt: null, models: [] };
   const { units, catalog } = await getFleet();
@@ -62,7 +74,8 @@ async function buildCatalog() {
       perDayWeek: entry.pricePerDayWeek,
       perDayMonth: entry.pricePerDayMonth,
       deposit: entry.deposit,
-      description: entry.description,
+      descriptions: descriptionsFor(entry),
+      description: descriptionsFor(entry).en,
       photo,
       // Кадры карусели на странице модели: главное фото, затем галерея
       gallery: [photo, ...gallery.filter((src) => src !== photo)].filter(Boolean).slice(0, MAX_GALLERY + 1)

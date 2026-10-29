@@ -842,7 +842,7 @@
         </div>
         <div class="mcard__body">
           <div class="mcard__title">${esc(m.model)}</div>
-          <div class="mcard__desc">${m.description ? esc(m.description) : `<span class="muted">${esc(t('site.noDesc'))}</span>`}</div>
+          <div class="mcard__desc">${m.descriptions?.[lang] || m.description ? esc(m.descriptions?.[lang] || m.description) : `<span class="muted">${esc(t('site.noDesc'))}</span>`}</div>
           <div class="mcard__meta">${esc(TYPE_ONE[m.type] || '—')} · ${esc(t('site.inFleet', { n: m.units }))}${m.gallery?.length ? ` · 📷 ${esc(tn('n.photos', m.gallery.length + 1))}` : ''}</div>
           ${m.onSite ? '' : `<div><span class="tag">${esc(t('site.notOnSite'))}</span></div>`}
           ${change ? `<div class="mcard__meta">${change}</div>` : ''}
@@ -1152,6 +1152,52 @@
     }
   }
 
+  /* Описание на 4 языках: пишут на любом, «Перевести» заполняет остальные по словарю (specs.js) */
+
+  const DESC_LANGS = ['en', 'ru', 'th', 'zh'];
+  const descInput = (l) => document.querySelector(`[data-desc="${l}"]`);
+
+  function setDescNote(text, kind = '') {
+    const note = $('#md-desc-note');
+    note.hidden = !text;
+    note.textContent = text;
+    note.className = `md-desc__note${kind ? ` is-${kind}` : ''}`;
+  }
+
+  /** С какого языка переводить: последнее изменённое поле, иначе первое заполненное */
+  function descSource(ed) {
+    if (ed.descSource && descInput(ed.descSource).value.trim()) return ed.descSource;
+    return [lang, ...DESC_LANGS].find((l) => DESC_LANGS.includes(l) && descInput(l).value.trim()) || null;
+  }
+
+  function translateDescription() {
+    const ed = state.editing;
+    const from = ed && descSource(ed);
+    if (!from) return setDescNote(t('md.writeFirst'), 'error');
+    const text = descInput(from).value.trim();
+    const unknown = new Set();
+    for (const l of DESC_LANGS.filter((x) => x !== from)) {
+      const result = window.SpecTranslate.translate(text, l);
+      descInput(l).value = result.text;
+      result.unknown.forEach((w) => unknown.add(w));
+    }
+    ed.descSource = from;
+    setDescNote(unknown.size ? t('md.unknown', { words: [...unknown].join(', ') }) : t('md.translated'), unknown.size ? 'warn' : 'ok');
+  }
+
+  /** Тексты для сохранения; пустые языки заполняем сами, если словарь знает все слова */
+  function collectDescriptions(ed) {
+    const values = Object.fromEntries(DESC_LANGS.map((l) => [l, descInput(l).value.trim()]));
+    const from = descSource(ed);
+    if (from) {
+      for (const l of DESC_LANGS.filter((x) => !values[x])) {
+        const result = window.SpecTranslate.translate(values[from], l);
+        if (!result.unknown.length) values[l] = result.text;
+      }
+    }
+    return values;
+  }
+
   function setModelStatus(text, kind = '') {
     const box = $('#md-status');
     box.textContent = text;
@@ -1169,7 +1215,9 @@
     };
     $('#md-title').textContent = m.model;
     $('#md-type').textContent = TYPE_ONE[m.type] || '';
-    $('#md-desc').value = m.description || '';
+    const descriptions = m.descriptions || { en: m.description };
+    document.querySelectorAll('[data-desc]').forEach((input) => { input.value = descriptions[input.dataset.desc] || ''; });
+    setDescNote('');
     $('#md-file').value = '';
     $('#md-options').hidden = true;
     $('#md-gfile').value = '';
@@ -1223,11 +1271,13 @@
         m.gallery = data.gallery;
         ed.galleryChanged = false;
       }
-      const description = $('#md-desc').value.trim();
-      if (description !== (m.description || '')) {
+      const descriptions = collectDescriptions(ed);
+      const saved = m.descriptions || { en: m.description || '' };
+      if (DESC_LANGS.some((l) => descriptions[l] !== (saved[l] || ''))) {
         setModelStatus(t('md.savingDesc'));
-        const data = await api('/models/description', { body: { model: ed.model, description } });
-        m.description = data.description;
+        const data = await api('/models/description', { body: { model: ed.model, descriptions } });
+        m.descriptions = { ...saved, ...data.descriptions };
+        m.description = m.descriptions.en;
       }
       setModelStatus(t('md.saved'), 'ok');
       render();
@@ -1261,6 +1311,10 @@
       const button = event.target.closest('[data-gmove], [data-gmain], [data-gdel]');
       if (button) galleryAction(button);
     });
+    $('#md-translate').addEventListener('click', translateDescription);
+    document.querySelectorAll('[data-desc]').forEach((input) => input.addEventListener('input', () => {
+      if (state.editing) state.editing.descSource = input.dataset.desc;
+    }));
     $('#md-white').addEventListener('change', (event) => {
       if (!state.editing) return;
       state.editing.removeWhite = event.target.checked;

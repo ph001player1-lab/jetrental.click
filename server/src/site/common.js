@@ -16,6 +16,8 @@ export const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ 
 export const money = (n) => `${new Intl.NumberFormat('en-US').format(n)} ฿`;
 export const icon = (name, size = 20) => `<svg width="${size}" height="${size}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 export const isFullPhoto = (photo) => /\.jpe?g$/i.test(photo || '');
+/** Описание модели на языке страницы (без перевода — английское) */
+export const descOf = (ctx, item) => item.descriptions?.[ctx.lang] || item.description || '';
 
 export const waLink = (brand, text) => `https://wa.me/${brand.whatsapp}?text=${encodeURIComponent(text)}`;
 export const tgLink = (brand) => `https://t.me/${brand.telegram}`;

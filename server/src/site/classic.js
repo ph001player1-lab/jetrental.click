@@ -13,7 +13,7 @@ import { SITE_LANGS } from './texts.js';
 import { pagePath, langPrefix, CATEGORY_BY_TYPE } from './urls.js';
 import {
   NAV_KEY, esc, icon, isFullPhoto, waLink, tgLink, head, SPRITE, LOCK, crumbs, search,
-  modelUrl, badge, photoTag, galleryBlock, REVIEWS, bookingDialog, dayMonth, homeMeta, categoryMeta, modelCrumbs, modelMeta, notFoundMeta
+  modelUrl, badge, photoTag, galleryBlock, descOf, REVIEWS, bookingDialog, dayMonth, homeMeta, categoryMeta, modelCrumbs, modelMeta, notFoundMeta
 } from './common.js';
 
 // Как на старом сайте: меню — авто, мотоциклы, скутеры; на главной — мотоциклы, авто (бордовая полоса), скутеры
@@ -163,7 +163,7 @@ function card(ctx, item) {
           <a class="cl-card__media${isFullPhoto(item.photo) ? ' is-photo' : ''}" href="${esc(href)}" tabindex="-1" aria-hidden="true">${badge(ctx, item)}${photoTag(item)}</a>
           <h3 class="cl-card__title"><a href="${esc(href)}"><b>${esc(make)}</b>${name ? ` <span>${esc(name)}</span>` : ''}</a></h3>
           <ul class="cl-card__pills">
-            ${item.description ? `<li>${ICON_SPEC}<span>${esc(item.description)}</span></li>` : ''}
+            ${descOf(ctx, item) ? `<li>${ICON_SPEC}<span>${esc(descOf(ctx, item))}</span></li>` : ''}
             <li>${ICON_PRICE}<span>${item.priceFrom ? esc(t('cl.from', { price: baht(item.priceFrom) })) : esc(t('card.ask'))}</span></li>
           </ul>
           <div class="cl-card__actions">
@@ -363,7 +363,7 @@ export function renderModel(ctx, data, item, tariffs) {
           <div class="cl-model__info" data-reveal>
             <h1><b>${esc(make)}</b>${name ? ` <span>${esc(name)}</span>` : ''}</h1>
             <p class="cl-model__from">${item.priceFrom ? esc(t('cl.from', { price: baht(item.priceFrom) })) : esc(t('card.ask'))}</p>
-            ${item.description ? `<p class="cl-model__spec">${ICON_SPEC}<span>${esc(item.description)}</span></p>` : ''}
+            ${descOf(ctx, item) ? `<p class="cl-model__spec">${ICON_SPEC}<span>${esc(descOf(ctx, item))}</span></p>` : ''}
             <p class="cl-model__lead">${esc(t(`model.lead.${type}`, { model: item.model }))}</p>
             <div class="cl-model__actions">
               <button class="cl-btn cl-btn--red cl-btn--big" type="button" data-book="${esc(item.model)}" data-type="${esc(type)}">${esc(t('card.book'))}</button>

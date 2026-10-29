@@ -62,7 +62,8 @@ export const config = {
   // Сайт сотрудников (staff.jetrental.click): вход по коду из письма
   staff: {
     url: (process.env.STAFF_URL || 'https://staff.jetrental.click').replace(/\/+$/, ''),
-    sessionHours: 24,
+    // Вход по коду из письма действует неделю
+    sessionDays: Number(process.env.STAFF_SESSION_DAYS) || 7,
     codeMinutes: 10,
     // Почты с доступом помимо листа Users (через запятую) — на случай, если таблица недоступна
     extraEmails: (process.env.STAFF_EMAILS || '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean)
@@ -89,6 +90,8 @@ export const config = {
     token: process.env.TELEGRAM_BOT_TOKEN || '',
     apiBase: (process.env.TELEGRAM_API_BASE || 'https://api.telegram.org').replace(/\/+$/, ''),
     // Можно жёстко задать группу сотрудников; иначе она привязывается командой /bind
-    staffChatId: process.env.TELEGRAM_STAFF_CHAT_ID || ''
+    staffChatId: process.env.TELEGRAM_STAFF_CHAT_ID || '',
+    // Язык рабочей группы: ru (по умолчанию) или en
+    groupLang: (process.env.STAFF_GROUP_LANG || 'ru').toLowerCase()
   }
 };

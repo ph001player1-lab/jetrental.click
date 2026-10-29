@@ -45,6 +45,9 @@
   /* ---------------------------------------------------------------- Языки */
 
   /** Текст по ключу с подстановкой {параметров} и {brand}; значения параметров не экранируются */
+  /** Описание модели на языке страницы (из каталога; без перевода — английское) */
+  const descOf = (info) => info.descriptions?.[state.lang] || info.description || '';
+
   function t(key, params = {}) {
     const text = DICT[state.lang]?.[key] ?? DICT.en[key] ?? key;
     return text.replace(/\{(\w+)\}/g, (m, name) => {
@@ -180,7 +183,7 @@
       <article class="cl-card">
         <${href ? `a href="${esc(href)}"` : 'div'} class="cl-card__media${isFullPhoto(info.photo) ? ' is-photo' : ''}"><span class="badge badge--free">${esc(t('badge.dates'))}</span>${photo}</${href ? 'a' : 'div'}>
         <h3 class="cl-card__title">${href ? `<a href="${esc(href)}">` : '<span>'}<b>${esc(words.slice(0, n).join(' '))}</b> <span>${esc(words.slice(n).join(' '))}</span>${href ? '</a>' : '</span>'}</h3>
-        <ul class="cl-card__pills">${info.description ? `<li>${ICON_SPEC}<span>${esc(info.description)}</span></li>` : ''}${price}</ul>
+        <ul class="cl-card__pills">${descOf(info) ? `<li>${ICON_SPEC}<span>${esc(descOf(info))}</span></li>` : ''}${price}</ul>
         ${total}
         <div class="cl-card__actions">
           <button class="cl-btn cl-btn--dark" type="button" data-book="${esc(option.model)}" data-type="${esc(search.type)}">${esc(t('card.book'))}</button>
@@ -197,7 +200,7 @@
       <article class="vcard">
         ${media({ ...info, model: option.model }, `<span class="badge badge--free">${esc(t('badge.dates'))}</span>`)}
         <div class="vcard__body">
-          ${info.description ? `<div class="vcard__spec">${esc(info.description)}</div>` : ''}
+          ${descOf(info) ? `<div class="vcard__spec">${esc(descOf(info))}</div>` : ''}
           <h3>${modelUrl(info) ? `<a href="${esc(modelUrl(info))}">${esc(option.model)}</a>` : esc(option.model)}</h3>
           ${priceLines(option.price, search.days)}
           ${actions(option.model, search.type, waText)}

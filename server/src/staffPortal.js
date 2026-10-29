@@ -3,7 +3,7 @@
  * API сайта сотрудников (staff.jetrental.click)
  * ============================================================================
  * Вход без паролей: сотрудник вводит почту → на неё приходит 6-значный код
- * (действует 10 минут, 5 попыток) → после ввода кода вход действует 24 часа.
+ * (действует 10 минут, 5 попыток) → после ввода кода вход действует 7 дней.
  * Пускаем только почты из колонки Email листа Users; если почту удалили —
  * доступ пропадает при следующем запросе (список обновляется раз в 2 минуты).
  *
@@ -71,21 +71,21 @@ const CODE_EMAIL = {
     subject: 'JetRental staff login code: {code}',
     hi: 'Hi {name},',
     lead: 'Your JetRental staff login code:',
-    valid: 'It is valid for {minutes} minutes. After you sign in, access lasts {hours} hours.',
+    valid: 'It is valid for {minutes} minutes. After you sign in, access lasts {days} days.',
     ignore: 'If you did not request this code, just ignore this email.'
   },
   ru: {
     subject: 'Код входа JetRental Staff: {code}',
     hi: 'Здравствуйте, {name}!',
     lead: 'Ваш код для входа на сайт сотрудников JetRental:',
-    valid: 'Код действует {minutes} минут. После входа доступ сохраняется {hours} часа.',
+    valid: 'Код действует {minutes} минут. После входа доступ сохраняется {days} дней.',
     ignore: 'Если вы не запрашивали код, просто проигнорируйте это письмо.'
   },
   th: {
     subject: 'รหัสเข้าสู่ระบบ JetRental Staff: {code}',
     hi: 'สวัสดี {name}',
     lead: 'รหัสเข้าสู่ระบบเว็บไซต์พนักงาน JetRental ของคุณ:',
-    valid: 'รหัสใช้ได้ {minutes} นาที หลังเข้าสู่ระบบแล้วจะใช้งานได้ {hours} ชั่วโมง',
+    valid: 'รหัสใช้ได้ {minutes} นาที หลังเข้าสู่ระบบแล้วจะใช้งานได้ {days} วัน',
     ignore: 'หากคุณไม่ได้ขอรหัสนี้ ไม่ต้องทำอะไร'
   }
 };
@@ -93,7 +93,7 @@ const CODE_EMAIL = {
 function codeEmail(code, name, lang) {
   const texts = CODE_EMAIL[lang] || CODE_EMAIL.en;
   const fill = (text, params) => text.replace(/\{(\w+)\}/g, (m, key) => params[key] ?? m);
-  const params = { code, name, minutes: config.staff.codeMinutes, hours: config.staff.sessionHours };
+  const params = { code, name, minutes: config.staff.codeMinutes, days: config.staff.sessionDays };
   const valid = fill(texts.valid, params);
   const text = `${fill(texts.hi, params)}\n\n${texts.lead} ${code}\n\n${valid}\n${texts.ignore}`;
   const html =
@@ -155,7 +155,7 @@ async function verify(req, res) {
 
   db.deleteLoginCodes(email);
   const token = crypto.randomBytes(32).toString('base64url');
-  const maxAge = config.staff.sessionHours * 3600;
+  const maxAge = config.staff.sessionDays * 86400;
   db.createStaffSession(sha256(token), email, new Date(Date.now() + maxAge * 1000).toISOString());
   sendJson(res, 200, { ok: true, user: publicUser(staff) }, { 'Set-Cookie': sessionCookie(token, maxAge) });
 }

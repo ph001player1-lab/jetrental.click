@@ -1,6 +1,6 @@
 /**
  * Тексты окна «Проблемы» на трёх языках сайта сотрудников (en / ru / th).
- * Утренняя сводка в рабочей группе — всегда на английском.
+ * Утренняя сводка в рабочей группе — на языке группы (по умолчанию русский).
  * {name} — подстановка.
  */
 
@@ -10,7 +10,7 @@ const LOCALES = { en: 'en-GB', ru: 'ru-RU', th: 'th-TH-u-ca-gregory' };
 
 const TEXTS = {
   en: {
-    'time.weekAgo': 'more than a week ago',
+    'time.longAgo': 'more than 20 days ago',
     'time.hoursAgo': '{n} h ago',
     'time.daysAgo': '{n} days ago',
     'time.at': '{date} ({ago})',
@@ -35,6 +35,8 @@ const TEXTS = {
     'website.title': '{model}: no {missing} on the website',
     'website.detailPrice': 'Clients see “price on request”. Add the price in the Catalog sheet or the price lists.',
     'website.detailOther': 'Add it in the Website tab.',
+    'translate.title': '{model}: description not translated to {langs}',
+    'translate.detail': 'The website shows the English text instead. Website tab → Edit → “Translate”.',
     'noPrice.title': 'No price: {car}',
     'noPrice.detail': 'This plate is missing in {sheets}.',
     'typo.title': 'Typo in the price row: {car}',
@@ -46,7 +48,7 @@ const TEXTS = {
     'notDelivered.title': 'Request not delivered to the staff group: {what}',
     'notDelivered.detail': 'Received {when}. Open the Requests tab and answer the client.',
     'noAnswer.title': 'No answer to request {what}',
-    'noAnswer.detail': 'Waiting {wait} of working time (since {when}). Press “Take” in the staff group.',
+    'noAnswer.detail': 'Waiting {wait} of working time (since {when}). Take it in the staff group (✋ button).',
 
     'wsOff.title': 'Avtoprokat is not connected',
     'wsOff.detail': 'WS_API_URL / WS_API_USER / WS_API_PASSWORD are not set on the server.',
@@ -71,7 +73,7 @@ const TEXTS = {
   },
 
   ru: {
-    'time.weekAgo': 'больше недели назад',
+    'time.longAgo': 'больше 20 дней назад',
     'time.hoursAgo': '{n} ч назад',
     'time.daysAgo': '{n} дн. назад',
     'time.at': '{date} ({ago})',
@@ -96,6 +98,8 @@ const TEXTS = {
     'website.title': '{model}: на сайте нет {missing}',
     'website.detailPrice': 'Клиенты видят «цена по запросу». Добавьте цену в лист Catalog или в прайс.',
     'website.detailOther': 'Добавьте во вкладке «Сайт».',
+    'translate.title': '{model}: описание не переведено на {langs}',
+    'translate.detail': 'Вместо перевода сайт показывает английский текст. Вкладка «Сайт» → «Изменить» → «Перевести».',
     'noPrice.title': 'Нет цены: {car}',
     'noPrice.detail': 'Этого госномера нет в {sheets}.',
     'typo.title': 'Опечатка в строке прайса: {car}',
@@ -107,7 +111,7 @@ const TEXTS = {
     'notDelivered.title': 'Заявка не дошла до рабочей группы: {what}',
     'notDelivered.detail': 'Получена {when}. Откройте вкладку «Заявки» и ответьте клиенту.',
     'noAnswer.title': 'Нет ответа на заявку {what}',
-    'noAnswer.detail': 'Ждёт {wait} рабочего времени (с {when}). Нажмите «Take» в рабочей группе.',
+    'noAnswer.detail': 'Ждёт {wait} рабочего времени (с {when}). Нажмите «✋ Беру» в рабочей группе.',
 
     'wsOff.title': 'Автопрокат не подключён',
     'wsOff.detail': 'На сервере не заданы WS_API_URL / WS_API_USER / WS_API_PASSWORD.',
@@ -132,7 +136,7 @@ const TEXTS = {
   },
 
   th: {
-    'time.weekAgo': 'มากกว่าหนึ่งสัปดาห์ที่แล้ว',
+    'time.longAgo': 'มากกว่า 20 วันที่แล้ว',
     'time.hoursAgo': '{n} ชม. ที่แล้ว',
     'time.daysAgo': '{n} วันที่แล้ว',
     'time.at': '{date} ({ago})',
@@ -157,6 +161,8 @@ const TEXTS = {
     'website.title': '{model}: บนเว็บไซต์ไม่มี{missing}',
     'website.detailPrice': 'ลูกค้าจะเห็น “สอบถามราคา” เพิ่มราคาในชีต Catalog หรือในตารางราคา',
     'website.detailOther': 'เพิ่มได้ในแท็บ “เว็บไซต์”',
+    'translate.title': '{model}: คำอธิบายยังไม่ได้แปลเป็น {langs}',
+    'translate.detail': 'เว็บไซต์จะแสดงข้อความภาษาอังกฤษแทน แท็บ “เว็บไซต์” → “แก้ไข” → “แปล”',
     'noPrice.title': 'ไม่มีราคา: {car}',
     'noPrice.detail': 'ไม่มีทะเบียนนี้ใน {sheets}',
     'typo.title': 'ราคาพิมพ์ผิด: {car}',
@@ -168,7 +174,7 @@ const TEXTS = {
     'notDelivered.title': 'คำขอไม่ถึงกลุ่มพนักงาน: {what}',
     'notDelivered.detail': 'ได้รับเมื่อ {when} เปิดแท็บ “คำขอ” แล้วตอบลูกค้า',
     'noAnswer.title': 'ยังไม่ได้ตอบคำขอ {what}',
-    'noAnswer.detail': 'รอมาแล้ว {wait} ในเวลาทำงาน (ตั้งแต่ {when}) กด “Take” ในกลุ่มพนักงาน',
+    'noAnswer.detail': 'รอมาแล้ว {wait} ในเวลาทำงาน (ตั้งแต่ {when}) กดปุ่ม ✋ ในกลุ่มพนักงานเพื่อรับคำขอ',
 
     'wsOff.title': 'ยังไม่ได้เชื่อมต่อ Avtoprokat',
     'wsOff.detail': 'เซิร์ฟเวอร์ยังไม่ได้ตั้งค่า WS_API_URL / WS_API_USER / WS_API_PASSWORD',

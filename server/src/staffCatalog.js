@@ -3,7 +3,7 @@
  * Сайт сотрудников: фото и описания моделей для публичного сайта
  * ============================================================================
  *   GET  /api/staff/models                    — модели из листа Catalog
- *   POST /api/staff/models/description        { model, description }
+ *   POST /api/staff/models/description        { model, descriptions: { en, ru, th, zh } }
  *   POST /api/staff/models/photo?model=…      тело — картинка webp/jpeg/png
  *                                             (браузер заранее уменьшает её);
  *                                             главное фото, а с &gallery=1 —
@@ -31,9 +31,19 @@ import { slugify, TYPE_ORDER } from './site/urls.js';
 import { safePhoto, parseGallery, MAX_GALLERY } from './photos.js';
 
 const CATALOG_SHEET = 'Catalog';
-const COL = { model: 'Модель для клиента', description: 'Описание для клиента', photo: 'Фото (ссылка)', gallery: 'Фото — галерея' };
-// Колонку галереи добавили позже: без неё работает всё, кроме правки галереи
-const OPTIONAL_COLS = ['gallery'];
+const COL = {
+  model: 'Модель для клиента',
+  // «Описание для клиента» — английское, переводы — в своих колонках
+  description: 'Описание для клиента',
+  descriptionRu: 'Описание RU',
+  descriptionTh: 'Описание TH',
+  descriptionZh: 'Описание ZH',
+  photo: 'Фото (ссылка)',
+  gallery: 'Фото — галерея'
+};
+// Эти колонки добавили позже: без них работает всё, кроме их правки
+const OPTIONAL_COLS = ['gallery', 'descriptionRu', 'descriptionTh', 'descriptionZh'];
+const DESCRIPTION_FIELDS = { en: 'description', ru: 'descriptionRu', th: 'descriptionTh', zh: 'descriptionZh' };
 const EDIT_ROLES = ['editor', 'admin'];
 const MAX_PHOTO_BYTES = 4 * 1024 * 1024;
 const MAX_DESCRIPTION = 100;
@@ -105,6 +115,7 @@ export async function listModels(staff, req, res) {
     model,
     type: entry.type,
     description: entry.description,
+    descriptions: entry.descriptions,
     photo: photoUrl(entry.photo),
     gallery: parseGallery(entry.gallery),
     units: unitCount.get(model) || 0,
@@ -121,9 +132,19 @@ export async function saveDescription(staff, req, res) {
   const body = await readJson(req);
   const model = String(body.model || '').trim();
   if (!model) throw new HttpError(400, 'model_required');
-  const description = String(body.description ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, MAX_DESCRIPTION);
-  await writeFields(model, { description }, staff);
-  sendJson(res, 200, { ok: true, description });
+  const clean = (value) => String(value ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, MAX_DESCRIPTION);
+  // Старый формат { description } — только английское
+  const given = body.descriptions && typeof body.descriptions === 'object' ? body.descriptions : { en: body.description };
+  const descriptions = Object.fromEntries(Object.keys(DESCRIPTION_FIELDS).filter((l) => l in given).map((l) => [l, clean(given[l])]));
+  const found = await findCatalogRow(model);
+  const values = {};
+  for (const [lang, text] of Object.entries(descriptions)) {
+    // Колонки перевода ещё нет, а текст пустой — писать нечего
+    if (found.cols[DESCRIPTION_FIELDS[lang]] < 0 && !text) continue;
+    values[DESCRIPTION_FIELDS[lang]] = text;
+  }
+  await writeFields(model, values, staff, found);
+  sendJson(res, 200, { ok: true, descriptions, description: descriptions.en ?? '' });
 }
 
 /** Первые байты файла совпадают с заявленным типом картинки */

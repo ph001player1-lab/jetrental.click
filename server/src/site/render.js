@@ -12,7 +12,7 @@ import { SITE_LANGS } from './texts.js';
 import { pagePath, langPrefix, CATEGORY_BY_TYPE, TYPE_ORDER } from './urls.js';
 import {
   TYPE_ICON, LANG_LABEL, NAV_KEY, esc, money, icon, isFullPhoto, waLink, tgLink, head, SPRITE, LOCK, crumbs, search,
-  modelUrl, badge, photoTag, galleryBlock, REVIEWS, bookingDialog, dayMonth, homeMeta, categoryMeta, modelCrumbs, modelMeta, notFoundMeta
+  modelUrl, badge, photoTag, galleryBlock, descOf, REVIEWS, bookingDialog, dayMonth, homeMeta, categoryMeta, modelCrumbs, modelMeta, notFoundMeta
 } from './common.js';
 
 const SECTION_ID = { scooter: 'scooters', motorcycle: 'motorbikes', car: 'cars' };
@@ -173,7 +173,7 @@ function card(ctx, item) {
       <article class="vcard">
         <a class="vcard__media${isFullPhoto(item.photo) ? ' vcard__media--photo' : ''}" href="${esc(href)}" tabindex="-1" aria-hidden="true">${badge(ctx, item)}${photoTag(item)}</a>
         <div class="vcard__body">
-          ${item.description ? `<div class="vcard__spec">${esc(item.description)}</div>` : ''}
+          ${descOf(ctx, item) ? `<div class="vcard__spec">${esc(descOf(ctx, item))}</div>` : ''}
           <h3><a href="${esc(href)}">${esc(item.model)}</a></h3>
           <div class="vcard__price">${price}</div>
           <div class="vcard__actions">
@@ -393,7 +393,7 @@ export function renderModel(ctx, data, item, tariffs) {
     <section class="model container">
       ${galleryBlock(ctx, item, { frame: 'model__media', photoClass: 'vcard__media--photo' })}
       <div class="model__info">
-        <p class="eyebrow eyebrow--dark">${esc(t(`type.${type}`))}${item.description ? ` · ${esc(item.description)}` : ''}</p>
+        <p class="eyebrow eyebrow--dark">${esc(t(`type.${type}`))}${descOf(ctx, item) ? ` · ${esc(descOf(ctx, item))}` : ''}</p>
         <h1>${esc(t('model.h1', { model: item.model }))}</h1>
         <p class="model__lead">${esc(t(`model.lead.${type}`, { model: item.model }))}</p>
         ${price}

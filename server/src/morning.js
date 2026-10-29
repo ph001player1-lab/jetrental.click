@@ -6,6 +6,7 @@
  * парк сейчас и список проблем (те же, что в окне «Проблемы» на сайте
  * сотрудников). День отправки хранится в базе — после перезапуска сервера
  * сводка не повторится. В группе её можно запросить командой /summary.
+ * Язык — как у всей рабочей группы (STAFF_GROUP_LANG, по умолчанию русский).
  * ============================================================================
  */
 
@@ -18,6 +19,7 @@ import { getStaffChatId, sendToStaffGroup } from './staff.js';
 import { getWsSnapshot } from './ws/sync.js';
 import { wsEnabled } from './ws/api.js';
 import { telegramEnabled } from './telegram/api.js';
+import { g, gn, groupLang, groupLocale } from './groupTexts.js';
 
 const SEND_HOUR = 10;
 // Сразу после перезапуска ждём данные Автопроката, но не дольше этой минуты
@@ -25,34 +27,36 @@ const WAIT_DATA_UNTIL_MINUTE = 45;
 const MAX_PROBLEMS = 15;
 const BANGKOK_MS = 7 * 3600000;
 
-const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
-
-/** Текст сводки (HTML для Telegram) */
+/** Текст сводки (HTML для Telegram) на языке рабочей группы */
 export function formatSummary(problems, outlook, snapshot, now = Date.now()) {
-  const date = new Date(now + BANGKOK_MS).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
-  const lines = [`☀️ <b>Good morning! ${escapeHtml(date)}</b>`, ''];
+  const date = new Date(now + BANGKOK_MS).toLocaleDateString(groupLocale, { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
+  const lines = [g('sum.title', { date: escapeHtml(date.charAt(0).toUpperCase() + date.slice(1)) }), ''];
   if (outlook) {
-    lines.push(`<b>Today:</b> ${plural(outlook.today.pickups, 'pickup')} · ${plural(outlook.today.returns, 'return')}`);
-    lines.push(`<b>Bookings ahead:</b> 7 days — ${outlook.next7.bookings} (${plural(outlook.next7.vehicles, 'vehicle')}) · 30 days — ${outlook.next30.bookings} (${plural(outlook.next30.vehicles, 'vehicle')})`);
+    lines.push(g('sum.today', { pickups: gn('sum.pickups', outlook.today.pickups), returns: gn('sum.returns', outlook.today.returns) }));
+    lines.push(g('sum.ahead', {
+      b7: outlook.next7.bookings, v7: gn('sum.vehicles', outlook.next7.vehicles),
+      b30: outlook.next30.bookings, v30: gn('sum.vehicles', outlook.next30.vehicles)
+    }));
   }
   if (snapshot?.cars.length) {
     const count = (status) => snapshot.cars.filter((c) => c.status === status).length;
-    lines.push(`<b>Fleet now:</b> ${count('free')} free · ${count('rent')} rented · ${count('service')} in service`);
+    lines.push(g('sum.fleet', { free: count('free'), rent: count('rent'), service: count('service') }));
   }
   lines.push('');
   if (!problems.length) {
-    lines.push('✅ <b>No problems</b>');
+    lines.push(g('sum.none'));
   } else {
-    lines.push(`⚠️ <b>Problems: ${problems.length}</b>`);
+    lines.push(g('sum.problems', { n: problems.length }));
     for (const p of problems.slice(0, MAX_PROBLEMS)) lines.push(`${p.level === 'error' ? '🔴' : '🟡'} ${escapeHtml(p.title)}`);
-    if (problems.length > MAX_PROBLEMS) lines.push(`…and ${problems.length - MAX_PROBLEMS} more`);
+    if (problems.length > MAX_PROBLEMS) lines.push(g('sum.more', { n: problems.length - MAX_PROBLEMS }));
   }
   lines.push('', `👉 ${escapeHtml(config.staff.url)}`);
   return lines.join('\n');
 }
 
 export async function sendMorningSummary() {
-  const text = formatSummary(await collectProblems(), bookingOutlook(), getWsSnapshot());
+  const now = Date.now();
+  const text = formatSummary(await collectProblems(now, groupLang), bookingOutlook(now), getWsSnapshot(), now);
   return sendToStaffGroup(text, { disable_web_page_preview: true });
 }
 
