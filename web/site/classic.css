@@ -224,7 +224,9 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
   position: relative; display: grid; place-items: center; aspect-ratio: 4 / 3; padding: 8px; text-decoration: none;
   background: radial-gradient(closest-side, rgba(255, 255, 255, .26), rgba(255, 255, 255, .06) 62%, rgba(255, 255, 255, 0) 100%);
 }
-.cl-card__media img { width: 100%; height: 100%; object-fit: contain; transition: transform .4s ease; }
+.cl-card__media { grid-template: minmax(0, 1fr) / minmax(0, 1fr); }
+/* Высокая картинка не растягивает рамку — иначе карточка съезжает вниз относительно соседних */
+.cl-card__media img { width: 100%; height: 100%; min-height: 0; object-fit: contain; transition: transform .4s ease; }
 .cl-card:hover .cl-card__media img { transform: scale(1.04); }
 .cl-card__media.is-photo { padding: 0; background: none; border-radius: 10px; overflow: hidden; }
 .cl-card__media.is-photo img { object-fit: cover; }
@@ -241,8 +243,20 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
 .cl-card__pills svg { flex: none; color: #d8c4bd; }
 .cl-card__pills span { text-align: right; min-width: 0; overflow-wrap: anywhere; }
 .cl-band .cl-card__pills li { background: var(--bg); }
-.cl-card__actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: auto; }
-.cl-card__actions .cl-btn { padding: 0 8px; font-size: 14px; min-width: 0; }
+.cl-card__pills li.is-empty { visibility: hidden; }
+.cl-card__pills li.cl-card__total { display: block; min-height: 0; margin: 0; padding: 0; background: none; text-align: center; }
+/* «Подробнее» и круглые WhatsApp / Telegram */
+.cl-card__actions { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; margin-top: auto; }
+.cl-card__actions .cl-btn { min-height: 46px; padding: 0 8px; font-size: 14px; min-width: 0; }
+.cl-btn--round { width: 46px; height: 46px; padding: 0 !important; border-radius: 50%; }
+.cl-btn--round svg { width: 22px; height: 22px; }
+
+/* Части карточек в одном ряду — на одной высоте: фото, название, плашки, кнопки */
+@supports (grid-template-rows: subgrid) {
+  .cl-slider__track { grid-template-rows: repeat(4, auto); }
+  .cl-card { display: grid; grid-row: span 4; grid-template-rows: subgrid; row-gap: 0; }
+  .cl-card__actions { align-self: end; }
+}
 .badge {
   position: absolute; top: 4px; left: 4px; z-index: 1; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
   border-radius: 999px; font: 600 11px var(--font); background: rgba(8, 13, 17, .8); color: var(--soft);
@@ -260,7 +274,9 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
   .cl-card__title b { font-size: 20px; }
   .cl-card__title span { font-size: 15px; }
   .cl-card__pills li { font-size: 14px; padding: 0 12px 0 14px; min-height: 40px; }
-  .cl-grid .cl-card__actions { grid-template-columns: 1fr; }
+  .cl-grid .cl-card__actions { gap: 4px; }
+  .cl-grid .cl-card__actions .cl-btn--dark { font-size: 13px; padding: 0 4px; }
+  .cl-grid .cl-btn--round { width: 40px; height: 40px; min-height: 40px; }
   .cl-band { padding: 80px 0 90px; border-bottom-left-radius: 50% 40px; border-bottom-right-radius: 50% 40px; }
   .cl-band::before { height: 30px; border-bottom-left-radius: 50% 30px; border-bottom-right-radius: 50% 30px; }
 }
@@ -456,7 +472,9 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
 .cl-card__total b { color: var(--text); }
 @media (max-width: 640px) {
   .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 12px; }
-  .grid .cl-card__actions { grid-template-columns: 1fr; }
+  .grid .cl-card__actions { gap: 4px; }
+  .grid .cl-card__actions .cl-btn--dark { font-size: 13px; padding: 0 4px; }
+  .grid .cl-btn--round { width: 40px; height: 40px; min-height: 40px; }
 }
 
 /* --- Окно бронирования --- */

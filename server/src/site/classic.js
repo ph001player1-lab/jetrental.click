@@ -161,14 +161,15 @@ function card(ctx, item) {
   return `
         <article class="cl-card" data-reveal>
           <a class="cl-card__media${isFullPhoto(item.photo) ? ' is-photo' : ''}" href="${esc(href)}" tabindex="-1" aria-hidden="true">${badge(ctx, item)}${photoTag(item)}</a>
-          <h3 class="cl-card__title"><a href="${esc(href)}"><b>${esc(make)}</b>${name ? ` <span>${esc(name)}</span>` : ''}</a></h3>
+          <h3 class="cl-card__title"><a href="${esc(href)}"><b>${esc(make)}</b> <span>${name ? esc(name) : '&nbsp;'}</span></a></h3>
           <ul class="cl-card__pills">
-            ${descOf(ctx, item) ? `<li>${ICON_SPEC}<span>${esc(descOf(ctx, item))}</span></li>` : ''}
+            ${descOf(ctx, item) ? `<li>${ICON_SPEC}<span>${esc(descOf(ctx, item))}</span></li>` : '<li class="is-empty" aria-hidden="true"></li>'}
             <li>${ICON_PRICE}<span>${item.priceFrom ? esc(t('cl.from', { price: baht(item.priceFrom) })) : esc(t('card.ask'))}</span></li>
           </ul>
           <div class="cl-card__actions">
             <a class="cl-btn cl-btn--dark" href="${esc(href)}">${esc(t('card.seeMore'))}</a>
-            <a class="cl-btn cl-btn--wa" href="${esc(waLink(brand, t('wa.model', { model: item.model })))}" target="_blank" rel="noopener">${icon('wa', 18)}What'sApp</a>
+            <a class="cl-btn cl-btn--wa cl-btn--round" href="${esc(waLink(brand, t('wa.model', { model: item.model })))}" target="_blank" rel="noopener" aria-label="WhatsApp" title="WhatsApp">${icon('wa', 22)}</a>
+            <a class="cl-btn cl-btn--tg cl-btn--round" href="${esc(tgLink(brand))}" target="_blank" rel="noopener" aria-label="Telegram" title="Telegram">${icon('tg', 22)}</a>
           </div>
         </article>`;
 }

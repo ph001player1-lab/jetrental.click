@@ -175,19 +175,19 @@
     const price = option.price?.total
       ? `<li>${ICON_PRICE}<span>${esc(t('cl.perDay', { price: baht(option.price.perDay) }))}</span></li>`
       : `<li>${ICON_PRICE}<span>${option.price?.fromPerDay ? esc(t('cl.from', { price: baht(option.price.fromPerDay) })) : esc(t('card.ask'))}</span></li>`;
-    const total = option.price?.total ? `<p class="cl-card__total">${t('card.total', { total: money(option.price.total), days: esc(daysText(search.days)) })}</p>` : '';
+    const total = option.price?.total ? `<li class="cl-card__total">${t('card.total', { total: money(option.price.total), days: esc(daysText(search.days)) })}</li>` : '';
     const photo = info.photo
       ? `<img src="${esc(info.photo)}" alt="${esc(option.model)}" loading="lazy" width="320" height="220" data-icon="${TYPE_ICON[info.type] || '🚘'}" />`
       : `<span class="vcard__placeholder" aria-hidden="true">${TYPE_ICON[info.type] || '🚘'}</span>`;
     return `
       <article class="cl-card">
         <${href ? `a href="${esc(href)}"` : 'div'} class="cl-card__media${isFullPhoto(info.photo) ? ' is-photo' : ''}"><span class="badge badge--free">${esc(t('badge.dates'))}</span>${photo}</${href ? 'a' : 'div'}>
-        <h3 class="cl-card__title">${href ? `<a href="${esc(href)}">` : '<span>'}<b>${esc(words.slice(0, n).join(' '))}</b> <span>${esc(words.slice(n).join(' '))}</span>${href ? '</a>' : '</span>'}</h3>
-        <ul class="cl-card__pills">${descOf(info) ? `<li>${ICON_SPEC}<span>${esc(descOf(info))}</span></li>` : ''}${price}</ul>
-        ${total}
+        <h3 class="cl-card__title">${href ? `<a href="${esc(href)}">` : '<span>'}<b>${esc(words.slice(0, n).join(' '))}</b> <span>${esc(words.slice(n).join(' ')) || '&nbsp;'}</span>${href ? '</a>' : '</span>'}</h3>
+        <ul class="cl-card__pills">${descOf(info) ? `<li>${ICON_SPEC}<span>${esc(descOf(info))}</span></li>` : '<li class="is-empty" aria-hidden="true"></li>'}${price}${total}</ul>
         <div class="cl-card__actions">
           <button class="cl-btn cl-btn--dark" type="button" data-book="${esc(option.model)}" data-type="${esc(search.type)}">${esc(t('card.book'))}</button>
-          <a class="cl-btn cl-btn--wa" href="${esc(waLink(waText))}" target="_blank" rel="noopener">${icon('wa', 18)}What'sApp</a>
+          <a class="cl-btn cl-btn--wa cl-btn--round" href="${esc(waLink(waText))}" target="_blank" rel="noopener" aria-label="WhatsApp" title="WhatsApp">${icon('wa', 22)}</a>
+          <a class="cl-btn cl-btn--tg cl-btn--round" href="${esc(TELEGRAM)}" target="_blank" rel="noopener" aria-label="Telegram" title="Telegram">${icon('tg', 22)}</a>
         </div>
       </article>`;
   }
