@@ -15,7 +15,13 @@ main() {
   local compose=(docker compose -f "$app_dir/deploy/docker-compose.yml")
 
   cd "$app_dir"
-  git pull --ff-only
+  if [[ "${KOKON_PULLED:-}" != "1" ]]; then
+    git pull --ff-only
+    # Свежий код мог изменить и этот скрипт — дальше работает уже новая версия,
+    # иначе новые шаги (например, установка программ) сработали бы только со
+    # второго запуска
+    KOKON_PULLED=1 exec bash "$app_dir/deploy/update.sh" "$@"
+  fi
 
   # Счётчик трафика сервера vnStat (вкладка «Сервер» на сайте сотрудников).
   # Ставится один раз; sudo может спросить пароль пользователя ubuntu.
