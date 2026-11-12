@@ -2,8 +2,10 @@
  * ============================================================================
  * JetRental Staff — сайт сотрудников
  * ============================================================================
- * Экраны: вход (почта → код) и 5 вкладок: Overview, Fleet, Calendar, Requests,
- * Website (фото и описания моделей для сайта — менять могут роли Editor/Admin).
+ * Экраны: вход (почта → код) и вкладки: Overview, Fleet, Calendar, Requests,
+ * Website (фото и описания моделей для сайта — менять могут роли Editor/Admin)
+ * и Server (нагрузка и трафик сервера — только Admin, рисует cockpit.js).
+ * Роль (Admin / Editor / Viewer) и её права приходят с сервера в /api/staff/me.
  * Данные: GET /api/staff/fleet (снимок Автопроката, обновляется на сервере
  * раз в 10 минут), GET /api/staff/requests, GET /api/staff/models.
  * Время показываем по Бангкоку. Языки: английский, русский, тайский
@@ -18,6 +20,8 @@
   const TZ_OFFSET_MS = 7 * 3600 * 1000; // Таиланд без перехода на летнее время
   const DAY_MS = 86400000;
   const REFRESH_MS = 2 * 60 * 1000;
+  // Приборы вкладки «Сервер» — каждые 10 секунд, пока она открыта
+  const SERVER_REFRESH_MS = 10 * 1000;
 
   /* ---------------------------------------------------------------- Языки */
 
@@ -67,7 +71,8 @@
   const ERRORS = labels('err', [
     'invalid_email', 'invalid_code', 'too_many_attempts', 'wait_a_minute', 'too_many_codes', 'too_many_requests',
     'mail_not_configured', 'mail_failed', 'no_access', 'read_only', 'model_not_found', 'bad_image', 'image_required',
-    'too_many_uploads', 'body_too_large', 'unknown_photo', 'too_many_photos', 'sheets_not_configured'
+    'too_many_uploads', 'body_too_large', 'unknown_photo', 'too_many_photos', 'sheets_not_configured',
+    'admin_only', 'invalid_settings'
   ]);
 
   const ICONS = {
@@ -75,9 +80,16 @@
     fleet: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M18.92 6.01A1.5 1.5 0 0 0 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1h12v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-8l-2.08-5.99zM6.5 16a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm11 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zM5 11l1.5-4.5h11L19 11H5z"/></svg>',
     calendar: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 16H5V10h14v10zM7 12h5v5H7z"/></svg>',
     requests: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z"/></svg>',
-    site: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M21 19V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2zM8.5 13.5l2.5 3 3.5-4.5 4.5 6H5l3.5-4.5z"/></svg>'
+    site: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M21 19V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2zM8.5 13.5l2.5 3 3.5-4.5 4.5 6H5l3.5-4.5z"/></svg>',
+    server: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 4a10 10 0 0 0-8.66 15h17.32A10 10 0 0 0 12 4zm0 2a8 8 0 0 1 7.42 11H4.58A8 8 0 0 1 12 6zm-1 1.5v2h2v-2h-2zM6.4 9.2 5 10.6l1.4 1.4 1.4-1.4-1.4-1.4zm11.2 0-4.47 4.47a2 2 0 1 0 1.41 1.41L19 10.6l-1.4-1.4z"/></svg>'
   };
-  const TABS = ['overview', 'fleet', 'calendar', 'requests', 'site'].map((id) => ({ id, get title() { return t(`tab.${id}`); } }));
+  const ALL_TABS = ['overview', 'fleet', 'calendar', 'requests', 'site', 'server'];
+  // Вкладка — и право, без которого её не видно
+  const TAB_PERMISSION = { server: 'server.view' };
+  const can = (perm) => Boolean(state.user?.permissions?.includes(perm));
+  /** Вкладки, доступные роли вошедшего сотрудника */
+  const tabs = () => ALL_TABS.filter((id) => !TAB_PERMISSION[id] || can(TAB_PERMISSION[id]))
+    .map((id) => ({ id, title: t(`tab.${id}`) }));
 
   const state = {
     user: null,
@@ -99,7 +111,12 @@
     dashboardFailed: false,
     offline: false,
     problemCat: 'all',
-    openCats: new Set()
+    openCats: new Set(),
+    // Вкладка «Сервер» (Admin)
+    server: null,
+    serverFailed: false,
+    serverTimer: null,
+    serverStatus: null
   };
 
   const $ = (sel) => document.querySelector(sel);
@@ -356,13 +373,15 @@
   function startApp() {
     $('#login').hidden = true;
     $('#app').hidden = false;
-    $('#who').textContent = state.user?.name || state.user?.email || '';
+    renderWho();
     const fromHash = location.hash.slice(1);
-    if (TABS.some((tab) => tab.id === fromHash)) state.tab = fromHash;
+    if (tabs().some((tab) => tab.id === fromHash)) state.tab = fromHash;
+    if (!tabs().some((tab) => tab.id === state.tab)) state.tab = 'overview';
     renderTabs();
     render();
     loadData();
     if (state.tab === 'site') loadModels();
+    if (state.tab === 'server') startServerPolling();
     clearInterval(state.timer);
     state.timer = setInterval(() => { if (!document.hidden) loadData(); }, REFRESH_MS);
   }
@@ -399,19 +418,34 @@
     return state.requests.filter((r) => r.status === 'new').length;
   }
 
+  /** Имя и роль в строке состояния: «Николай · Админ» */
+  function renderWho() {
+    const user = state.user;
+    if (!user) return;
+    const role = user.role || 'viewer';
+    $('#who').innerHTML = `${esc(user.name || user.email)} <span class="role role--${esc(role)}">${esc(t(`role.${role}`))}</span>`;
+  }
+
   function renderTabs() {
     const count = newRequestsCount();
-    const html = TABS.map((tab) => `
+    const list = tabs();
+    const html = list.map((tab) => `
       <button type="button" data-tab="${tab.id}" ${state.tab === tab.id ? 'aria-current="page"' : ''}>
         ${ICONS[tab.id]}<span>${esc(tab.title)}</span>
         ${tab.id === 'requests' && count ? `<span class="count">${count}</span>` : ''}
       </button>`).join('');
-    document.querySelectorAll('.tabs').forEach((nav) => { nav.innerHTML = html; });
+    document.querySelectorAll('.tabs').forEach((nav) => {
+      nav.innerHTML = html;
+      nav.classList.toggle('tabs--many', list.length > 5);
+    });
   }
 
   function setTab(tab) {
+    if (!tabs().some((x) => x.id === tab)) tab = 'overview';
     state.tab = tab;
     if (tab === 'site' && !state.models) loadModels();
+    if (tab === 'server') startServerPolling();
+    else stopServerPolling();
     history.replaceState(null, '', `#${tab}`);
     renderTabs();
     render();
@@ -420,6 +454,7 @@
 
   function render() {
     const fleet = state.fleet;
+    renderWho();
     $('#updated').innerHTML = fleet?.updatedAt
       ? esc(t('app.dataAt', { time: '\u0001' })).replace('\u0001', `<b>${esc(fmtTime.format(new Date(fleet.updatedAt)))}</b>`)
       : esc(fleet ? (fleet.enabled ? t('app.loadingWs') : t('app.wsOff')) : t('app.loading'));
@@ -430,6 +465,73 @@
     if (state.tab === 'calendar') view.innerHTML = renderCalendar();
     if (state.tab === 'requests') view.innerHTML = renderRequests();
     if (state.tab === 'site') view.innerHTML = renderSite();
+    if (state.tab === 'server') renderServer();
+  }
+
+  /* -------------------------------------------------- Вкладка «Сервер» */
+
+  const cockpitHelpers = () => ({
+    t, tn, esc, lang, locale: LOCALES[lang],
+    dateTime, shortDate, time: (iso) => fmtTime.format(new Date(iso))
+  });
+
+  /**
+   * Приборы перерисовываем целиком, а форму лимита — только если в ней
+   * сейчас ничего не вводят (иначе обновление каждые 10 секунд сбивало бы ввод)
+   */
+  function renderServer() {
+    const view = $('#view');
+    let panel = view.querySelector('#cockpit');
+    let form = view.querySelector('#srv-settings-box');
+    if (!panel || !form) {
+      view.innerHTML = '<div id="cockpit"></div><div id="srv-settings-box"></div>';
+      panel = view.querySelector('#cockpit');
+      form = view.querySelector('#srv-settings-box');
+    }
+    panel.innerHTML = window.STAFF_COCKPIT.render(state.server, { failed: state.serverFailed, helpers: cockpitHelpers() });
+    if (!form.contains(document.activeElement) || !form.firstElementChild) {
+      form.innerHTML = window.STAFF_COCKPIT.settings(state.server, state.serverStatus, cockpitHelpers());
+    }
+  }
+
+  async function loadServer() {
+    if (!can('server.view')) return;
+    try {
+      state.server = await api('/server');
+      state.serverFailed = false;
+    } catch (err) {
+      if (err.status === 401) return showLogin('email', err.code === 'no_access' ? ERRORS.no_access : '');
+      state.serverFailed = true;
+    }
+    if (state.tab === 'server') renderServer();
+  }
+
+  function startServerPolling() {
+    stopServerPolling();
+    loadServer();
+    state.serverTimer = setInterval(() => { if (!document.hidden && state.tab === 'server') loadServer(); }, SERVER_REFRESH_MS);
+  }
+
+  function stopServerPolling() {
+    clearInterval(state.serverTimer);
+    state.serverTimer = null;
+  }
+
+  async function saveServerSettings(form) {
+    const button = form.querySelector('button[type="submit"]');
+    button.disabled = true;
+    try {
+      const data = await api('/server/settings', {
+        body: { trafficLimitGb: Number(form.elements.limit.value), trafficBasis: form.elements.basis.value }
+      });
+      if (state.server) state.server.settings = data.settings;
+      state.serverStatus = { kind: 'ok', text: t('srv.s.saved') };
+    } catch (err) {
+      state.serverStatus = { kind: 'error', text: ERRORS[err.code] || t('md.saveFailed') };
+    }
+    document.activeElement?.blur();
+    $('#srv-settings-box').innerHTML = window.STAFF_COCKPIT.settings(state.server, state.serverStatus, cockpitHelpers());
+    loadServer();
   }
 
   /* --------------------------------------------------------- Данные парка */
@@ -1484,12 +1586,20 @@
     $('#refresh').addEventListener('click', () => {
       loadData();
       if (state.tab === 'site') loadModels();
+      if (state.tab === 'server') loadServer();
+    });
+    document.addEventListener('submit', (event) => {
+      if (event.target.id !== 'srv-settings') return;
+      event.preventDefault();
+      saveServerSettings(event.target);
     });
     bindModelDialog();
     $('#logout').addEventListener('click', async () => {
       await api('/logout', { method: 'POST' }).catch(() => {});
       state.user = null;
       state.fleet = null;
+      state.server = null;
+      stopServerPolling();
       showLogin('email');
     });
     document.addEventListener('visibilitychange', () => { if (!document.hidden && state.user) loadData(); });

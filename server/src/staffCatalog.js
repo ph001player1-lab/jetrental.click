@@ -11,8 +11,8 @@
  *   POST /api/staff/models/thumb?photo=…      миниатюра к загруженному фото
  *   POST /api/staff/models/gallery            { model, photo, gallery: [...] } —
  *                                             главное фото и порядок галереи
- * Менять могут сотрудники с ролью Editor или Admin в листе Users, остальные
- * только смотрят. Описание и ссылки на фото пишутся в лист Catalog, файлы фото
+ * Менять могут сотрудники с ролью Editor или Admin в листе Users (roles.js),
+ * остальные только смотрят. Описание и ссылки на фото пишутся в лист Catalog, файлы фото
  * лежат на сервере (папка uploads, Caddy отдаёт их по адресу /uploads/…).
  * Каждое изменение попадает в журнал: кто, когда, что было и что стало.
  * ============================================================================
@@ -29,6 +29,7 @@ import { getFleet, invalidateFleet } from './fleet.js';
 import { resetCatalog } from './publicApi.js';
 import { slugify, TYPE_ORDER } from './site/urls.js';
 import { safePhoto, parseGallery, MAX_GALLERY } from './photos.js';
+import { can } from './roles.js';
 
 const CATALOG_SHEET = 'Catalog';
 const COL = {
@@ -44,7 +45,6 @@ const COL = {
 // Эти колонки добавили позже: без них работает всё, кроме их правки
 const OPTIONAL_COLS = ['gallery', 'descriptionRu', 'descriptionTh', 'descriptionZh'];
 const DESCRIPTION_FIELDS = { en: 'description', ru: 'descriptionRu', th: 'descriptionTh', zh: 'descriptionZh' };
-const EDIT_ROLES = ['editor', 'admin'];
 const MAX_PHOTO_BYTES = 4 * 1024 * 1024;
 const MAX_DESCRIPTION = 100;
 const IMAGE_TYPES = { 'image/webp': 'webp', 'image/jpeg': 'jpg', 'image/png': 'png' };
@@ -52,7 +52,7 @@ const IMAGE_TYPES = { 'image/webp': 'webp', 'image/jpeg': 'jpg', 'image/png': 'p
 // Галерея — до 12 фото с миниатюрами за одно сохранение
 const uploadLimiter = rateLimiter(60 * 60 * 1000, 200);
 
-export const canEdit = (staff) => EDIT_ROLES.includes(String(staff.role || '').toLowerCase());
+export const canEdit = (staff) => can(staff, 'site.edit');
 
 function requireEditor(staff) {
   if (!canEdit(staff)) throw new HttpError(403, 'read_only');

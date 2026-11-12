@@ -31,6 +31,8 @@ services:
       - ../web:/srv/web:ro
       # Фото, загруженные через сайт сотрудников (пишет bot, отдаёт caddy)
       - site_uploads:/srv/uploads:ro
+      # Журнал запросов (JSON): по нему бот считает, на что ушёл трафик
+      - caddy_logs:/var/log/caddy
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
@@ -45,10 +47,18 @@ services:
       # Страницы сайта собирает бот: тексты (i18n.js) и версии файлов — отсюда
       SITE_DIR: /srv/web/site
       UPLOADS_DIR: /uploads
+      # Версия кода для вкладки «Сервер» — задаёт update.sh
+      APP_VERSION: ${APP_VERSION:-dev}
+      APP_VERSION_DATE: ${APP_VERSION_DATE:-}
     volumes:
       - bot_data:/data
       - site_uploads:/uploads
       - ../web:/srv/web:ro
+      # Вкладка «Сервер»: счётчик трафика vnStat на самом сервере, журнал
+      # Caddy и имя сервера — только чтение
+      - /var/lib/vnstat:/host/vnstat:ro
+      - caddy_logs:/caddy-logs:ro
+      - /etc/hostname:/host/hostname:ro
       # Ключ служебного аккаунта Google (доступ к таблице). Файл кладётся на
       # сервер вручную через scp; если его нет, запуск остановится с ошибкой.
       - type: bind
@@ -64,5 +74,6 @@ services:
 volumes:
   caddy_data:
   caddy_config:
+  caddy_logs:
   bot_data:
   site_uploads:

@@ -95,6 +95,21 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS catalog_changes_model ON catalog_changes (model);
 `);
 
+// Трафик сайтов и вебхуков по журналу Caddy (traffic.js): по дням Бангкока
+db.exec(`
+  CREATE TABLE IF NOT EXISTS web_traffic (
+    day          TEXT NOT NULL,
+    host         TEXT NOT NULL,
+    category     TEXT NOT NULL,
+    requests     INTEGER NOT NULL DEFAULT 0,
+    bytes_out    INTEGER NOT NULL DEFAULT 0,
+    bytes_in     INTEGER NOT NULL DEFAULT 0,
+    bot_requests INTEGER NOT NULL DEFAULT 0,
+    bot_bytes    INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, host, category)
+  );
+`);
+
 // Колонки, добавленные после первого запуска: дописываем в существующую базу
 const requestColumns = db.prepare('PRAGMA table_info(requests)').all().map((c) => c.name);
 for (const [name, type] of [
@@ -322,4 +337,36 @@ export function lastCatalogChanges() {
     JOIN (SELECT model, MAX(id) AS id FROM catalog_changes GROUP BY model) last ON last.id = c.id
   `).all();
   return new Map(rows.map((r) => [r.model, { at: r.created_at, by: r.by_name || r.by_email, field: r.field }]));
+}
+
+/* --- Трафик по журналу Caddy --- */
+
+/** Прибавить суммы: [{ day, host, category, requests, out, in, botRequests, botOut }] */
+export function addWebTraffic(rows) {
+  const add = db.prepare(`
+    INSERT INTO web_traffic (day, host, category, requests, bytes_out, bytes_in, bot_requests, bot_bytes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(day, host, category) DO UPDATE SET
+      requests = requests + excluded.requests,
+      bytes_out = bytes_out + excluded.bytes_out,
+      bytes_in = bytes_in + excluded.bytes_in,
+      bot_requests = bot_requests + excluded.bot_requests,
+      bot_bytes = bot_bytes + excluded.bot_bytes
+  `);
+  db.exec('BEGIN');
+  try {
+    for (const r of rows) add.run(r.day, r.host, r.category, r.requests, r.out, r.in, r.botRequests, r.botOut);
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+}
+
+export function webTrafficSince(day) {
+  return db.prepare('SELECT * FROM web_traffic WHERE day >= ?').all(day);
+}
+
+export function pruneWebTraffic(beforeDay) {
+  db.prepare('DELETE FROM web_traffic WHERE day < ?').run(beforeDay);
 }

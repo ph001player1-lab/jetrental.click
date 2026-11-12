@@ -16,6 +16,9 @@
  *   GET  /api/staff/dashboard                 — проблемы и брони впереди (dashboard.js)
  *   /api/staff/models…                        — фото, галерея и описания моделей
  *                                               для сайта (staffCatalog.js)
+ *   GET  /api/staff/server                    — нагрузка и трафик (только Admin,
+ *   POST /api/staff/server/settings             serverStats.js)
+ * Права ролей — в roles.js.
  *
  * В базе храним только хэши кодов и сессий.
  * ============================================================================
@@ -33,6 +36,8 @@ import { tariffOn } from './pricing.js';
 import { todayIso } from './dates.js';
 import { canEdit, listModels, saveDescription, uploadPhoto, uploadThumb, saveGallery } from './staffCatalog.js';
 import { collectProblems, bookingOutlook, requestStats, LIMITS } from './dashboard.js';
+import { roleOf, permissionsOf } from './roles.js';
+import { serverReport, saveServerSettings } from './serverStats.js';
 
 const COOKIE = 'jr_staff';
 const MAX_ATTEMPTS = 5;
@@ -161,7 +166,7 @@ async function verify(req, res) {
 }
 
 function publicUser(staff) {
-  return { email: staff.email, name: staff.name, role: staff.role, canEdit: canEdit(staff) };
+  return { email: staff.email, name: staff.name, role: roleOf(staff), permissions: permissionsOf(staff), canEdit: canEdit(staff) };
 }
 
 /** Сотрудник текущего запроса; 401, если не вошёл или доступ отозван */
@@ -282,7 +287,9 @@ const ROUTES = {
   'POST /api/staff/models/description': signedIn(saveDescription),
   'POST /api/staff/models/photo': signedIn(uploadPhoto),
   'POST /api/staff/models/thumb': signedIn(uploadThumb),
-  'POST /api/staff/models/gallery': signedIn(saveGallery)
+  'POST /api/staff/models/gallery': signedIn(saveGallery),
+  'GET /api/staff/server': signedIn(serverReport),
+  'POST /api/staff/server/settings': signedIn(saveServerSettings)
 };
 
 /** Обработчик для пути /api/staff/*; null — такого маршрута нет */

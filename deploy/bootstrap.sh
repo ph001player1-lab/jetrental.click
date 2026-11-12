@@ -44,7 +44,8 @@ export NEEDRESTART_MODE=a
 log "1/6 Обновление системы"
 apt-get update -y
 apt-get -o Dpkg::Options::="--force-confold" upgrade -y
-apt-get install -y ca-certificates curl git ufw fail2ban unattended-upgrades
+# vnstat — счётчик трафика сервера (вкладка «Сервер» на сайте сотрудников)
+apt-get install -y ca-certificates curl git ufw fail2ban unattended-upgrades vnstat
 timedatectl set-timezone Asia/Bangkok
 
 log "2/6 Swap ${SWAP_SIZE}"

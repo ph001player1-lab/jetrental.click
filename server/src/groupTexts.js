@@ -47,7 +47,16 @@ const TEXTS = {
     'sum.none': '✅ <b>Предупреждений нет</b>',
     'sum.problems': '⚠️ <b>Предупреждения: {n}</b> — {counts}',
     'sum.more': '…и ещё {n}',
-    'cat.sales': 'Продажи', 'cat.it': 'IT', 'cat.marketing': 'Сайт', 'cat.service': 'Сервис'
+    'cat.sales': 'Продажи', 'cat.it': 'IT', 'cat.marketing': 'Сайт', 'cat.service': 'Сервис',
+
+    // Личные оповещения админам (вкладка «Сервер»)
+    'alert.traffic70': '🟡 <b>Трафик сервера: {percent}% лимита</b>\nУшло {used} из {limit} ГБ за месяц. Прогноз до конца месяца — {forecast} ГБ.',
+    'alert.traffic90': '🔴 <b>Трафик сервера: {percent}% лимита!</b>\nУшло {used} из {limit} ГБ за месяц. Прогноз — {forecast} ГБ. Проверьте лимит в панели OVH.',
+    'alert.disk': '🔴 <b>Мало места на сервере: свободно {percent}%</b> ({free} ГБ).\nПора чистить старые файлы или увеличивать диск.',
+    'alert.first': '✅ <b>Оповещения о сервере включены</b> (версия {version}). Сюда придут сообщения о трафике, месте на диске и перезапусках бота.',
+    'alert.updated': '✅ <b>Обновление установлено</b>: версия {version} (была {previous}). Бот работает.',
+    'alert.rebooted': '🔄 <b>Сервер перезагрузился</b>, бот снова работает (версия {version}).',
+    'alert.restarted': '⚠️ <b>Бот перезапустился</b> без обновления (версия {version}) — возможно, был сбой. Если повторится — смотрите журнал: docker compose logs bot'
   },
   en: {
     'card.title': '🆕 <b>Request #{id}</b>',
@@ -89,7 +98,15 @@ const TEXTS = {
     'sum.none': '✅ <b>No warnings</b>',
     'sum.problems': '⚠️ <b>Warnings: {n}</b> — {counts}',
     'sum.more': '…and {n} more',
-    'cat.sales': 'Sales', 'cat.it': 'IT', 'cat.marketing': 'Website', 'cat.service': 'Service'
+    'cat.sales': 'Sales', 'cat.it': 'IT', 'cat.marketing': 'Website', 'cat.service': 'Service',
+
+    'alert.traffic70': '🟡 <b>Server traffic: {percent}% of the limit</b>\n{used} of {limit} GB used this month. Forecast to month end: {forecast} GB.',
+    'alert.traffic90': '🔴 <b>Server traffic: {percent}% of the limit!</b>\n{used} of {limit} GB used this month. Forecast: {forecast} GB. Check the limit in the OVH control panel.',
+    'alert.disk': '🔴 <b>Low disk space: {percent}% free</b> ({free} GB).\nTime to clean old files or enlarge the disk.',
+    'alert.first': '✅ <b>Server alerts are on</b> (version {version}). Messages about traffic, disk space and bot restarts will come here.',
+    'alert.updated': '✅ <b>Update installed</b>: version {version} (was {previous}). The bot is running.',
+    'alert.rebooted': '🔄 <b>The server rebooted</b>, the bot is running again (version {version}).',
+    'alert.restarted': '⚠️ <b>The bot restarted</b> without an update (version {version}) — possibly a crash. If it repeats, check the log: docker compose logs bot'
   }
 };
 

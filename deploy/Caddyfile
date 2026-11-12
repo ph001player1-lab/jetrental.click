@@ -9,8 +9,25 @@
 #   kokon.jetrental.click — тестовая копия сайта KokonCar в дизайне старого kokoncar.com
 #                           (до переезда kokoncar.com, закрыта от поисковиков)
 
+# Журнал запросов (JSON) для вкладки «Сервер»: бот читает его и считает,
+# на что ушёл трафик. Права 644 — чтобы бот мог читать; без сжатия старых
+# частей, чтобы бот успел дочитать хвост после смены файла. Cookie и
+# Authorization Caddy в журнал не пишет (REDACTED).
+(access_log) {
+	log {
+		output file /var/log/caddy/access.log {
+			mode 644
+			roll_size 25MiB
+			roll_keep 4
+			roll_uncompressed
+		}
+		format json
+	}
+}
+
 # Общие настройки публичного сайта (бренд бот выбирает по домену)
 (public_site) {
+	import access_log
 	encode gzip
 	header {
 		Strict-Transport-Security "max-age=31536000"
@@ -45,11 +62,13 @@
 }
 
 {$BOT_DOMAIN} {
+	import access_log
 	encode gzip
 	reverse_proxy bot:3000
 }
 
 {$STAFF_DOMAIN} {
+	import access_log
 	encode gzip
 	header {
 		Strict-Transport-Security "max-age=31536000"
@@ -87,6 +106,7 @@
 }
 
 www.{$SITE_DOMAIN} {
+	import access_log
 	redir https://{$SITE_DOMAIN}{uri} permanent
 }
 

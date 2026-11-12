@@ -17,6 +17,20 @@ main() {
   cd "$app_dir"
   git pull --ff-only
 
+  # Счётчик трафика сервера vnStat (вкладка «Сервер» на сайте сотрудников).
+  # Ставится один раз; sudo может спросить пароль пользователя ubuntu.
+  if ! command -v vnstat >/dev/null 2>&1; then
+    echo "Ставлю vnStat — счётчик трафика сервера"
+    sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a sh -c \
+      'apt-get install -y vnstat || (apt-get update && apt-get install -y vnstat)' \
+      || echo "Внимание: vnStat не установился — на вкладке «Сервер» не будет трафика VPS"
+  fi
+
+  # Версия кода — её видно на вкладке «Сервер» и в /health
+  APP_VERSION="$(git rev-parse --short HEAD)"
+  APP_VERSION_DATE="$(git log -1 --format=%cI)"
+  export APP_VERSION APP_VERSION_DATE
+
   "${compose[@]}" up -d --build --remove-orphans
   # Caddyfile мог измениться — перечитываем без остановки
   "${compose[@]}" exec -T caddy caddy reload --config /etc/caddy/kokon/Caddyfile --adapter caddyfile \

@@ -28,6 +28,7 @@ import { getStaffChatId } from './staff.js';
 import { fleetStatus, warmUpFleet } from './fleet.js';
 import { startWsSync, wsSyncStatus } from './ws/sync.js';
 import { startMorningSummary } from './morning.js';
+import { startServerStats, recordRequest, version } from './serverStats.js';
 import { whatsappEnabled, knownPhoneNumberId } from './whatsapp/api.js';
 import { verifySignature, processWebhook, whatsappStatus } from './whatsapp/webhook.js';
 
@@ -92,6 +93,10 @@ async function handleApi(handler, req, res, url) {
 }
 
 const server = http.createServer((req, res) => {
+  // Запросы в минуту и время ответа — для вкладки «Сервер»
+  const started = process.hrtime.bigint();
+  res.on('finish', () => recordRequest(Number(process.hrtime.bigint() - started) / 1e6, res.statusCode));
+
   const url = new URL(req.url, 'http://localhost');
   const { pathname } = url;
 
@@ -105,6 +110,7 @@ const server = http.createServer((req, res) => {
     return sendJson(res, 200, {
       status: 'ok',
       service: 'kokon-bot',
+      version: version.commit,
       startedAt: STARTED_AT.toISOString(),
       uptimeSeconds: Math.round(process.uptime()),
       telegram: { enabled: telegramEnabled, staffGroupBound: Boolean(getStaffChatId()) },
@@ -151,6 +157,7 @@ server.listen(config.port, () => {
   warmUpFleet();
   startWsSync();
   startMorningSummary();
+  startServerStats();
 
   if (telegramEnabled) {
     setupTelegram()

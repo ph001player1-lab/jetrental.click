@@ -474,3 +474,190 @@ button.problem:hover { background: var(--surface-2); }
 .md-gitem__tools button:hover:not(:disabled) { background: var(--line); }
 .md-gitem__tools button:disabled { opacity: .3; cursor: default; }
 .md-gitem__tools [data-gdel] { color: var(--rent); }
+
+/* --- Роль в строке состояния --- */
+
+.role {
+  display: inline-block; margin-left: 4px; padding: 1px 8px; border-radius: 999px; vertical-align: 1px;
+  font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
+  background: var(--surface-2); color: var(--muted);
+}
+.role--admin { background: var(--navy); color: #5eead4; }
+.role--editor { background: var(--free-bg); color: var(--free); }
+
+/* Шесть вкладок внизу (у админа) — помельче, чтобы влезли в телефон */
+.tabs--bottom.tabs--many button { font-size: 11px; padding-left: 1px; padding-right: 1px; }
+@media (max-width: 380px) { .tabs--bottom.tabs--many button { font-size: 10px; letter-spacing: -.01em; } }
+
+/* --- Вкладка «Сервер»: приборная панель, тёмная в обеих темах --- */
+
+.cockpit {
+  --ck-bg: #070b10; --ck-panel: #0d141c; --ck-line: #1e2a38; --ck-well: #05080c;
+  --ck-text: #e6edf5; --ck-dim: #7d8b9c; --ck-cyan: #38d9f5; --ck-white: #f4f7fb;
+  --ck-green: #2fd36b; --ck-amber: #ffb000; --ck-red: #ff5a5a;
+  --ck-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  display: grid; gap: 12px; padding: 12px; border-radius: var(--radius);
+  background: var(--ck-bg); color: var(--ck-text); border: 1px solid #000; box-shadow: inset 0 0 0 1px #1a2430;
+  font-variant-numeric: tabular-nums;
+}
+.cockpit .is-ok { color: var(--ck-green); }
+.cockpit .is-caution { color: var(--ck-amber); }
+.cockpit .is-warning { color: var(--ck-red); }
+
+/* Табло ламп */
+.ck-annun { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; }
+.ck-masters { display: grid; gap: 8px; align-content: start; }
+.master {
+  display: grid; place-items: center; width: 96px; min-height: 46px; border-radius: 6px; text-align: center;
+  font: 800 11px/1.15 var(--ck-mono); letter-spacing: .06em;
+  background: #141b23; color: #3a4654; border: 1px solid #2a3542;
+}
+.master--warning.is-on { background: #c81e1e; color: #fff; border-color: #ff7b7b; box-shadow: 0 0 16px rgba(255, 64, 64, .55); animation: ck-blink 1s steps(2) infinite; }
+.master--caution.is-on { background: #d49100; color: #1a1200; border-color: #ffd166; box-shadow: 0 0 16px rgba(255, 176, 0, .45); }
+@keyframes ck-blink { 50% { filter: brightness(.6); } }
+@media (prefers-reduced-motion: reduce) { .master--warning.is-on { animation: none; } }
+.ck-lamps { display: grid; grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); gap: 6px; }
+.lamp {
+  display: grid; place-items: center; min-height: 36px; padding: 4px 6px; border-radius: 4px; text-align: center;
+  font: 700 10.5px/1.15 var(--ck-mono); letter-spacing: .04em; cursor: default;
+  background: #10161d; color: #485566; border: 1px solid #222d39;
+}
+.lamp--caution { background: #3a2a00; color: var(--ck-amber); border-color: #8a6100; box-shadow: inset 0 0 10px rgba(255, 176, 0, .25); }
+.lamp--warning { background: #3d0c0c; color: var(--ck-red); border-color: #9b1c1c; box-shadow: inset 0 0 10px rgba(255, 64, 64, .3); }
+.lamp--run { background: #062b14; color: var(--ck-green); border-color: #146c35; }
+.lamp--off { border-style: dashed; color: #3a4654; }
+.ecam {
+  list-style: none; margin: 0; padding: 8px 12px; display: grid; gap: 4px; border-radius: 6px;
+  background: var(--ck-well); border: 1px solid var(--ck-line); font: 600 13px/1.4 var(--ck-mono);
+}
+.ecam--warning { color: var(--ck-red); }
+.ecam--caution { color: var(--ck-amber); }
+.ecam--ok { color: var(--ck-green); }
+@media (max-width: 560px) {
+  .ck-annun { grid-template-columns: minmax(0, 1fr); }
+  .ck-masters { grid-template-columns: 1fr 1fr; }
+  .master { width: auto; }
+  .ck-lamps { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); }
+  .ecam { font-size: 12px; }
+}
+
+/* Панели и заголовки */
+.ck-panel { background: var(--ck-panel); border: 1px solid var(--ck-line); border-radius: 10px; padding: 12px; min-width: 0; }
+.ck-title {
+  margin: 0 0 10px; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px;
+  font: 800 12px/1.3 var(--ck-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ck-cyan);
+}
+.ck-title span { font: 600 12px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; letter-spacing: 0; text-transform: none; color: var(--ck-dim); }
+.ck-title .ck-run { color: var(--ck-green); font-weight: 800; }
+
+/* Круглые приборы */
+.ck-gauges { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.ck-gauges--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 720px) { .ck-gauges { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.gauge { margin: 0; display: grid; gap: 4px; justify-items: center; text-align: center; min-width: 0; }
+.gauge svg { display: block; width: 100%; max-width: 190px; height: auto; }
+.gauge figcaption { display: grid; gap: 2px; justify-items: center; width: 100%; }
+.gauge figcaption b { font: 800 11px/1.2 var(--ck-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ck-cyan); }
+.gauge figcaption > span { font-size: 12px; color: var(--ck-dim); }
+.g-track { fill: none; stroke: #18222d; stroke-width: 7; }
+.g-fill { fill: none; stroke-width: 7; opacity: .4; }
+.g-fill--ok { stroke: var(--ck-green); }
+.g-fill--caution { stroke: var(--ck-amber); }
+.g-fill--warning { stroke: var(--ck-red); }
+.g-fill--off { stroke: none; }
+.g-zone { fill: none; stroke-width: 2.5; }
+.g-zone--ok { stroke: var(--ck-green); }
+.g-zone--caution { stroke: var(--ck-amber); }
+.g-zone--warning { stroke: var(--ck-red); }
+.g-tick { stroke: #8795a6; stroke-width: 1; }
+.g-tick--major { stroke: var(--ck-white); stroke-width: 1.6; }
+.g-needle { stroke: var(--ck-white); stroke-width: 2.6; stroke-linecap: round; }
+.g-hub { fill: #2a3542; stroke: var(--ck-white); stroke-width: 1.2; }
+.g-box { fill: var(--ck-well); stroke: #2a3542; stroke-width: 1; }
+.g-read { font: 700 12px var(--ck-mono); text-anchor: middle; fill: var(--ck-green); }
+.g-read--caution { fill: var(--ck-amber); }
+.g-read--warning { fill: var(--ck-red); }
+.g-read--off { fill: var(--ck-dim); }
+
+/* Мини-график за час */
+.spark { display: flex; align-items: center; gap: 6px; width: 100%; max-width: 170px; margin-top: 2px; }
+.spark svg { flex: 1; height: 20px; background: var(--ck-well); border: 1px solid #18222d; border-radius: 3px; }
+.spark polyline { fill: none; stroke: var(--ck-cyan); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.spark circle { fill: var(--ck-cyan); }
+.spark i { font-style: normal; font-size: 10px; color: var(--ck-dim); white-space: nowrap; }
+
+/* Двигатель: приборы + цифровые табло */
+.ck-engine { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 12px; align-items: start; }
+@media (max-width: 720px) { .ck-engine { grid-template-columns: minmax(0, 1fr); } }
+.ck-cells { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+@media (max-width: 420px) { .ck-cells { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.ck-cell { display: grid; gap: 2px; min-width: 0; padding: 6px 8px; border-radius: 6px; background: var(--ck-well); border: 1px solid #18222d; }
+.ck-cell > span { font: 700 10px/1.25 var(--ck-mono); letter-spacing: .05em; text-transform: uppercase; color: var(--ck-dim); }
+.ck-cell > b { font: 700 14px/1.3 var(--ck-mono); color: var(--ck-green); overflow-wrap: anywhere; }
+.ck-cell--wide { grid-column: 1 / -1; }
+.ck-cell--wide .spark { max-width: none; }
+.ck-cells--traffic { margin: 14px 0 0; }
+
+/* Топливо: трафик за месяц против лимита */
+.fuel { display: grid; gap: 6px; }
+.fuel__head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 10px; }
+.fuel__big { font: 800 22px/1.1 var(--ck-mono); color: var(--ck-green); }
+.fuel__pct { font: 800 16px/1.1 var(--ck-mono); color: var(--ck-green); }
+.fuel__bar { position: relative; height: 22px; border-radius: 4px; background: var(--ck-well); border: 1px solid #2a3542; }
+.fuel__zone { position: absolute; top: 0; bottom: 0; opacity: .2; }
+.fuel__zone--caution { background: var(--ck-amber); }
+.fuel__zone--warning { background: var(--ck-red); }
+.fuel__fill { position: absolute; left: 0; top: 0; bottom: 0; min-width: 2px; border-radius: 3px 0 0 3px; background: var(--ck-green); }
+.fuel__fill.is-caution { background: var(--ck-amber); }
+.fuel__fill.is-warning { background: var(--ck-red); }
+.fuel__forecast { position: absolute; top: -4px; bottom: -4px; width: 0; border-left: 2px dashed var(--ck-white); }
+.fuel__forecast i { position: absolute; top: 100%; left: 0; transform: translateX(-50%); margin-top: 2px; font: 600 10px var(--ck-mono); font-style: normal; color: var(--ck-text); white-space: nowrap; }
+.fuel__forecast--start i { transform: none; }
+.fuel__forecast--end i { transform: translateX(-100%); }
+.fuel__scale { display: flex; justify-content: space-between; margin-top: 14px; font: 600 10px var(--ck-mono); color: var(--ck-dim); }
+
+/* Трафик по дням */
+.ck-sub { margin-top: 16px; }
+.ck-subhead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 10px; margin-bottom: 8px; }
+.ck-subhead b { font: 800 11px/1.3 var(--ck-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ck-cyan); }
+.ck-subhead > span { font-size: 12px; color: var(--ck-dim); }
+.ck-subhead--2 { margin-top: 14px; }
+.tlegend { display: flex; gap: 10px; }
+.tlegend span { display: inline-flex; align-items: center; gap: 4px; }
+.tsw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+.tsw--out { background: var(--ck-cyan); }
+.tsw--in { background: #5b6b80; }
+.tdays { display: grid; grid-template-columns: repeat(var(--days, 31), minmax(0, 1fr)); gap: 2px; height: 120px; }
+.tday { display: grid; grid-template-rows: minmax(0, 1fr) auto; min-width: 0; }
+.tday__area { display: flex; align-items: flex-end; border-bottom: 1px solid #2a3542; min-height: 0; }
+.tday__stack { display: flex; flex-direction: column; width: 100%; min-height: 1px; border-radius: 2px 2px 0 0; overflow: hidden; background: #2a3542; }
+.tday__out { background: var(--ck-cyan); }
+.tday__in { background: #5b6b80; }
+.tday__x { height: 14px; font: 600 10px/14px var(--ck-mono); color: var(--ck-dim); text-align: center; white-space: nowrap; overflow: visible; }
+.tday--today .tday__x { color: var(--ck-white); }
+
+/* На что ушёл трафик */
+.brow { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(60px, 2fr) auto 46px; gap: 4px 8px; align-items: center; padding: 6px 0; border-top: 1px solid #141d27; font-size: 13px; }
+.brow__name { min-width: 0; }
+.brow__bar { height: 8px; border-radius: 4px; background: var(--ck-well); overflow: hidden; }
+.brow__bar i { display: block; height: 100%; border-radius: 4px; background: var(--ck-cyan); }
+.brow__val { font: 700 12px var(--ck-mono); color: var(--ck-green); text-align: right; white-space: nowrap; }
+.brow__pct { font: 600 12px var(--ck-mono); color: var(--ck-dim); text-align: right; }
+@media (max-width: 520px) {
+  .brow { grid-template-columns: minmax(0, 1fr) auto 42px; }
+  .brow__bar { grid-column: 1 / -1; grid-row: 2; }
+}
+.ck-note { margin: 10px 0 0; font-size: 12px; color: var(--ck-dim); }
+.ck-note--warn { color: var(--ck-amber); font-size: 14px; }
+.ck-foot { margin: 0; font-size: 12px; color: var(--ck-dim); text-align: right; }
+.ck-months { margin-top: 14px; font-size: 13px; }
+.ck-months summary { cursor: pointer; color: var(--ck-cyan); font-weight: 700; }
+.ck-months table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+.ck-months th, .ck-months td { padding: 5px 6px; text-align: left; border-top: 1px solid #141d27; }
+.ck-months th { color: var(--ck-dim); font-weight: 600; }
+
+/* Настройки лимита трафика (под панелью, обычный стиль портала) */
+.srv-settings { margin-top: 12px; padding: 14px; display: grid; gap: 10px; }
+.srv-settings h3 { margin: 0; font-size: 16px; }
+.srv-settings__row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 10px; align-items: end; }
+@media (max-width: 560px) { .srv-settings__row { grid-template-columns: minmax(0, 1fr); } }
