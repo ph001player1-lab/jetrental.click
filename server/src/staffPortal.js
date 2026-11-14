@@ -18,6 +18,9 @@
  *                                               для сайта (staffCatalog.js)
  *   GET  /api/staff/server                    — нагрузка и трафик (только Admin,
  *   POST /api/staff/server/settings             serverStats.js)
+ *   /api/staff/journal…                       — журнал рабочей группы WhatsApp,
+ *                                               табель, сверка с WS (journal/api.js)
+ *   /api/staff/wa…                            — подключение наблюдателя (Admin)
  * Права ролей — в roles.js.
  *
  * В базе храним только хэши кодов и сессий.
@@ -38,6 +41,9 @@ import { canEdit, listModels, saveDescription, uploadPhoto, uploadThumb, saveGal
 import { collectProblems, bookingOutlook, requestStats, LIMITS } from './dashboard.js';
 import { roleOf, permissionsOf } from './roles.js';
 import { serverReport, saveServerSettings } from './serverStats.js';
+import { getJournal, fixEvent, getTimesheet, getReconcile, getMedia, importHistory } from './journal/api.js';
+import { waStatus, waConfig, waPair, waLogout } from './journal/observer.js';
+import { groupStatusByPlate } from './journal/reconcile.js';
 
 const COOKIE = 'jr_staff';
 const MAX_ATTEMPTS = 5;
@@ -238,6 +244,8 @@ async function fleet(req, res) {
     windowFrom: snapshot?.windowFrom || null,
     windowTo: snapshot?.windowTo || null,
     cars: snapshot?.cars || [],
+    // Статус машин по рабочей группе WhatsApp: госномер → последний отчёт
+    group: Object.fromEntries([...groupStatusByPlate()].map(([plate, g]) => [plate, { status: g.status, at: g.at, kind: g.kind }])),
     ...(await priceData(snapshot?.cars || []))
   });
 }
@@ -289,7 +297,17 @@ const ROUTES = {
   'POST /api/staff/models/thumb': signedIn(uploadThumb),
   'POST /api/staff/models/gallery': signedIn(saveGallery),
   'GET /api/staff/server': signedIn(serverReport),
-  'POST /api/staff/server/settings': signedIn(saveServerSettings)
+  'POST /api/staff/server/settings': signedIn(saveServerSettings),
+  'GET /api/staff/journal': signedIn(getJournal),
+  'POST /api/staff/journal/fix': signedIn(fixEvent),
+  'GET /api/staff/journal/timesheet': signedIn(getTimesheet),
+  'GET /api/staff/journal/reconcile': signedIn(getReconcile),
+  'GET /api/staff/journal/media': signedIn(getMedia),
+  'POST /api/staff/journal/import': signedIn(importHistory),
+  'GET /api/staff/wa': signedIn(waStatus),
+  'POST /api/staff/wa/config': signedIn(waConfig),
+  'POST /api/staff/wa/pair': signedIn(waPair),
+  'POST /api/staff/wa/logout': signedIn(waLogout)
 };
 
 /** Обработчик для пути /api/staff/*; null — такого маршрута нет */

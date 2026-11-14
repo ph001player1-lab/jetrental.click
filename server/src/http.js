@@ -46,12 +46,12 @@ export function readBody(req, limit = MAX_BODY_BYTES) {
  * JSON из тела POST-запроса. Требуем Content-Type: application/json —
  * так чужой сайт не сможет отправить форму от имени сотрудника.
  */
-export async function readJson(req) {
+export async function readJson(req, limit = MAX_JSON_BYTES) {
   if (!String(req.headers['content-type'] || '').toLowerCase().startsWith('application/json')) {
     throw new HttpError(415, 'json_required');
   }
   try {
-    const value = JSON.parse((await readBody(req, MAX_JSON_BYTES)).toString('utf8'));
+    const value = JSON.parse((await readBody(req, limit)).toString('utf8'));
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('not an object');
     return value;
   } catch (err) {

@@ -5,6 +5,10 @@
  *                                   Admin   Editor   Viewer
  *   Обзор, Парк, Календарь, Заявки   ✓       ✓        ✓  (смотреть)
  *   Сайт: фото и описания            ✓       ✓        только смотреть
+ *   Журнал: операции, табель, сверка ✓       ✓        ✓
+ *   Журнал: фото и контакты клиентов ✓       ✓        —
+ *   Журнал: исправить разбор         ✓       ✓        —
+ *   Журнал: загрузить историю, WhatsApp ✓    —        —
  *   Вкладка «Сервер»                 ✓       —        —
  *   Настройки (лимит трафика)        ✓       —        —
  * Пустая или незнакомая роль = Viewer: лишних прав по ошибке не будет.
@@ -14,8 +18,10 @@
 export const ROLES = ['admin', 'editor', 'viewer'];
 
 const PERMISSIONS = {
-  admin: ['site.edit', 'server.view', 'settings'],
-  editor: ['site.edit'],
+  // journal.private — фото и контакты клиентов в журнале; journal.edit — исправлять разбор;
+  // journal.admin — загрузка истории из выгрузки и подключение наблюдателя WhatsApp
+  admin: ['site.edit', 'server.view', 'settings', 'journal.private', 'journal.edit', 'journal.admin'],
+  editor: ['site.edit', 'journal.private', 'journal.edit'],
   viewer: []
 };
 

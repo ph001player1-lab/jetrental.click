@@ -28,6 +28,8 @@ import { mailEnabled, mailFailure } from './mail.js';
 import { telegramEnabled } from './telegram/api.js';
 import { whatsappEnabled } from './whatsapp/api.js';
 import { dashboardTranslator } from './dashboardTexts.js';
+import { reconcile } from './journal/reconcile.js';
+import { staffPhones } from './staffUsers.js';
 
 const HOUR_MS = 3600000;
 const DAY_MS = 24 * HOUR_MS;
@@ -290,11 +292,32 @@ function systemProblems(tx, now) {
   return problems;
 }
 
+/** Расхождения рабочей группы WhatsApp и WS (journal/reconcile.js) */
+async function reconcileProblems(tx, now) {
+  const result = reconcile(now);
+  if (!result.available) return [];
+  const phones = await staffPhones();
+  return result.items.filter((i) => i.state === 'mismatch').map((item) => {
+    const car = `${item.model || 'Vehicle'} · ${item.plate}`;
+    const ws = tx.t(`ws.${item.ws.status}`);
+    const target = { tab: 'journal', q: item.plate };
+    if (item.reason === 'ws_only') {
+      return { group: 'reconcile', level: 'warning', target, title: tx.t('reconcile.ws_only.title', { car }), detail: tx.t('reconcile.wsOnlyDetail', { when: tx.dateTime(Date.parse(item.ws.from)) }) };
+    }
+    const who = phones.get(item.group.author) || item.group.authorName || item.group.author;
+    return {
+      group: 'reconcile', level: 'warning', target,
+      title: tx.t(`reconcile.${item.reason}.title`, { car, ws }),
+      detail: tx.t('reconcile.detail', { when: tx.dateTime(Date.parse(item.group.at)), who })
+    };
+  });
+}
+
 // Вид проверки → категория (кто разбирается). Порядок групп — порядок в списке:
 // долгий ремонт — в самом конце
-const CATEGORY_OF = { requests: 'sales', bookings: 'sales', system: 'it', website: 'marketing', prices: 'marketing', data: 'service', service: 'service' };
+const CATEGORY_OF = { requests: 'sales', bookings: 'sales', system: 'it', website: 'marketing', prices: 'marketing', data: 'service', reconcile: 'service', service: 'service' };
 export const CATEGORIES = ['sales', 'it', 'marketing', 'service'];
-const GROUP_ORDER = ['requests', 'bookings', 'system', 'website', 'prices', 'data', 'service'];
+const GROUP_ORDER = ['requests', 'bookings', 'system', 'website', 'prices', 'reconcile', 'data', 'service'];
 
 /**
  * Все проблемы по категориям: [{ category, group, level, title, detail, target? }],
@@ -310,7 +333,8 @@ export async function collectProblems(now = Date.now(), lang = 'en') {
     ...(snapshot ? vehicleProblems(tx, snapshot, now) : []),
     ...(snapshot ? matchProblems(tx, snapshot, fleet) : []),
     ...priceProblems(tx, fleet),
-    ...(await websiteProblems(tx, fleet).catch(() => []))
+    ...(await websiteProblems(tx, fleet).catch(() => [])),
+    ...(await reconcileProblems(tx, now).catch((err) => { console.error('Reconcile failed:', err.message); return []; }))
   ];
   const level = (p) => (p.level === 'error' ? 0 : 1);
   return problems

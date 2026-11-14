@@ -16,6 +16,7 @@ import * as ws from './api.js';
 import { carSegments, statusAt, freeFromAt, isFreeBetween, mapLimit } from './timeline.js';
 import { getFleet, plateKey } from '../fleet.js';
 import { sheetsEnabled, ensureSheet, updateRange, clearRange } from '../google/sheets.js';
+import { recordWsSnapshot } from '../journal/wsHistory.js';
 
 const SHEET = 'Автопрокат';
 const HEADERS = [
@@ -121,6 +122,8 @@ async function runSync() {
   try {
     const snap = await buildSnapshot(Date.now());
     snapshot = snap;
+    // Когда в WS менялись статусы машин — для сверки с рабочей группой
+    try { recordWsSnapshot(snap, Date.parse(snap.updatedAt)); } catch (err) { console.error('WS history failed:', err.message); }
     Object.assign(status, {
       lastSyncAt: snap.updatedAt,
       cars: snap.cars.length,

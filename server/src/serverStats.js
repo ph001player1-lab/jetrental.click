@@ -30,6 +30,7 @@ import { can } from './roles.js';
 import { trafficReport, startTraffic, trafficSettings, saveTrafficSettings } from './traffic.js';
 import { g, groupLocale } from './groupTexts.js';
 import { LIMITS } from './dashboard.js';
+import { observerStatus } from './journal/observer.js';
 
 const SAMPLE_MS = 10 * 1000;
 const HISTORY_MINUTES = 60;
@@ -219,7 +220,10 @@ function integrationLamps(now) {
   const sheets = !sheetsEnabled ? 'warning' : fleetStatus().error ? 'warning' : 'ok';
   const telegram = !telegramEnabled || !getStaffChatId() ? 'warning' : staffGroupFailure() ? 'warning' : 'ok';
   const mail = !mailEnabled ? 'caution' : mailFailure() ? 'caution' : 'ok';
-  return { ws, sheets, telegram, mail };
+  // Наблюдатель WhatsApp: пока ни разу не подключали — лампа погашена
+  const wa = observerStatus(now);
+  const whatsapp = wa.connected ? 'ok' : wa.everLinked ? 'warning' : 'off';
+  return { ws, sheets, telegram, mail, whatsapp };
 }
 
 /* --------------------------------------------------------------- Отчёт */
@@ -303,7 +307,8 @@ function lampsFor(host, engine, traffic, now) {
     { id: 'ws', level: integrations.ws },
     { id: 'sheets', level: integrations.sheets },
     { id: 'telegram', level: integrations.telegram },
-    { id: 'mail', level: integrations.mail }
+    { id: 'mail', level: integrations.mail },
+    { id: 'whatsapp', level: integrations.whatsapp }
   ];
   // Прогноз выше лимита — жёлтая, даже если сейчас мало
   const t = lamps.find((l) => l.id === 'traffic');
@@ -389,6 +394,16 @@ async function checkAlerts(now = Date.now()) {
       }) + link);
       db.setSetting(key, level);
     }
+  }
+
+  // Наблюдатель WhatsApp молчит дольше 15 минут — один раз, снова — после восстановления
+  const wa = observerStatus(now);
+  const downSince = db.getSetting('wa_down_since');
+  if (wa.connected) {
+    if (db.getSetting('alert_wa_down') === '1') db.setSetting('alert_wa_down', '0');
+  } else if (wa.everLinked && downSince && now - Date.parse(downSince) > 15 * 60000 && db.getSetting('alert_wa_down') !== '1') {
+    await notifyAdmins(g('alert.waDown') + link);
+    db.setSetting('alert_wa_down', '1');
   }
 
   // Мало места: меньше 15% — один раз, снова — когда освободится больше 20%

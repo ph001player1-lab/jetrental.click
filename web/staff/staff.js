@@ -2,9 +2,10 @@
  * ============================================================================
  * JetRental Staff — сайт сотрудников
  * ============================================================================
- * Экраны: вход (почта → код) и вкладки: Overview, Fleet, Calendar, Requests,
- * Website (фото и описания моделей для сайта — менять могут роли Editor/Admin)
- * и Server (нагрузка и трафик сервера — только Admin, рисует cockpit.js).
+ * Экраны: вход (почта → код) и вкладки: Overview, Fleet, Journal (рабочая
+ * группа WhatsApp — journal.js), Calendar, Requests, Website (фото и описания
+ * моделей для сайта — менять могут роли Editor/Admin) и Server (нагрузка и
+ * трафик сервера — только Admin, рисует cockpit.js).
  * Роль (Admin / Editor / Viewer) и её права приходят с сервера в /api/staff/me.
  * Данные: GET /api/staff/fleet (снимок Автопроката, обновляется на сервере
  * раз в 10 минут), GET /api/staff/requests, GET /api/staff/models.
@@ -83,7 +84,11 @@
     site: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M21 19V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2zM8.5 13.5l2.5 3 3.5-4.5 4.5 6H5l3.5-4.5z"/></svg>',
     server: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 4a10 10 0 0 0-8.66 15h17.32A10 10 0 0 0 12 4zm0 2a8 8 0 0 1 7.42 11H4.58A8 8 0 0 1 12 6zm-1 1.5v2h2v-2h-2zM6.4 9.2 5 10.6l1.4 1.4 1.4-1.4-1.4-1.4zm11.2 0-4.47 4.47a2 2 0 1 0 1.41 1.41L19 10.6l-1.4-1.4z"/></svg>'
   };
-  const ALL_TABS = ['overview', 'fleet', 'calendar', 'requests', 'site', 'server'];
+  ICONS.journal = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zM7 7h10v2H7V7zm0 4h10v2H7v-2zm0 4h7v2H7v-2z"/></svg>';
+  ICONS.more = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm6 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm6 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg>';
+  const ALL_TABS = ['overview', 'fleet', 'journal', 'calendar', 'requests', 'site', 'server'];
+  // Внизу на телефоне помещается 6 кнопок; если вкладок больше — последние уходят в «Ещё»
+  const BOTTOM_MAX = 6;
   // Вкладка — и право, без которого её не видно
   const TAB_PERMISSION = { server: 'server.view' };
   const can = (perm) => Boolean(state.user?.permissions?.includes(perm));
@@ -116,7 +121,9 @@
     server: null,
     serverFailed: false,
     serverTimer: null,
-    serverStatus: null
+    serverStatus: null,
+    // Меню «Ещё» внизу на телефоне
+    moreOpen: false
   };
 
   const $ = (sel) => document.querySelector(sel);
@@ -382,6 +389,7 @@
     loadData();
     if (state.tab === 'site') loadModels();
     if (state.tab === 'server') startServerPolling();
+    if (state.tab === 'journal') journal.show();
     clearInterval(state.timer);
     state.timer = setInterval(() => { if (!document.hidden) loadData(); }, REFRESH_MS);
   }
@@ -434,15 +442,32 @@
         ${ICONS[tab.id]}<span>${esc(tab.title)}</span>
         ${tab.id === 'requests' && count ? `<span class="count">${count}</span>` : ''}
       </button>`).join('');
-    document.querySelectorAll('.tabs').forEach((nav) => {
-      nav.innerHTML = html;
-      nav.classList.toggle('tabs--many', list.length > 5);
-    });
+    const button = (tab) => `
+      <button type="button" data-tab="${tab.id}" ${state.tab === tab.id ? 'aria-current="page"' : ''}>
+        ${ICONS[tab.id]}<span>${esc(tab.title)}</span>
+        ${tab.id === 'requests' && count ? `<span class="count">${count}</span>` : ''}
+      </button>`;
+    const top = document.querySelector('.tabs--top');
+    top.innerHTML = html;
+    const bottom = document.querySelector('.tabs--bottom');
+    if (list.length <= BOTTOM_MAX) {
+      bottom.innerHTML = html;
+    } else {
+      const main = list.slice(0, BOTTOM_MAX - 1);
+      const rest = list.slice(BOTTOM_MAX - 1);
+      const inRest = rest.some((tab) => tab.id === state.tab);
+      bottom.innerHTML = `${main.map(button).join('')}
+        <button type="button" data-more aria-expanded="${state.moreOpen}" ${inRest ? 'aria-current="page"' : ''}>${ICONS.more}<span>${esc(t('tab.more'))}</span></button>
+        ${state.moreOpen ? `<div class="tabs-more" role="menu">${rest.map(button).join('')}</div>` : ''}`;
+    }
+    bottom.classList.toggle('tabs--many', Math.min(list.length, BOTTOM_MAX) > 5);
   }
 
   function setTab(tab) {
     if (!tabs().some((x) => x.id === tab)) tab = 'overview';
     state.tab = tab;
+    state.moreOpen = false;
+    if (tab === 'journal') journal.show();
     if (tab === 'site' && !state.models) loadModels();
     if (tab === 'server') startServerPolling();
     else stopServerPolling();
@@ -466,6 +491,38 @@
     if (state.tab === 'requests') view.innerHTML = renderRequests();
     if (state.tab === 'site') view.innerHTML = renderSite();
     if (state.tab === 'server') renderServer();
+    if (state.tab === 'journal') renderJournal();
+  }
+
+  /* ------------------------------------------------------ Вкладка «Журнал» */
+
+  const bangkokDate = (iso) => new Date(Date.parse(iso) + TZ_OFFSET_MS).toISOString().slice(0, 10);
+  const journal = window.STAFF_JOURNAL.create({
+    api, t, tn, esc, can,
+    locale: () => LOCALES[lang],
+    time: (iso) => fmtTime.format(new Date(iso)),
+    dateTime,
+    shortDate,
+    weekday: (isoDate) => fmtWeekday.format(new Date(`${isoDate}T00:00:00Z`)),
+    dayLabel: (iso) => { const d = bangkokDate(iso); return `${fmtWeekday.format(new Date(`${d}T00:00:00Z`))}, ${shortDate(d)}`; },
+    rerender: () => { if (state.tab === 'journal') renderJournal(); },
+    signedOut: (err) => showLogin('email', err.code === 'no_access' ? ERRORS.no_access : ''),
+    errorText: (err) => {
+      if (ERRORS[err.code]) return ERRORS[err.code];
+      const own = t(`jr.err.${err.code}`);
+      return own === `jr.err.${err.code}` ? t('md.saveFailed') : own;
+    }
+  });
+
+  /** Перерисовка журнала с сохранением курсора в поле поиска */
+  function renderJournal() {
+    const active = document.activeElement;
+    const typing = active?.matches?.('[data-jr-search]') ? active.selectionStart : null;
+    $('#view').innerHTML = journal.render();
+    if (typing !== null) {
+      const input = document.querySelector('[data-jr-search]');
+      if (input) { input.focus(); input.setSelectionRange(typing, typing); }
+    }
   }
 
   /* -------------------------------------------------- Вкладка «Сервер» */
@@ -813,6 +870,14 @@
       </div>`;
   }
 
+  /** Статус по рабочей группе WhatsApp: «По группе: выдана 12 Nov, 12:44» и ⚠, если в WS иначе */
+  function groupLine(car) {
+    const g = state.fleet?.group?.[String(car.plate).replace(/\D/g, '')];
+    if (!g) return '';
+    const agree = g.status === 'rent' ? car.status === 'rent' : g.status === 'free' ? car.status !== 'rent' : ['reserve', 'rent'].includes(car.status);
+    return `<div class="car__group${agree ? '' : ' warn'}">${agree ? '' : '⚠️ '}${esc(t('fleet.byGroup', { status: t(`jr.gs.${g.status}`), time: dateTime(g.at) }))}</div>`;
+  }
+
   function renderCar(car) {
     const price = priceOf(car);
     // Цена на сегодня — из сезонного прайса по госномеру, иначе «от» из каталога
@@ -846,6 +911,7 @@
           </div>
           ${statusPill(car.status)}
         </div>
+        ${groupLine(car)}
         <div class="car__meta">
           <span>${freeText(car)}</span>
           ${priceText ? `<span>${esc(t('fleet.price'))} <b>${esc(priceText)}</b></span>` : ''}
@@ -1520,12 +1586,25 @@
 
   function bindApp() {
     document.addEventListener('click', (event) => {
+      if (state.tab === 'journal' && journal.onClick(event)) return;
+      if (event.target.closest('[data-more]')) {
+        state.moreOpen = !state.moreOpen;
+        return renderTabs();
+      }
+      if (state.moreOpen && !event.target.closest('.tabs-more')) {
+        state.moreOpen = false;
+        renderTabs();
+      }
       const langButton = event.target.closest('[data-lang]');
       if (langButton) return setLang(langButton.dataset.lang);
       const tab = event.target.closest('[data-tab]');
       if (tab) return setTab(tab.dataset.tab);
       const problem = event.target.closest('[data-problem]');
       if (problem) {
+        if (problem.dataset.problem === 'journal') {
+          setTab('journal');
+          return journal.show({ plate: problem.dataset.q || '' });
+        }
         state.filters = { q: problem.dataset.q || '', type: 'all', status: 'all' };
         if (problem.dataset.problem === 'requests') state.reqFilter = 'new';
         return setTab(problem.dataset.problem);
@@ -1573,7 +1652,15 @@
       }
     });
 
+    document.addEventListener('change', (event) => { if (state.tab === 'journal') journal.onChange(event); });
+    // Ссылка вида …/#journal или кнопки «назад/вперёд» — открыть эту вкладку
+    window.addEventListener('hashchange', () => {
+      const id = location.hash.slice(1);
+      if (state.user && id !== state.tab && tabs().some((tab) => tab.id === id)) setTab(id);
+    });
+    setInterval(() => { if (state.tab === 'journal') journal.tick(); }, 5000);
     document.addEventListener('input', (event) => {
+      if (state.tab === 'journal' && journal.onInput(event)) return;
       if (!event.target.matches('[data-search]')) return;
       state.filters.q = event.target.value;
       const caret = event.target.selectionStart;
@@ -1587,8 +1674,10 @@
       loadData();
       if (state.tab === 'site') loadModels();
       if (state.tab === 'server') loadServer();
+      if (state.tab === 'journal') journal.load();
     });
     document.addEventListener('submit', (event) => {
+      if (state.tab === 'journal' && journal.onSubmit(event)) return;
       if (event.target.id !== 'srv-settings') return;
       event.preventDefault();
       saveServerSettings(event.target);

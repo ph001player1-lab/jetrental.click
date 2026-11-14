@@ -86,6 +86,14 @@ export const config = {
     googleVerification: (process.env.GOOGLE_VERIFICATION || '').split(',').map((s) => s.trim()).filter(Boolean)
   },
 
+  // Наблюдатель рабочей группы WhatsApp (контейнер observer): общий секрет
+  // для внутренней связи (его создаёт update.sh в /opt/kokon/.env)
+  internal: {
+    secret: process.env.INTERNAL_SECRET || '',
+    port: Number(process.env.INTERNAL_PORT) || 3001,
+    observerUrl: (process.env.OBSERVER_URL || 'http://observer:3100').replace(/\/+$/, '')
+  },
+
   telegram: {
     token: process.env.TELEGRAM_BOT_TOKEN || '',
     apiBase: (process.env.TELEGRAM_API_BASE || 'https://api.telegram.org').replace(/\/+$/, ''),

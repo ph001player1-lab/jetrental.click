@@ -1,0 +1,18 @@
+{
+  "name": "kokon-wa-observer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Read-only WhatsApp Web observer for the staff group journal",
+  "type": "module",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "baileys": "7.0.0-rc14",
+    "qrcode": "1.5.4"
+  }
+}

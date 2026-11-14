@@ -32,6 +32,18 @@ main() {
       || echo "Внимание: vnStat не установился — на вкладке «Сервер» не будет трафика VPS"
   fi
 
+  # Общий секрет для связи бота с наблюдателем WhatsApp — создаётся один раз
+  local env_file="/opt/kokon/.env"
+  if ! grep -q '^INTERNAL_SECRET=' "$env_file" 2>/dev/null; then
+    touch "$env_file"
+    chmod 600 "$env_file"
+    printf 'INTERNAL_SECRET=%s\n' "$(openssl rand -hex 32)" >> "$env_file"
+    echo "Создан INTERNAL_SECRET для наблюдателя WhatsApp"
+  fi
+  # Наблюдателю передаём только этот секрет, остальные секреты ему не нужны
+  INTERNAL_SECRET="$(grep '^INTERNAL_SECRET=' "$env_file" | tail -1 | cut -d= -f2-)"
+  export INTERNAL_SECRET
+
   # Версия кода — её видно на вкладке «Сервер» и в /health
   APP_VERSION="$(git rev-parse --short HEAD)"
   APP_VERSION_DATE="$(git log -1 --format=%cI)"

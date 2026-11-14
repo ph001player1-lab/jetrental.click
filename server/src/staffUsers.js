@@ -28,6 +28,8 @@ async function loadStaff() {
   if (cache && Date.now() - cache.loadedAt < CACHE_MS) return cache;
 
   const byEmail = new Map();
+  // Номер WhatsApp → имя: в журнале рабочей группы вместо номеров — имена
+  const byPhone = new Map();
   // Telegram ID админов — для личных оповещений о сервере (почта для них не нужна)
   const adminChats = new Set();
   for (const email of config.staff.extraEmails) byEmail.set(email, { email, name: email, role: 'Admin', telegramId: '' });
@@ -38,6 +40,10 @@ async function loadStaff() {
         const role = String(row['Роль'] || '').trim();
         const telegramId = String(row['Telegram ID'] || '').replace(/\D/g, '');
         if (telegramId && roleOf({ role }) === 'admin') adminChats.add(telegramId);
+        const name = String(row['Имя'] || row.Username || '').trim();
+        for (const phone of String(row.WhatsApp || '').split(/[,;/]+/).map((p) => p.replace(/\D/g, '')).filter((p) => p.length >= 8)) {
+          if (name) byPhone.set(phone, name);
+        }
         // В одной ячейке можно указать несколько почт через запятую или пробел
         for (const email of String(row.Email || '').split(/[\s,;]+/).map(normalizeEmail).filter(isValidEmail)) {
           byEmail.set(email, { email, name: String(row['Имя'] || row.Username || email).trim(), role, telegramId });
@@ -50,13 +56,22 @@ async function loadStaff() {
     }
   }
 
-  cache = { loadedAt: Date.now(), byEmail, adminChats: [...adminChats] };
+  cache = { loadedAt: Date.now(), byEmail, byPhone, adminChats: [...adminChats] };
   return cache;
 }
 
 /** Сотрудник по почте или null, если доступа нет */
 export async function findStaff(email) {
   return (await loadStaff()).byEmail.get(normalizeEmail(email)) || null;
+}
+
+/** Имена сотрудников по номеру WhatsApp (только цифры); без таблицы — пусто */
+export async function staffPhones() {
+  try {
+    return (await loadStaff()).byPhone;
+  } catch {
+    return new Map();
+  }
 }
 
 /** Telegram ID сотрудников с ролью Admin (кому слать оповещения о сервере) */

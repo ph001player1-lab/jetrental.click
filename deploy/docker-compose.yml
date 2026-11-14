@@ -4,6 +4,7 @@
 #   caddy — HTTPS для bot / staff / сайтов; отдаёт файлы из папки web/
 #           и проксирует страницы, API и вебхуки в bot
 #   bot   — наш Node.js-сервер (папка server/)
+#   observer — наблюдатель рабочей группы WhatsApp (папка observer/)
 #
 # Секреты (токены, ключи) — только в /opt/kokon/.env на сервере, НЕ в git.
 # Запуск и обновление: bash /opt/kokon/app/deploy/update.sh
@@ -71,9 +72,25 @@ services:
       - path: /opt/kokon/.env
         required: false
 
+  # Наблюдатель рабочей группы WhatsApp (только чтение, observer/). Отдельный
+  # контейнер без доступа к секретам бота: получает только общий секрет для
+  # связи с ботом. Портов наружу нет — бот и наблюдатель общаются внутри Docker.
+  observer:
+    build: ../observer
+    restart: unless-stopped
+    environment:
+      DATA_DIR: /data
+      BOT_INTERNAL_URL: http://bot:3001
+      INTERNAL_SECRET: ${INTERNAL_SECRET:-}
+    volumes:
+      - observer_data:/data
+    depends_on:
+      - bot
+
 volumes:
   caddy_data:
   caddy_config:
   caddy_logs:
   bot_data:
   site_uploads:
+  observer_data:

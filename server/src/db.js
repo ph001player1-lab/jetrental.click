@@ -110,6 +110,72 @@ db.exec(`
   );
 `);
 
+// Рабочая группа WhatsApp (journal/): сообщения и разбор, фото, история статусов WS
+db.exec(`
+  CREATE TABLE IF NOT EXISTS wa_messages (
+    id          TEXT PRIMARY KEY,
+    source      TEXT NOT NULL,
+    ts          TEXT NOT NULL,
+    author      TEXT NOT NULL,
+    author_name TEXT,
+    text        TEXT NOT NULL DEFAULT '',
+    media_count INTEGER NOT NULL DEFAULT 0,
+    quoted_id   TEXT,
+    album_id    TEXT,
+    kind        TEXT NOT NULL,
+    status      TEXT NOT NULL,
+    data        TEXT,
+    parser      INTEGER NOT NULL DEFAULT 0,
+    edited_by   TEXT,
+    edited_at   TEXT
+  );
+  CREATE INDEX IF NOT EXISTS wa_messages_ts ON wa_messages (ts);
+  CREATE INDEX IF NOT EXISTS wa_messages_kind ON wa_messages (kind, ts);
+
+  CREATE TABLE IF NOT EXISTS wa_message_plates (
+    message_id TEXT NOT NULL,
+    plate      TEXT NOT NULL,
+    role       TEXT NOT NULL,
+    PRIMARY KEY (message_id, plate, role)
+  );
+  CREATE INDEX IF NOT EXISTS wa_message_plates_plate ON wa_message_plates (plate);
+
+  CREATE TABLE IF NOT EXISTS wa_media (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    message_id   TEXT NOT NULL,
+    report_id    TEXT,
+    file         TEXT NOT NULL,
+    mime         TEXT,
+    bytes        INTEGER,
+    created_at   TEXT NOT NULL,
+    sensitive    INTEGER NOT NULL DEFAULT 0,
+    delete_after TEXT
+  );
+  CREATE INDEX IF NOT EXISTS wa_media_message ON wa_media (message_id);
+  CREATE INDEX IF NOT EXISTS wa_media_report ON wa_media (report_id);
+
+  CREATE TABLE IF NOT EXISTS ws_car_state (
+    car_id     TEXT PRIMARY KEY,
+    plate      TEXT,
+    signature  TEXT NOT NULL,
+    status     TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS ws_history (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    car_id  TEXT NOT NULL,
+    plate   TEXT,
+    at      TEXT NOT NULL,
+    status  TEXT NOT NULL,
+    seg_from TEXT,
+    seg_to   TEXT
+  );
+  CREATE INDEX IF NOT EXISTS ws_history_plate ON ws_history (plate, at);
+`);
+
+/** Прямой доступ к базе для модулей с большим числом своих запросов (journal/) */
+export const raw = db;
+
 // Колонки, добавленные после первого запуска: дописываем в существующую базу
 const requestColumns = db.prepare('PRAGMA table_info(requests)').all().map((c) => c.name);
 for (const [name, type] of [
