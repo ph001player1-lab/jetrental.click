@@ -277,13 +277,20 @@ async function handleMessage(msg) {
 async function refreshGroups() {
   try {
     const all = await sock.groupFetchAllParticipating();
+    const watched = [];
     for (const g of Object.values(all)) {
       for (const p of g.participants || []) {
         const lid = [p.id, p.lid].find((j) => String(j || '').endsWith('@lid'));
         const phone = [p.phoneNumber, p.id].find((j) => String(j || '').endsWith('@s.whatsapp.net'));
-        if (lid && phone) lidToPhone.set(digits(lid), digits(phone));
+        if (lid && phone) {
+          lidToPhone.set(digits(lid), digits(phone));
+          if (g.id === config.groupId) watched.push([digits(lid), digits(phone)]);
+        }
       }
     }
+    // Боту — соответствие внутренних номеров и телефонов только участников рабочей группы:
+    // так упоминания «@7302065160246» в старых сообщениях и выгрузках станут именами
+    if (watched.length) enqueue(() => botRequest('/internal/wa/lids', { pairs: watched }));
     state.groups = Object.values(all).map((g) => ({ id: g.id, subject: g.subject, size: g.participants?.length || 0 }))
       .sort((a, b) => a.subject.localeCompare(b.subject));
     // Название группы могли сменить — обновим, но выбор оставим тем же

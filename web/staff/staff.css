@@ -874,3 +874,70 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
   .ac-table td { border: 0; padding: 3px 0; }
   .ac-actions { text-align: left; }
 }
+
+/* --- Вкладка «Финансы» --- */
+
+.fin { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+.fin--loading { opacity: .6; }
+.fin-sec { padding: 16px 18px; }
+@media (max-width: 640px) { .fin-sec { padding: 14px; } }
+.fin-sec h3 { margin: 0 0 8px; }
+.fin-tile .stat__value { font-size: 24px; }
+.fin-tile--in .stat__value { color: var(--free); }
+.fin-tile--held .stat__value { color: var(--warn); }
+.fin-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.fin-table th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 600; }
+.fin-table th, .fin-table td { padding: 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.fin-num, .fin-table th.fin-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fin-unknown td { background: color-mix(in srgb, var(--warn) 9%, var(--surface)); }
+.fin-idle td { color: var(--muted); }
+.fin-bar { display: inline-block; width: 90px; height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; vertical-align: middle; margin-right: 6px; }
+.fin-bar span { display: block; height: 100%; background: var(--brand); border-radius: 999px; }
+.fin-sort { margin-bottom: 6px; }
+.fin-ops { list-style: none; padding: 0; margin: 0 0 10px; display: grid; gap: 10px; font-size: 14px; }
+.fin-ops li { padding-bottom: 8px; border-bottom: 1px solid var(--line); display: grid; gap: 3px; }
+.fin-op__money { font-weight: 600; }
+.fin-template { margin: 8px 0 0; padding: 10px; border-radius: 8px; background: var(--surface-2); font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }
+.fin-foot { margin: 0; }
+.plate { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; padding: 1px 6px; border-radius: 6px; background: var(--surface-2); }
+/* Быстрые переходы по блокам — липкая строка под шапкой, одной строкой с прокруткой */
+.fin-nav { position: sticky; top: 60px; z-index: 5; display: flex; gap: 16px; overflow-x: auto; scrollbar-width: none; padding: 8px 12px; border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); font-size: 14px; }
+.fin-nav::-webkit-scrollbar { display: none; }
+.fin-nav .link { padding: 4px 0; white-space: nowrap; }
+.fin-sec { scroll-margin-top: 120px; }
+.fin-sec h4 { margin: 16px 0 6px; font-size: 15px; }
+.fin-sec > p.muted.jr-small { margin: 0 0 10px; }
+.fin-table tfoot td { border-bottom: 0; border-top: 2px solid var(--line); }
+.fin-ok { color: var(--muted); }
+.fin-more { color: var(--warn); }
+.fin-less { color: var(--rent); }
+.fin-list { list-style: none; padding: 0; margin: 0 0 10px; display: grid; gap: 8px; font-size: 14px; }
+.fin-list li { padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.fin-badge { display: inline-block; margin-top: 3px; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--surface-2); color: var(--muted); }
+.fin-badge--ok { background: var(--free-bg); color: var(--free); }
+.fin-badge--warn { background: var(--reserve-bg); color: var(--warn); }
+.fin-badge--bad { background: var(--rent-bg); color: var(--rent); }
+.fin-warn { margin: 10px 0 0; padding: 10px 12px; border-radius: 8px; background: var(--reserve-bg); color: var(--ink, inherit); font-size: 14px; }
+.fin-loans { margin-top: 10px; display: grid; gap: 8px; max-width: 420px; }
+.fin-loans textarea { width: 100%; min-height: 120px; font: 14px ui-monospace, SFMono-Regular, Menlo, monospace; }
+@media (max-width: 640px) {
+  /* «Кто принял» на телефоне: имя и сумма в строку, валюты — ниже */
+  .fin-table--cash thead { display: none; }
+  .fin-table--cash tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; padding: 8px 4px; border-bottom: 1px solid var(--line); }
+  .fin-table--cash td { display: block; border: 0; padding: 0; }
+  .fin-table--cash td:nth-child(3) { grid-column: 1 / -1; font-size: 13px; }
+  .fin-table--cash td:nth-child(4) { display: none; }
+  .fin-table th, .fin-table td { padding: 6px 4px; }
+  .fin-bar { width: 44px; }
+  .fin-table--cash tr.fin-unknown { background: color-mix(in srgb, var(--warn) 9%, var(--surface)); }
+  .fin-table--cash .fin-unknown td { background: none; }
+  /* Широкие таблицы на телефоне: строка — карточка «подпись — значение» */
+  .fin-table--stack thead { display: none; }
+  .fin-table--stack tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 3px 14px; padding: 10px 2px; border-bottom: 1px solid var(--line); }
+  .fin-table--stack td { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; border: 0; padding: 0; font-size: 13px; white-space: normal; }
+  .fin-table--stack td::before { content: attr(data-label); color: var(--muted); font-weight: 400; }
+  .fin-table--stack td:first-child { display: block; grid-column: 1 / -1; font-size: 15px; margin-bottom: 2px; }
+  .fin-table--stack td:first-child::before { content: none; }
+  .fin-table--stack tfoot tr { border-top: 2px solid var(--line); }
+  .fin-table--stack tfoot td { border-top: 0; }
+}

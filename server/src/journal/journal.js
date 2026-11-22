@@ -421,10 +421,14 @@ export function toEvent(row, phones, privateOk) {
   if (!privateOk) delete fields.contact;
   // Упоминания от наблюдателя — номерами: показываем имя сотрудника, если знаем
   if (fields.assignees?.length) {
-    fields.assignees = fields.assignees.map((a) => (/^\d{8,}$/.test(a)
-      // Не нашли: телефон (до 12 цифр) — с «+», внутренний номер WhatsApp — с «@»
-      ? phones.get(a) || q.nameOf.get(a)?.author_name || q.nameOf.get(`lid:${a}`)?.author_name || (a.length <= 12 ? `+${a}` : `@${a}`)
-      : a));
+    // Внутренний номер WhatsApp → телефон (по списку участников группы от наблюдателя);
+    // не нашли имя: телефон — с «+», внутренний номер — с «@»
+    const lids = lidPhones();
+    fields.assignees = fields.assignees.map((a) => {
+      if (!/^\d{8,}$/.test(a)) return a;
+      const phone = lids[a] || a;
+      return phones.get(phone) || q.nameOf.get(phone)?.author_name || q.nameOf.get(`lid:${a}`)?.author_name || (phone.length <= 12 ? `+${phone}` : `@${a}`);
+    });
   }
   return {
     id: row.id,
@@ -565,6 +569,26 @@ export function liveToday(now = Date.now()) {
   const dayStart = Math.floor((now + 7 * 3600000) / 86400000) * 86400000 - 7 * 3600000;
   const row = db.raw.prepare("SELECT COUNT(*) n FROM wa_messages WHERE source = 'live' AND ts >= ?").get(new Date(dayStart).toISOString());
   return { date: new Date(now + 7 * 3600000).toISOString().slice(0, 10), received: row?.n || 0 };
+}
+
+/**
+ * Внутренние номера WhatsApp (LID) участников рабочей группы → телефоны.
+ * Присылает наблюдатель; нужно, чтобы упоминания «@7302065160246» стали именами.
+ */
+export function saveLidPhones(pairs) {
+  const map = lidPhones();
+  for (const [lid, phone] of pairs) {
+    if (/^\d{6,20}$/.test(String(lid)) && /^\d{6,20}$/.test(String(phone))) map[lid] = String(phone);
+  }
+  db.setSetting('wa_lid_phones', JSON.stringify(map));
+}
+
+export function lidPhones() {
+  try {
+    return JSON.parse(db.getSetting('wa_lid_phones') || '{}');
+  } catch {
+    return {};
+  }
 }
 
 /** Время последнего сообщения, полученного наблюдателем (не из выгрузки) */

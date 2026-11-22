@@ -61,6 +61,7 @@
             <label class="field"><span>${esc(t('ac.f.email'))}</span><input name="email" type="email" class="search" value="${esc(s.email || '')}" placeholder="name@gmail.com"></label>
             <label class="field"><span>${esc(t('ac.f.role'))}</span><select name="roleId" class="search">${roles}</select></label>
             <label class="field"><span>${esc(t('ac.f.whatsapp'))}</span><input name="whatsapp" class="search" inputmode="tel" value="${esc(s.whatsapp ? `+${s.whatsapp}` : '')}" placeholder="+66 6x xxx xxxx"></label>
+            <label class="field"><span>${esc(t('ac.f.rate'))}</span><input name="rate" class="search" type="number" min="0" step="1" inputmode="numeric" value="${esc(s.rate ? String(s.rate) : '')}" placeholder="0"></label>
           </div>
           <p class="muted jr-small">${esc(t('ac.f.hint'))}</p>
           <div class="ac-form__buttons">

@@ -103,6 +103,12 @@ async function handleInternal(req, res) {
     }
   }
 
+  if (url.pathname === '/internal/wa/lids') {
+    const body = await readJson(req);
+    journal.saveLidPhones(Array.isArray(body.pairs) ? body.pairs : []);
+    return sendJson(res, 200, { ok: true });
+  }
+
   if (url.pathname === '/internal/wa/status') {
     const body = await readJson(req);
     Object.assign(status, {

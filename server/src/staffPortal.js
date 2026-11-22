@@ -30,7 +30,7 @@
 import crypto from 'node:crypto';
 import { config } from './config.js';
 import * as db from './db.js';
-import { HttpError, sendJson, readJson, parseCookies, clientIp, rateLimiter } from './http.js';
+import { HttpError, sendJson, readJson, readBody, parseCookies, clientIp, rateLimiter } from './http.js';
 import { findStaff, normalizeEmail, isValidEmail, adminList, isAdminEmail } from './staffUsers.js';
 import { mailEnabled, sendMail } from './mail.js';
 import { getWsSnapshot, wsSyncStatus } from './ws/sync.js';
@@ -41,6 +41,8 @@ import { canEdit, listModels, saveDescription, uploadPhoto, uploadThumb, saveGal
 import { collectProblems, bookingOutlook, requestStats, LIMITS } from './dashboard.js';
 import { roleOf, roleNameOf, permissionsOf, can, canAny } from './roles.js';
 import { accessOverview, saveRole, deleteRole, saveStaff, deleteStaff, importStaffList, AccessError } from './access.js';
+import { financeReport, saveLoans } from './finance.js';
+import { importCashbook } from './cashbook.js';
 import { serverReport, saveServerSettings, alertAdminsOnce } from './serverStats.js';
 import { g } from './groupTexts.js';
 import { escapeHtml } from './format.js';
@@ -308,6 +310,47 @@ async function dashboard(req, res, url) {
   sendJson(res, 200, { problems, outlook: bookingOutlook(), requests: requestStats(), limits: LIMITS });
 }
 
+/* ----------------------------------------------------- Вкладка «Финансы» */
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** GET /api/staff/finance?from=2026-11-01&to=2026-11-30 — только просмотр */
+async function finance(staff, req, res, url) {
+  needAny(staff, ['finance.view']);
+  const today = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
+  let from = url.searchParams.get('from');
+  let to = url.searchParams.get('to');
+  if (!ISO_DATE.test(from || '')) from = `${today.slice(0, 8)}01`;
+  if (!ISO_DATE.test(to || '')) to = today;
+  if (from > to) [from, to] = [to, from];
+  // Не больше года за раз
+  if (Date.parse(to) - Date.parse(from) > 366 * 86400000) from = new Date(Date.parse(to) - 366 * 86400000).toISOString().slice(0, 10);
+  // Имена клиентов в сверке — только тем, кому открыты контакты клиентов
+  // Зарплата по людям — только тем, кому открыт табель
+  sendJson(res, 200, await financeReport({ from, to }, Date.now(), {
+    clientsVisible: can(staff, 'clients.view'), timesheetVisible: can(staff, 'timesheet.view')
+  }));
+}
+
+/** POST /api/staff/finance/loans { text } — платежи по кредитам машин, только админ */
+async function financeLoans(staff, req, res) {
+  if (!can(staff, 'access.admin')) throw new HttpError(403, 'admin_only');
+  const { text } = await readJson(req);
+  sendJson(res, 200, { loans: saveLoans(String(text || '').slice(0, 20000), staff.email) });
+}
+
+/** POST /api/staff/finance/cashbook — загрузить «Кассу» из WS (.xlsx), только админ */
+async function financeCashbook(staff, req, res) {
+  if (!can(staff, 'access.admin')) throw new HttpError(403, 'admin_only');
+  const buffer = await readBody(req, 20 * 1024 * 1024);
+  try {
+    sendJson(res, 200, importCashbook(buffer, staff.email));
+  } catch (err) {
+    if (err.code === 'not_cashbook') throw new HttpError(400, 'not_cashbook');
+    throw err;
+  }
+}
+
 /* ------------------------------------------------- Вкладка «Доступы» (админ) */
 
 function needAccessAdmin(staff) {
@@ -397,7 +440,10 @@ const ROUTES = {
   'POST /api/staff/access/role/delete': signedIn(accessRoleDelete),
   'POST /api/staff/access/staff': signedIn(accessStaff),
   'POST /api/staff/access/staff/delete': signedIn(accessStaffDelete),
-  'POST /api/staff/access/import': signedIn(accessImport)
+  'POST /api/staff/access/import': signedIn(accessImport),
+  'GET /api/staff/finance': signedIn(finance),
+  'POST /api/staff/finance/cashbook': signedIn(financeCashbook),
+  'POST /api/staff/finance/loans': signedIn(financeLoans)
 };
 
 /** Обработчик для пути /api/staff/*; null — такого маршрута нет */

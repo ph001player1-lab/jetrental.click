@@ -82,6 +82,11 @@ db.raw.exec(`
   );
 `);
 
+// Ставка в час (для зарплаты по табелю в «Финансах») — колонка добавлена позже
+if (!db.raw.prepare('PRAGMA table_info(access_staff)').all().some((c) => c.name === 'rate')) {
+  db.raw.exec('ALTER TABLE access_staff ADD COLUMN rate REAL');
+}
+
 const now = () => new Date().toISOString();
 
 const q = {
@@ -98,6 +103,7 @@ const q = {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
   updateStaff: db.raw.prepare(`UPDATE access_staff SET name = ?, email = ?, telegram_id = ?, whatsapp = ?, role_id = ?, active = ?, updated_at = ?
     WHERE id = ?`),
+  setRate: db.raw.prepare('UPDATE access_staff SET rate = ? WHERE id = ?'),
   deleteStaff: db.raw.prepare('DELETE FROM access_staff WHERE id = ?'),
   log: db.raw.prepare('INSERT INTO access_log (at, by, action, details) VALUES (?, ?, ?, ?)'),
   lastLog: db.raw.prepare('SELECT * FROM access_log ORDER BY id DESC LIMIT ?')
@@ -150,8 +156,12 @@ const digitsOnly = (value) => String(value || '').replace(/\D/g, '');
 // Без почты сотрудник есть в списке, но войти в портал не может («не подключён»)
 const publicStaff = (row) => ({
   id: row.id, name: row.name, email: row.email || '', telegramId: row.telegram_id || '', whatsapp: row.whatsapp || '',
-  roleId: row.role_id, active: Boolean(row.active), connected: Boolean(row.email)
+  roleId: row.role_id, active: Boolean(row.active), connected: Boolean(row.email), rate: row.rate || 0
 });
+
+/** Ставки в час для зарплаты по табелю: [{ name, whatsapp, rate }] */
+export const staffRates = () => q.staff.all().filter((r) => r.active && r.rate > 0)
+  .map((r) => ({ name: r.name, whatsapp: r.whatsapp || '', rate: r.rate }));
 
 /** Активный сотрудник по почте (из базы) или null */
 export function staffByEmail(email) {
@@ -257,11 +267,15 @@ export function saveStaff(input, by, { isAdminEmail }) {
   const telegramId = digitsOnly(input.telegramId).slice(0, 20) || null;
   const whatsapp = digitsOnly(input.whatsapp).slice(0, 20) || null;
   const active = input.active === false ? 0 : 1;
+  // Ставка не передана (вставка списком) — прежняя остаётся
+  const rate = input.rate === undefined ? undefined : Math.max(0, Math.min(100000, Math.round(Number(input.rate) || 0)));
   if (input.id) {
     const old = q.staffById.get(Number(input.id));
     if (!old) throw new AccessError('unknown_staff');
     q.updateStaff.run(name, email, telegramId, whatsapp, role.id, active, now(), old.id);
+    if (rate !== undefined) q.setRate.run(rate || null, old.id);
     const changes = {};
+    if (rate !== undefined && (old.rate || 0) !== rate) changes.rate = `${old.rate || 0} → ${rate}`;
     if (old.name !== name) changes.name = `${old.name} → ${name}`;
     if ((old.email || null) !== email) changes.email = `${old.email || '—'} → ${email || '—'}`;
     if (old.role_id !== role.id) changes.role = `${getRole(old.role_id)?.name || old.role_id} → ${role.name}`;
@@ -272,6 +286,7 @@ export function saveStaff(input, by, { isAdminEmail }) {
     return publicStaff(q.staffById.get(old.id));
   }
   const info = q.addStaff.run(name, email, telegramId, whatsapp, role.id, active, now(), now());
+  if (rate) q.setRate.run(rate, Number(info.lastInsertRowid));
   logChange(by, 'staff.create', { staff: name, role: role.name });
   return publicStaff(q.staffById.get(Number(info.lastInsertRowid)));
 }
