@@ -4,7 +4,7 @@
  * ============================================================================
  *   GET  /api/staff/journal?view=feed|review&kinds=&plate=&q=&before=
  *   POST /api/staff/journal/fix        { id, kind, plate, plateFrom, plateTo, status }
- *   GET  /api/staff/journal/timesheet?month=2026-11
+ *   GET  /api/staff/journal/timesheet?month=2026-11 — табель (Admin)
  *   GET  /api/staff/journal/reconcile
  *   GET  /api/staff/journal/media?id=  — фото (Admin, Editor)
  *   POST /api/staff/journal/import     { text } — история из «Экспорта чата» (Admin)
@@ -24,8 +24,10 @@ import { observerStatus } from './observer.js';
 const FEED_KINDS = [...journal.OPERATION_KINDS, ...journal.SHIFT_KINDS, 'question', 'note'];
 const MAX_IMPORT_BYTES = 30 * 1024 * 1024;
 
+const ADMIN_ONLY = new Set(['journal.admin', 'journal.timesheet']);
+
 function need(staff, perm) {
-  if (!can(staff, perm)) throw new HttpError(403, perm === 'journal.admin' ? 'admin_only' : 'read_only');
+  if (!can(staff, perm)) throw new HttpError(403, ADMIN_ONLY.has(perm) ? 'admin_only' : 'read_only');
 }
 
 export async function getJournal(staff, req, res, url) {
@@ -61,6 +63,7 @@ export async function fixEvent(staff, req, res) {
 }
 
 export async function getTimesheet(staff, req, res, url) {
+  need(staff, 'journal.timesheet');
   const month = /^\d{4}-\d{2}$/.test(url.searchParams.get('month') || '')
     ? url.searchParams.get('month')
     : new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 7);

@@ -80,8 +80,15 @@
       ctx.rerender();
     }
 
+    /** Разделы журнала по роли: табель и WhatsApp — только админам */
+    function allowedViews() {
+      return ['feed', 'review', ...(ctx.can('journal.timesheet') ? ['timesheet'] : []), 'reconcile', ...(ctx.can('journal.admin') ? ['wa'] : [])];
+    }
+
     /** Открыть журнал (с фильтром по госномеру — из предупреждения на обзоре) */
     function show(params = {}) {
+      // После смены пользователя открытый раздел мог стать недоступен
+      if (!allowedViews().includes(st.view)) st.view = 'feed';
       if (params.plate) {
         st.view = 'feed';
         st.filter = 'all';
@@ -339,7 +346,7 @@
 
     function render() {
       const reviewN = st.counts?.review || 0;
-      const views = ['feed', 'review', 'timesheet', 'reconcile', ...(ctx.can('journal.admin') ? ['wa'] : [])];
+      const views = allowedViews();
       const tabs = views.map((v) => `<button type="button" class="chip" data-jr-view="${v}" aria-pressed="${st.view === v}">${esc(t(`jr.v.${v}`))}${v === 'review' && reviewN ? ` · ${reviewN}` : ''}</button>`).join('');
       let body = '';
       if (st.failed) body = `<div class="empty">${esc(t('app.loadFailed'))}</div>`;
@@ -357,7 +364,7 @@
       if (!el.closest('#journal')) return false;
       const view = el.closest('[data-jr-view]');
       if (view) {
-        st.view = view.dataset.jrView;
+        st.view = allowedViews().includes(view.dataset.jrView) ? view.dataset.jrView : 'feed';
         st.events = st.view === 'feed' || st.view === 'review' ? null : st.events;
         load();
         return true;
