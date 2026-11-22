@@ -35,9 +35,9 @@ const SHIFT_END = /^(good )?(night|evening)\b/;
 
 const CURRENCIES = {
   thb: 'THB', baht: 'THB', '฿': 'THB', usdt: 'USDT', usd: 'USD', '$': 'USD', rub: 'RUB', '₽': 'RUB',
-  gbp: 'GBP', '£': 'GBP', eur: 'EUR', '€': 'EUR', aud: 'AUD'
+  gbp: 'GBP', '£': 'GBP', eur: 'EUR', euro: 'EUR', euros: 'EUR', '€': 'EUR', aud: 'AUD'
 };
-const AMOUNT = /(\d[\d,.\s]*?\d|\d)\s*(thb|baht|usdt|usd|rub|gbp|eur|aud|[$€£฿₽])(?![a-z])/gi;
+const AMOUNT = /(\d[\d,.\s]*?\d|\d)\s*(thb|baht|usdt|usd|rub|gbp|euros?|eur|aud|[$€£฿₽])(?![a-z])/gi;
 
 // Подписи строк с деньгами → единые ключи
 const MONEY_LABELS = [
@@ -169,6 +169,18 @@ export function parseMessage(text, ref = new Date()) {
 
     const lv = labelOf(line);
     const plate = plateOf(line);
+
+    // Вторая машина под «Fuel:» / «Mileage:»: «30% (#6391)», «22,727 (#6391)». Её номер —
+    // ещё одна машина операции, если её не было в шапке (кроме замены: там «откуда/куда»)
+    const fuelMore = !lv && lastLabel === 'fuel' && /^\d{1,3}\s*%/.test(line);
+    const kmMore = !lv && lastLabel === 'mileage' && /^\d[\d,.\s]*(km)?\s*(\(#?\d{2,5}\))?$/i.test(line);
+    if (fuelMore || kmMore) {
+      if (fuelMore) pushPercent(fields, line); else pushMileage(fields, line);
+      if (plate && !plates.some((p) => p.plate === plate) && !plates.some((p) => p.role === 'from' || p.role === 'to')) {
+        plates.push({ plate, model: null, role: 'main' });
+      }
+      continue;
+    }
 
     // Машины: строки «Модель #1234» до полей, «From: X #1» / «To: Y #2» при замене, «1. 🏍️ ADV 350 #1124»
     if (plate && (!lv || /^(from|to|fron)$/.test(lv.label))) {

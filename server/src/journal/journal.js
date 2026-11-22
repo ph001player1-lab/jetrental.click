@@ -24,7 +24,8 @@ import { parseMessage } from './parse.js';
 import { parseExport } from './exportImport.js';
 
 // Увеличивайте при изменении parse.js — при старте сервер переразберёт старые сообщения
-export const PARSER_VERSION = 1;
+// 2 — «250 euro» — сумма в EUR; топливо и пробег второй машины на следующей строке
+export const PARSER_VERSION = 2;
 
 export const OPERATION_KINDS = ['booking', 'issue', 'return', 'pickup_task', 'change_task', 'changed', 'reschedule', 'extension', 'payment', 'service'];
 export const SHIFT_KINDS = ['shift_start', 'shift_end'];
