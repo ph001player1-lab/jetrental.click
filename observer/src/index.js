@@ -2,7 +2,7 @@
  * ============================================================================
  * KOKON — наблюдатель рабочей группы WhatsApp (ТОЛЬКО ЧТЕНИЕ)
  * ============================================================================
- * Подключается к отдельному номеру-наблюдателю как «связанное устройство»
+ * Подключается к номеру-наблюдателю как «связанное устройство»
  * (как WhatsApp Web) через библиотеку Baileys. Читает сообщения ОДНОЙ
  * выбранной группы и передаёт их боту (журнал на сайте сотрудников).
  *
@@ -131,6 +131,8 @@ const digits = (jid) => String(jid || '').split('@')[0].split(':')[0].replace(/\
 
 /** Номер автора: из @s.whatsapp.net; если пришёл только LID — спрашиваем соответствие у Baileys */
 async function authorOf(msg) {
+  // Своё сообщение (с телефона этого номера) — автор сам номер наблюдателя
+  if (msg.key.fromMe && sock?.user?.id) return digits(sock.user.id);
   const candidates = [msg.key.participantAlt, msg.key.participant, msg.participant].filter(Boolean);
   const pn = candidates.find((j) => j.endsWith('@s.whatsapp.net'));
   if (pn) return digits(pn);
@@ -164,8 +166,9 @@ const SKIP_TYPES = new Set([
 const toMs = (ts) => (typeof ts === 'number' ? ts : Number(ts?.toNumber?.() ?? ts)) * 1000;
 
 async function handleMessage(msg) {
-  // Только выбранная рабочая группа; свои сообщения наблюдателя не бывает — он не пишет
-  if (!config.groupId || msg.key.remoteJid !== config.groupId || msg.key.fromMe) return;
+  // Только выбранная рабочая группа. Сообщения «от себя» тоже берём: если
+  // наблюдатель подключён к номеру сотрудника, его сообщения — часть журнала
+  if (!config.groupId || msg.key.remoteJid !== config.groupId) return;
   const content = normalizeMessageContent(msg.message);
   if (!content) return;
   const type = getContentType(content);
@@ -189,7 +192,7 @@ async function handleMessage(msg) {
     id: msg.key.id,
     ts: new Date(toMs(msg.messageTimestamp) || Date.now()).toISOString(),
     author: await authorOf(msg),
-    authorName: msg.pushName || null,
+    authorName: msg.pushName || (msg.key.fromMe ? sock?.user?.name : null) || null,
     text: textOf(content),
     mediaCount: media ? 1 : 0,
     quotedId: inner.contextInfo?.stanzaId || null,
