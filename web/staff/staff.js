@@ -86,6 +86,9 @@
     server: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 4a10 10 0 0 0-8.66 15h17.32A10 10 0 0 0 12 4zm0 2a8 8 0 0 1 7.42 11H4.58A8 8 0 0 1 12 6zm-1 1.5v2h2v-2h-2zM6.4 9.2 5 10.6l1.4 1.4 1.4-1.4-1.4-1.4zm11.2 0-4.47 4.47a2 2 0 1 0 1.41 1.41L19 10.6l-1.4-1.4z"/></svg>'
   };
   ICONS.journal = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zM7 7h10v2H7V7zm0 4h10v2H7v-2zm0 4h7v2H7v-2z"/></svg>';
+  ICONS.install = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M17 1H7a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3a2 2 0 0 0-2-2zm0 18H7V5h10v14zm-4-7V7h-2v5H8l4 4 4-4h-3z"/></svg>';
+  // Значок «Поделиться» Safari — для подсказки на iPhone
+  const SHARE_ICON = '<svg class="install__share" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2 7.5 6.5l1.4 1.4L11 5.8V15h2V5.8l2.1 2.1 1.4-1.4L12 2zM5 10v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V10h-3v2h1v8H7v-8h1v-2H5z"/></svg>';
   ICONS.more = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm6 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm6 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg>';
   const ALL_TABS = ['overview', 'fleet', 'journal', 'calendar', 'requests', 'site', 'server'];
   // Внизу на телефоне помещается 6 кнопок; если вкладок больше — последние уходят в «Ещё»
@@ -124,7 +127,9 @@
     serverTimer: null,
     serverStatus: null,
     // Меню «Ещё» внизу на телефоне
-    moreOpen: false
+    moreOpen: false,
+    // Плашка «Установить на телефон»: показать подсказку, как установить вручную
+    installHelp: false
   };
 
   const $ = (sel) => document.querySelector(sel);
@@ -438,31 +443,111 @@
   function renderTabs() {
     const count = newRequestsCount();
     const list = tabs();
-    const html = list.map((tab) => `
-      <button type="button" data-tab="${tab.id}" ${state.tab === tab.id ? 'aria-current="page"' : ''}>
-        ${ICONS[tab.id]}<span>${esc(tab.title)}</span>
-        ${tab.id === 'requests' && count ? `<span class="count">${count}</span>` : ''}
-      </button>`).join('');
+    // Внизу на телефоне — только значки (подпись видна у открытого раздела),
+    // поэтому у кнопки есть aria-label и title с названием
     const button = (tab) => `
-      <button type="button" data-tab="${tab.id}" ${state.tab === tab.id ? 'aria-current="page"' : ''}>
-        ${ICONS[tab.id]}<span>${esc(tab.title)}</span>
+      <button type="button" data-tab="${tab.id}" aria-label="${esc(tab.title)}" title="${esc(tab.title)}" ${state.tab === tab.id ? 'aria-current="page"' : ''}>
+        ${ICONS[tab.id]}<span class="tab__label">${esc(tab.title)}</span>
         ${tab.id === 'requests' && count ? `<span class="count">${count}</span>` : ''}
       </button>`;
+    const html = list.map(button).join('');
     const top = document.querySelector('.tabs--top');
     top.innerHTML = html;
     const bottom = document.querySelector('.tabs--bottom');
-    if (list.length <= BOTTOM_MAX) {
+    // «Установить приложение» — пункт меню «Ещё» (пока портал не установлен)
+    const extras = installOffered() ? [`
+      <button type="button" data-install="menu">${ICONS.install}<span class="tab__label">${esc(t('tab.install'))}</span></button>`] : [];
+    if (list.length <= BOTTOM_MAX && !extras.length) {
       bottom.innerHTML = html;
     } else {
-      const main = list.slice(0, BOTTOM_MAX - 1);
-      const rest = list.slice(BOTTOM_MAX - 1);
+      const main = list.slice(0, Math.min(list.length, BOTTOM_MAX - 1));
+      const rest = list.slice(main.length);
       const inRest = rest.some((tab) => tab.id === state.tab);
+      const more = t('tab.more');
       bottom.innerHTML = `${main.map(button).join('')}
-        <button type="button" data-more aria-expanded="${state.moreOpen}" ${inRest ? 'aria-current="page"' : ''}>${ICONS.more}<span>${esc(t('tab.more'))}</span></button>
-        ${state.moreOpen ? `<div class="tabs-more" role="menu">${rest.map(button).join('')}</div>` : ''}`;
+        <button type="button" data-more aria-label="${esc(more)}" title="${esc(more)}" aria-expanded="${state.moreOpen}" ${inRest ? 'aria-current="page"' : ''}>${ICONS.more}<span class="tab__label">${esc(more)}</span></button>
+        ${state.moreOpen ? `<div class="tabs-more" role="menu">${rest.map(button).join('')}${extras.join('')}</div>` : ''}`;
     }
-    bottom.classList.toggle('tabs--many', Math.min(list.length, BOTTOM_MAX) > 5);
   }
+
+  /* ------------------------------------- Установка на телефон как приложение */
+
+  // Chrome / Samsung Internet на Android сами предлагают окно установки —
+  // событие ловим заранее и показываем окно по нашей кнопке. На iPhone такого
+  // окна нет: показываем подсказку «Поделиться → На экран „Домой“».
+  const INSTALL_LATER_KEY = 'jm_staff_install_later';
+  const INSTALL_PAUSE_MS = 14 * 24 * 3600 * 1000;
+  let installPrompt = null;
+  const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  const isIos = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  /** Предлагаем только на телефонах и планшетах, если портал ещё не открыт как приложение */
+  const installOffered = () => !isStandalone() && window.matchMedia('(pointer: coarse)').matches;
+
+  function installPaused() {
+    try {
+      return Date.now() - Number(localStorage.getItem(INSTALL_LATER_KEY) || 0) < INSTALL_PAUSE_MS;
+    } catch {
+      return false;
+    }
+  }
+
+  function renderInstall() {
+    const box = $('#install');
+    if (!box) return;
+    // Плашка: окно установки доступно (Android) или это iPhone; «Не сейчас» —
+    // прячем на 2 недели. По пункту в «Ещё» плашка открывается с подсказкой всегда.
+    const show = state.user && installOffered() && (state.installHelp || (!installPaused() && (installPrompt || isIos())));
+    box.hidden = !show;
+    if (!show) return;
+    const help = state.installHelp || (!installPrompt && isIos());
+    const text = help
+      ? esc(t(isIos() ? 'install.ios' : 'install.other', { share: '\u0001' })).replace('\u0001', SHARE_ICON)
+      : esc(t('install.text'));
+    box.innerHTML = `
+      <img class="install__icon" src="icon-192.png?v=2" alt="" width="44" height="44" />
+      <div class="install__body">
+        <b>${esc(t('install.title'))}</b>
+        <span>${text}</span>
+      </div>
+      <div class="install__actions">
+        ${help ? '' : `<button type="button" class="btn btn--primary btn--small" data-install="go">${esc(t('install.button'))}</button>`}
+        <button type="button" class="btn btn--small" data-install="later">${esc(t(help ? 'install.ok' : 'install.later'))}</button>
+      </div>`;
+  }
+
+  async function onInstall(action) {
+    if (action === 'later') {
+      try { localStorage.setItem(INSTALL_LATER_KEY, String(Date.now())); } catch { /* приватный режим */ }
+      state.installHelp = false;
+      return renderInstall();
+    }
+    state.moreOpen = false;
+    if (installPrompt) {
+      const prompt = installPrompt;
+      installPrompt = null;
+      prompt.prompt();
+      await prompt.userChoice.catch(() => null);
+      state.installHelp = false;
+    } else {
+      // Окна установки нет (iPhone или браузер не предложил) — подсказка, как вручную
+      state.installHelp = true;
+      window.scrollTo(0, 0);
+    }
+    renderTabs();
+    renderInstall();
+  }
+
+  window.addEventListener('beforeinstallprompt', (event) => {
+    event.preventDefault();
+    installPrompt = event;
+    renderInstall();
+  });
+  window.addEventListener('appinstalled', () => {
+    installPrompt = null;
+    state.installHelp = false;
+    renderInstall();
+    if (state.user) renderTabs();
+  });
 
   function setTab(tab) {
     if (!tabs().some((x) => x.id === tab)) tab = 'overview';
@@ -481,6 +566,7 @@
   function render() {
     const fleet = state.fleet;
     renderWho();
+    renderInstall();
     $('#updated').innerHTML = fleet?.updatedAt
       ? esc(t('app.dataAt', { time: '\u0001' })).replace('\u0001', `<b>${esc(fmtTime.format(new Date(fleet.updatedAt)))}</b>`)
       : esc(fleet ? (fleet.enabled ? t('app.loadingWs') : t('app.wsOff')) : t('app.loading'));
@@ -1592,6 +1678,8 @@
         state.moreOpen = !state.moreOpen;
         return renderTabs();
       }
+      const install = event.target.closest('[data-install]');
+      if (install) return onInstall(install.dataset.install);
       if (state.moreOpen && !event.target.closest('.tabs-more')) {
         state.moreOpen = false;
         renderTabs();
@@ -1698,6 +1786,8 @@
   /* ----------------------------------------------------------------- Старт */
 
   async function init() {
+    // Нужен, чтобы телефон предлагал установить портал как приложение
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
     applyStatic();
     bindLogin();
     bindApp();
