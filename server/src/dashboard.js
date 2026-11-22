@@ -201,6 +201,8 @@ function priceProblems(tx, fleet) {
     const plate = plateKey(unit.plate);
     if (!plate) continue;
     const missing = sheets.filter((sheet) => !pricing.prices.get(sheet)?.has(plate));
+    // Строка есть, но часть цен пустая — на такие сроки боты цену не посчитают
+    const empty = sheets.filter((sheet) => pricing.prices.get(sheet)?.get(plate)?.tiers.some((p) => !p));
     const typos = sheets.filter((sheet) => pricing.prices.get(sheet)?.get(plate)?.suspicious);
     const car = `${unit.model || 'Vehicle'} · ${unit.plate}`;
     if (missing.length) {
@@ -208,6 +210,13 @@ function priceProblems(tx, fleet) {
         group: 'prices', level: 'warning', target: { tab: 'fleet', q: unit.plate },
         title: tx.t('noPrice.title', { car }),
         detail: tx.t('noPrice.detail', { sheets: quoted(missing) })
+      });
+    }
+    if (empty.length) {
+      problems.push({
+        group: 'prices', level: 'warning', target: { tab: 'fleet', q: unit.plate },
+        title: tx.t('noPrice.title', { car }),
+        detail: tx.t('emptyPrice.detail', { sheets: quoted(empty) })
       });
     }
     if (typos.length) {
