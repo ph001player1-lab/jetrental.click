@@ -262,7 +262,7 @@ export function organization(ctx) {
     logo: `${brand.origin}/${brand.assets}/icon-512.png`,
     image: `${brand.origin}/${brand.assets}/og-image.jpg`,
     telephone: brand.phones.map((p) => p.tel),
-    email: brand.email,
+    ...(brand.email ? { email: brand.email } : {}),
     address: { '@type': 'PostalAddress', streetAddress: 'Bang Tao Beach', addressLocality: 'Phuket', addressCountry: 'TH' },
     priceRange: '฿฿'
   };

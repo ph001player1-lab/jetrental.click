@@ -501,3 +501,28 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
 .book__estimate { margin: -4px 0 0; padding: 10px 14px; border-radius: 10px; background: rgba(34, 197, 94, .14); color: #86efac; font-weight: 600; font-size: 14px; }
 .book__estimate.is-warn { background: rgba(245, 158, 11, .14); color: #fcd34d; }
 @media (max-width: 480px) { .dialog__vehicle img { width: 96px; height: 68px; } .form__row { grid-template-columns: 1fr; } }
+
+/* ---------------------------------------------------------------------------
+   Jet Mobility (jetmobility.org): тёмная гамма KokonCar, но вместо красного —
+   оранжевый со стрелки логотипа. Панели — тёплый тёмно-коричневый (как бордовый
+   у KokonCar, только в тон оранжевому), кнопки — оранжевые с тёмным текстом.
+   --------------------------------------------------------------------------- */
+.cl[data-brand="jetmobility"] {
+  --maroon: #2b1708;
+  --red: #ff7a00;
+  --dot: #ff8a00;
+  --accent-text: #ffa34a;
+  --on-accent: #0d0f12;
+}
+.cl[data-brand="jetmobility"] .cl-btn--red,
+.cl[data-brand="jetmobility"] .cl-submit,
+.cl[data-brand="jetmobility"] .btn--primary { background: var(--red); color: var(--on-accent); }
+.cl[data-brand="jetmobility"] .cl-nav a:hover,
+.cl[data-brand="jetmobility"] .cl-more,
+.cl[data-brand="jetmobility"] .eyebrow,
+.cl[data-brand="jetmobility"] .link { color: var(--accent-text); }
+.cl[data-brand="jetmobility"] .gal__arrow:hover { background: var(--red); color: var(--on-accent); }
+.cl[data-brand="jetmobility"] .cl-card__pills:not(.is-empty),
+.cl[data-brand="jetmobility"] .cl-model__spec,
+.cl[data-brand="jetmobility"] .cl-service__icon,
+.cl[data-brand="jetmobility"] .cl-review { box-shadow: inset 0 0 0 1px rgba(255, 122, 0, .28); }

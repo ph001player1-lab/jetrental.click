@@ -95,7 +95,7 @@ function footer(ctx) {
           <p class="cl-footer__name">${esc(brand.wordmark || brand.name)}</p>
           <p>${esc(t('contact.beach'))}<br>${esc(t('contact.country'))}</p>
           <p>${brand.phones.map((p) => `<a href="tel:${p.tel}">${p.full}</a>`).join('<br>')}</p>
-          <p><a href="mailto:${esc(brand.email)}">${esc(brand.email)}</a></p>
+          ${brand.email ? `<p><a href="mailto:${esc(brand.email)}">${esc(brand.email)}</a></p>` : ''}
           <p class="cl-footer__copy">© ${ctx.year} ${esc(brand.name)}</p>
         </div>
         <nav class="cl-footer__nav" aria-label="Footer">
@@ -249,7 +249,7 @@ function contact(ctx) {
           <ul>
             <li><b>${esc(t('contact.beach'))}</b><br>${esc(t('contact.country'))}<br><a href="https://www.google.com/maps/dir/?api=1&amp;destination=Bang+Tao+Beach+Phuket" target="_blank" rel="noopener">${esc(t('contact.route'))}</a></li>
             <li>${brand.phones.map((p) => `<a href="tel:${p.tel}">${p.full}</a>`).join('<br>')}</li>
-            <li><a href="mailto:${esc(brand.email)}">${esc(brand.email)}</a></li>
+            ${brand.email ? `<li><a href="mailto:${esc(brand.email)}">${esc(brand.email)}</a></li>` : ''}
           </ul>
           <div class="cl-contact__msg">
             <a class="cl-pill cl-pill--wa" href="${esc(waLink(brand, t('wa.general')))}" target="_blank" rel="noopener">${icon('wa', 18)}<span>What'sApp</span></a>

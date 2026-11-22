@@ -287,7 +287,7 @@ function contact(ctx) {
           <ul class="contact__list">
             <li><span>📍</span><div><b>${esc(t('contact.beach'))}</b><br><span>${esc(t('contact.country'))}</span><br><a href="https://www.google.com/maps/dir/?api=1&amp;destination=Bang+Tao+Beach+Phuket" target="_blank" rel="noopener">${esc(t('contact.route'))}</a></div></li>
             <li><span>📞</span><div>${brand.phones.map((p) => `<a href="tel:${p.tel}">${p.full}</a>`).join('<br>')}</div></li>
-            <li><span>✉️</span><div><a href="mailto:${esc(brand.email)}">${esc(brand.email)}</a></div></li>
+            ${brand.email ? `<li><span>✉️</span><div><a href="mailto:${esc(brand.email)}">${esc(brand.email)}</a></div></li>` : ''}
           </ul>
           <div class="contact__messengers">
             <a class="btn btn--wa" href="${esc(waLink(brand, t('wa.general')))}" target="_blank" rel="noopener">${icon('wa', 18)}WhatsApp</a>

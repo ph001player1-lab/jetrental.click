@@ -7,7 +7,7 @@
 window.STAFF_I18N = {
   en: {
     'lang.label': 'Language',
-    'footer.note': 'JetRental · for staff only',
+    'footer.note': 'Jet Mobility · for staff only',
 
     'type.scooter': 'Scooter', 'type.motorcycle': 'Motorbike', 'type.car': 'Car',
     'types.scooter': 'Scooters', 'types.motorcycle': 'Motorbikes', 'types.car': 'Cars',
@@ -388,7 +388,7 @@ window.STAFF_I18N = {
 
   ru: {
     'lang.label': 'Язык',
-    'footer.note': 'JetRental · только для сотрудников',
+    'footer.note': 'Jet Mobility · только для сотрудников',
 
     'type.scooter': 'Скутер', 'type.motorcycle': 'Мотоцикл', 'type.car': 'Автомобиль',
     'types.scooter': 'Скутеры', 'types.motorcycle': 'Мотоциклы', 'types.car': 'Автомобили',
@@ -770,7 +770,7 @@ window.STAFF_I18N = {
 
   th: {
     'lang.label': 'ภาษา',
-    'footer.note': 'JetRental · สำหรับพนักงานเท่านั้น',
+    'footer.note': 'Jet Mobility · สำหรับพนักงานเท่านั้น',
 
     'type.scooter': 'สกู๊ตเตอร์', 'type.motorcycle': 'มอเตอร์ไซค์', 'type.car': 'รถยนต์',
     'types.scooter': 'สกู๊ตเตอร์', 'types.motorcycle': 'มอเตอร์ไซค์', 'types.car': 'รถยนต์',

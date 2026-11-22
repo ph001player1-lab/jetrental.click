@@ -8,14 +8,14 @@ import { fileURLToPath } from 'node:url';
 
 /** 'a.com, B.com' → ['a.com', 'b.com'] */
 function hostList(value, fallback) {
-  return String(value || fallback).split(',').map((h) => h.trim().toLowerCase()).filter(Boolean);
+  return String(value ?? fallback).split(',').map((h) => h.trim().toLowerCase()).filter(Boolean);
 }
 
 const dataDir = process.env.DATA_DIR || '/data';
 
 export const config = {
   port: Number(process.env.PORT) || 3000,
-  publicBaseUrl: (process.env.PUBLIC_BASE_URL || 'https://bot.jetrental.click').replace(/\/+$/, ''),
+  publicBaseUrl: (process.env.PUBLIC_BASE_URL || 'https://bot.jetmobility.org').replace(/\/+$/, ''),
   dataDir,
   timezone: 'Asia/Bangkok',
 
@@ -56,12 +56,15 @@ export const config = {
   mail: {
     resendApiKey: process.env.RESEND_API_KEY || '',
     apiBase: (process.env.RESEND_API_BASE || 'https://api.resend.com').replace(/\/+$/, ''),
-    from: process.env.MAIL_FROM || 'JetRental Staff <noreply@jetrental.click>'
+    from: process.env.MAIL_FROM || 'Jet Mobility Staff <noreply@jetmobility.org>',
+    // Пока новый домен не подтверждён в Resend, письма уходят со старого — чтобы
+    // сотрудники не остались без кода входа при переезде (пусто — без запасного)
+    fallbackFrom: process.env.MAIL_FROM_FALLBACK ?? 'Jet Mobility Staff <noreply@jetrental.click>'
   },
 
-  // Сайт сотрудников (staff.jetrental.click): вход по коду из письма
+  // Сайт сотрудников (staff.jetmobility.org): вход по коду из письма
   staff: {
-    url: (process.env.STAFF_URL || 'https://staff.jetrental.click').replace(/\/+$/, ''),
+    url: (process.env.STAFF_URL || 'https://staff.jetmobility.org').replace(/\/+$/, ''),
     // Вход по коду из письма действует неделю
     sessionDays: Number(process.env.STAFF_SESSION_DAYS) || 7,
     codeMinutes: 10,
@@ -75,10 +78,11 @@ export const config = {
     dir: process.env.SITE_DIR || fileURLToPath(new URL('../../web/site/', import.meta.url)),
     // Фото, загруженные через сайт сотрудников (отдаёт Caddy по адресу /uploads/…)
     uploadsDir: process.env.UPLOADS_DIR || path.join(dataDir, 'uploads'),
-    jetrentalHosts: hostList(process.env.JETRENTAL_HOSTS, 'jetrental.click,www.jetrental.click'),
+    // Jet Mobility — основной сайт (пока закрыт от поисковиков: kokoncar.com ещё работает)
+    jetmobilityHosts: hostList(process.env.JETMOBILITY_HOSTS, 'jetmobility.org,www.jetmobility.org'),
     kokonHosts: hostList(process.env.KOKON_HOSTS, 'www.kokoncar.com,kokoncar.com'),
-    // Тестовая копия KokonCar до переезда домена — закрыта от поисковиков
-    kokonPreviewHosts: hostList(process.env.KOKON_PREVIEW_HOSTS, 'kokon.jetrental.click'),
+    // Тестовая копия KokonCar (если понадобится) — закрыта от поисковиков; по умолчанию нет
+    kokonPreviewHosts: hostList(process.env.KOKON_PREVIEW_HOSTS, ''),
     // Дизайн kokoncar.com после переезда: classic (как на Wix) или modern
     kokonTheme: process.env.KOKON_THEME === 'modern' ? 'modern' : 'classic',
     // Коды подтверждения Яндекс.Вебмастера / Google Search Console (через запятую)

@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-  JetRental Staff — сайт для сотрудников (staff.jetrental.click).
+  Jet Mobility Staff — сайт для сотрудников (staff.jetmobility.org).
   Вход по коду из письма, данные — из WS.Автопрокат через /api/staff/*.
   При изменении staff.js / staff.css увеличивайте ?v=, чтобы телефоны не брали старый файл из кэша.
   Без сторонних библиотек: HTML + CSS + JS. Вкладка «Сервер» (только Admin) — cockpit.js. Тексты на 3 языках — i18n.js
@@ -11,17 +11,17 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="robots" content="noindex, nofollow" />
-  <meta name="theme-color" content="#0b1f33" />
-  <title>JetRental Staff</title>
-  <link rel="icon" href="icon-32.png" sizes="32x32" type="image/png" />
-  <link rel="icon" href="icon-192.png" sizes="192x192" type="image/png" />
-  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <meta name="theme-color" content="#0d0f12" />
+  <title>Jet Mobility Staff</title>
+  <link rel="icon" href="icon-32.png?v=2" sizes="32x32" type="image/png" />
+  <link rel="icon" href="icon-192.png?v=2" sizes="192x192" type="image/png" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png?v=2" />
   <!-- Ярлык на экране телефона открывается как отдельное приложение -->
-  <link rel="manifest" href="manifest.json" />
+  <link rel="manifest" href="manifest.json?v=2" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-title" content="JR Staff" />
-  <link rel="stylesheet" href="staff.css?v=11" />
+  <meta name="apple-mobile-web-app-title" content="JM Staff" />
+  <link rel="stylesheet" href="staff.css?v=12" />
 </head>
 <body>
   <!-- Вход -->
@@ -30,8 +30,8 @@
       <div class="login__top"><div class="langs" data-langs role="group"></div></div>
       <div class="brand brand--big">
         <picture>
-          <source srcset="logo-wordmark-light.webp" media="(prefers-color-scheme: dark)" />
-          <img src="logo-wordmark.webp" alt="JetRental" width="341" height="120" />
+          <source srcset="logo-wordmark-light.webp?v=2" media="(prefers-color-scheme: dark)" />
+          <img src="logo-wordmark.webp?v=2" alt="Jet Mobility" width="316" height="100" />
         </picture>
         <span class="brand__tag">Staff</span>
       </div>
@@ -63,7 +63,7 @@
       <p id="login-error" class="error" role="alert" hidden></p>
       <footer class="footer">
         <div class="langs langs--full" data-langs="full" role="group"></div>
-        <span data-i18n="footer.note">JetRental · for staff only</span>
+        <span data-i18n="footer.note">Jet Mobility · for staff only</span>
       </footer>
     </div>
   </main>
@@ -72,7 +72,7 @@
   <div id="app" class="app" hidden>
     <header class="topbar">
       <div class="brand">
-        <img src="logo-wordmark-light.webp" alt="JetRental" width="341" height="120" />
+        <img src="logo-wordmark-light.webp?v=2" alt="Jet Mobility" width="316" height="100" />
         <span class="brand__tag">Staff</span>
       </div>
       <nav class="tabs tabs--top" aria-label="Sections" data-i18n-aria="app.sections"></nav>
@@ -97,7 +97,7 @@
 
     <footer class="footer footer--app">
       <div class="langs langs--full" data-langs="full" role="group"></div>
-      <span data-i18n="footer.note">JetRental · for staff only</span>
+      <span data-i18n="footer.note">Jet Mobility · for staff only</span>
     </footer>
 
     <nav class="tabs tabs--bottom" aria-label="Sections" data-i18n-aria="app.sections"></nav>
@@ -163,7 +163,7 @@
     </form>
   </dialog>
 
-  <script src="i18n.js?v=12"></script>
+  <script src="i18n.js?v=13"></script>
   <script src="specs.js?v=6"></script>
   <script src="cockpit.js?v=2"></script>
   <script src="journal.js?v=1"></script>

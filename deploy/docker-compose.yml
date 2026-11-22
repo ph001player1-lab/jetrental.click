@@ -23,10 +23,9 @@ services:
     # новый Caddyfile (update.sh делает caddy reload)
     command: caddy run --config /etc/caddy/kokon/Caddyfile --adapter caddyfile
     environment:
-      BOT_DOMAIN: ${BOT_DOMAIN:-bot.jetrental.click}
-      STAFF_DOMAIN: ${STAFF_DOMAIN:-staff.jetrental.click}
-      SITE_DOMAIN: ${SITE_DOMAIN:-jetrental.click}
-      KOKON_PREVIEW_DOMAIN: ${KOKON_PREVIEW_DOMAIN:-kokon.jetrental.click}
+      BOT_DOMAIN: ${BOT_DOMAIN:-bot.jetmobility.org}
+      STAFF_DOMAIN: ${STAFF_DOMAIN:-staff.jetmobility.org}
+      SITE_DOMAIN: ${SITE_DOMAIN:-jetmobility.org}
     volumes:
       - ./:/etc/caddy/kokon:ro
       - ../web:/srv/web:ro

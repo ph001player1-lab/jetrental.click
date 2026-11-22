@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * API сайта сотрудников (staff.jetrental.click)
+ * API сайта сотрудников (staff.jetmobility.org)
  * ============================================================================
  * Вход без паролей: сотрудник вводит почту → на неё приходит 6-значный код
  * (действует 10 минут, 5 попыток) → после ввода кода вход действует 7 дней.
@@ -79,23 +79,23 @@ function sessionCookie(token, maxAgeSeconds) {
 // Письмо с кодом — на языке, выбранном на сайте сотрудников
 const CODE_EMAIL = {
   en: {
-    subject: 'JetRental staff login code: {code}',
+    subject: 'Jet Mobility staff login code: {code}',
     hi: 'Hi {name},',
-    lead: 'Your JetRental staff login code:',
+    lead: 'Your Jet Mobility staff login code:',
     valid: 'It is valid for {minutes} minutes. After you sign in, access lasts {days} days.',
     ignore: 'If you did not request this code, just ignore this email.'
   },
   ru: {
-    subject: 'Код входа JetRental Staff: {code}',
+    subject: 'Код входа Jet Mobility Staff: {code}',
     hi: 'Здравствуйте, {name}!',
-    lead: 'Ваш код для входа на сайт сотрудников JetRental:',
+    lead: 'Ваш код для входа на сайт сотрудников Jet Mobility:',
     valid: 'Код действует {minutes} минут. После входа доступ сохраняется {days} дней.',
     ignore: 'Если вы не запрашивали код, просто проигнорируйте это письмо.'
   },
   th: {
-    subject: 'รหัสเข้าสู่ระบบ JetRental Staff: {code}',
+    subject: 'รหัสเข้าสู่ระบบ Jet Mobility Staff: {code}',
     hi: 'สวัสดี {name}',
-    lead: 'รหัสเข้าสู่ระบบเว็บไซต์พนักงาน JetRental ของคุณ:',
+    lead: 'รหัสเข้าสู่ระบบเว็บไซต์พนักงาน Jet Mobility ของคุณ:',
     valid: 'รหัสใช้ได้ {minutes} นาที หลังเข้าสู่ระบบแล้วจะใช้งานได้ {days} วัน',
     ignore: 'หากคุณไม่ได้ขอรหัสนี้ ไม่ต้องทำอะไร'
   }

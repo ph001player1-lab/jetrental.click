@@ -1,4 +1,5 @@
-/* JetRental Staff — мобильный интерфейс сотрудников, светлая и тёмная темы */
+/* Jet Mobility Staff — мобильный интерфейс сотрудников, светлая и тёмная темы.
+   Цвета — по логотипу: чёрная шапка, оранжевый акцент со стрелки. */
 
 :root {
   --bg: #f3f6f9;
@@ -7,9 +8,10 @@
   --text: #0f1b2a;
   --muted: #5d6b7c;
   --line: #dde3ea;
-  --brand: #0e9f94;
+  /* Тёмно-оранжевый: на белом фоне читается (контраст ≥ 4.5) */
+  --brand: #b85200;
   --brand-ink: #ffffff;
-  --navy: #0b1f33;
+  --navy: #0d0f12;
 
   --free: #16a34a;
   --free-bg: #dcfce7;
@@ -38,8 +40,8 @@
     --text: #e6edf5;
     --muted: #93a3b8;
     --line: #22344a;
-    --brand: #2cc4b6;
-    --brand-ink: #062a27;
+    --brand: #ff8a1f;
+    --brand-ink: #1a0d00;
     --free: #4ade80;
     --free-bg: #12341f;
     --rent: #ff8a73;
@@ -108,7 +110,7 @@ a { color: var(--brand); }
 
 /* --- Вход --- */
 
-.login { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; background: radial-gradient(1200px 600px at 10% -10%, rgba(20, 184, 166, .18), transparent 60%), var(--bg); }
+.login { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; background: radial-gradient(1200px 600px at 10% -10%, rgba(255, 122, 0, .16), transparent 60%), var(--bg); }
 .login__card { width: 100%; max-width: 380px; }
 .login__form { display: grid; gap: 16px; }
 .login__form h1 { margin: 0; font-size: 26px; letter-spacing: -.02em; }
@@ -147,7 +149,7 @@ a { color: var(--brand); }
   position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 12px;
   padding: 10px 12px 10px 16px; background: var(--navy); color: #fff;
 }
-.topbar .brand__tag { background: #5eead4; color: #062a27; }
+.topbar .brand__tag { background: #ff8a1f; color: #1a0d00; }
 .topbar__right { margin-left: auto; display: flex; gap: 2px; }
 
 .statusline { display: flex; justify-content: space-between; gap: 12px; padding: 10px 16px 0; font-size: 13px; max-width: 1100px; margin: 0 auto; }
@@ -482,7 +484,7 @@ button.problem:hover { background: var(--surface-2); }
   font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
   background: var(--surface-2); color: var(--muted);
 }
-.role--admin { background: var(--navy); color: #5eead4; }
+.role--admin { background: var(--navy); color: #ff9a3c; }
 .role--editor { background: var(--free-bg); color: var(--free); }
 
 /* Шесть вкладок внизу (у админа) — помельче, чтобы влезли в телефон */

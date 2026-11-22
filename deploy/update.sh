@@ -40,6 +40,13 @@ main() {
     printf 'INTERNAL_SECRET=%s\n' "$(openssl rand -hex 32)" >> "$env_file"
     echo "Создан INTERNAL_SECRET для наблюдателя WhatsApp"
   fi
+  # Переезд на jetmobility.org: старые адреса jetrental.click в настройках
+  # отключаем (комментируем) — тогда работают новые адреса по умолчанию
+  if grep -qE '^(PUBLIC_BASE_URL|STAFF_URL|MAIL_FROM|JETRENTAL_HOSTS|KOKON_PREVIEW_HOSTS)=.*jetrental\.click' "$env_file"; then
+    sed -i -E 's/^((PUBLIC_BASE_URL|STAFF_URL|MAIL_FROM|JETRENTAL_HOSTS|KOKON_PREVIEW_HOSTS)=.*jetrental\.click.*)$/# \1  # отключено при переезде на jetmobility.org/' "$env_file"
+    echo "Старые адреса jetrental.click в /opt/kokon/.env отключены"
+  fi
+
   # Наблюдателю передаём только этот секрет, остальные секреты ему не нужны
   INTERNAL_SECRET="$(grep '^INTERNAL_SECRET=' "$env_file" | tail -1 | cut -d= -f2-)"
   export INTERNAL_SECRET
@@ -57,9 +64,9 @@ main() {
 
   echo
   echo "Готово. Проверка:"
-  echo "  https://bot.jetrental.click/health"
-  echo "  https://staff.jetrental.click"
-  echo "  https://jetrental.click"
+  echo "  https://bot.jetmobility.org/health"
+  echo "  https://staff.jetmobility.org"
+  echo "  https://jetmobility.org"
 }
 
 main "$@"

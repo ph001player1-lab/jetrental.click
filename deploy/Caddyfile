@@ -1,13 +1,11 @@
 # Caddy сам получает и продлевает HTTPS-сертификаты (Let's Encrypt).
-#   bot.jetrental.click   — вебхуки ботов и /health → контейнер bot
-#   staff.jetrental.click — сайт сотрудников (web/staff) + /api/staff/* → bot
-#   jetrental.click       — сайт аренды: страницы собирает bot, картинки,
-#                           стили и скрипты — из web/site. До переезда
-#                           kokoncar.com закрыт от поисковиков (основной
-#                           сайт в поиске — kokoncar.com)
-#   www.jetrental.click   — переадресация на jetrental.click
-#   kokon.jetrental.click — тестовая копия сайта KokonCar в дизайне старого kokoncar.com
-#                           (до переезда kokoncar.com, закрыта от поисковиков)
+#   bot.jetmobility.org   — вебхуки ботов и /health → контейнер bot
+#   staff.jetmobility.org — сайт сотрудников и приложение (web/staff) + /api/staff/* → bot
+#   jetmobility.org       — сайт аренды Jet Mobility: страницы собирает bot,
+#                           картинки, стили и скрипты — из web/site. Закрыт от
+#                           поисковиков, пока работает старый kokoncar.com
+#                           (чтобы в поиске не было двух одинаковых сайтов)
+#   www.jetmobility.org   — переадресация на jetmobility.org
 
 # Журнал запросов (JSON) для вкладки «Сервер»: бот читает его и считает,
 # на что ушёл трафик. Права 644 — чтобы бот мог читать; без сжатия старых
@@ -108,9 +106,4 @@
 www.{$SITE_DOMAIN} {
 	import access_log
 	redir https://{$SITE_DOMAIN}{uri} permanent
-}
-
-{$KOKON_PREVIEW_DOMAIN} {
-	import public_site
-	header X-Robots-Tag "noindex, nofollow"
 }

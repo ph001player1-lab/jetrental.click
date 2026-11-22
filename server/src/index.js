@@ -9,7 +9,7 @@
  *   POST /webhooks/whatsapp  — сообщения WhatsApp от Kapso (проверяется подпись)
  *   /api/staff/*             — сайт сотрудников (staffPortal.js)
  *   /api/public/*            — открытое API сайта (publicApi.js)
- *   остальные GET на доменах сайта (jetrental.click, kokoncar.com) — страницы
+ *   остальные GET на доменах сайта (jetmobility.org, kokoncar.com) — страницы
  *                              сайта, sitemap.xml, robots.txt (site/index.js)
  * ============================================================================
  */
