@@ -28,8 +28,9 @@ export async function sendMail(message) {
   if (!mailEnabled) throw new Error('Mail is not configured: RESEND_API_KEY is not set');
   let response = await post(config.mail.from, message);
   let data = await response.json().catch(() => ({}));
-  // Домен отправителя ещё не подтверждён в Resend — отправляем со старого адреса
-  if (!response.ok && config.mail.fallbackFrom && /domain/i.test(data.message || '') && /verif/i.test(data.message || '')) {
+  // Resend не принял отправителя (домен не подтверждён, ключ ограничен другим
+  // доменом и т. п.) — пробуем запасной адрес, чтобы сотрудники могли войти
+  if (!response.ok && config.mail.fallbackFrom && [403, 422].includes(response.status)) {
     console.error(`Resend: ${data.message} — sending from the fallback address`);
     response = await post(config.mail.fallbackFrom, message);
     data = await response.json().catch(() => ({}));

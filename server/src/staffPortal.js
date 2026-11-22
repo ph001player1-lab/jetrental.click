@@ -40,7 +40,9 @@ import { todayIso } from './dates.js';
 import { canEdit, listModels, saveDescription, uploadPhoto, uploadThumb, saveGallery } from './staffCatalog.js';
 import { collectProblems, bookingOutlook, requestStats, LIMITS } from './dashboard.js';
 import { roleOf, permissionsOf } from './roles.js';
-import { serverReport, saveServerSettings } from './serverStats.js';
+import { serverReport, saveServerSettings, alertAdminsOnce } from './serverStats.js';
+import { g } from './groupTexts.js';
+import { escapeHtml } from './format.js';
 import { getJournal, fixEvent, getTimesheet, getReconcile, getMedia, importHistory } from './journal/api.js';
 import { waStatus, waConfig, waPair, waLogout } from './journal/observer.js';
 import { groupStatusByPlate } from './journal/reconcile.js';
@@ -139,7 +141,11 @@ async function login(req, res) {
   const expiresAt = new Date(Date.now() + config.staff.codeMinutes * 60000).toISOString();
   // Ответ и лимиты одинаковые для любой почты — так нельзя подобрать почты сотрудников.
   // Для чужой почты сохраняем «пустой» код, который ничему не соответствует.
-  if (!staff) db.saveLoginCode(email, crypto.randomBytes(32).toString('hex'), expiresAt);
+  if (!staff) {
+    db.saveLoginCode(email, crypto.randomBytes(32).toString('hex'), expiresAt);
+    // В журнал сервера — чтобы было видно, почему код не пришёл (почта скрыта частично)
+    console.log(`Login code requested for an email not in the Users sheet: ${email.replace(/^(.).*?@/, '$1***@')}`);
+  }
   if (staff) {
     const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
     db.saveLoginCode(email, hmac(`${email}:${code}`), expiresAt);
@@ -147,6 +153,8 @@ async function login(req, res) {
       await sendMail({ to: email, ...codeEmail(code, staff.name || email, lang) });
     } catch (err) {
       console.error('Login code email failed:', err.message);
+      alertAdminsOnce('login_mail', g('alert.loginMail', { error: escapeHtml(err.message).slice(0, 300) }))
+        .catch((e) => console.error('Admin alert failed:', e.message));
       throw new HttpError(502, 'mail_failed');
     }
   }

@@ -375,6 +375,17 @@ async function notifyAdmins(text) {
   }
 }
 
+/**
+ * Оповещение админам не чаще раза в gapMs по ключу (например, «письма с кодом
+ * не уходят» — чтобы о сбое узнать сразу, а не когда никто не может войти)
+ */
+export async function alertAdminsOnce(key, text, gapMs = 3600000) {
+  const last = Number(db.getSetting(`alert_once_${key}`) || 0);
+  if (Date.now() - last < gapMs) return;
+  db.setSetting(`alert_once_${key}`, Date.now());
+  await notifyAdmins(text);
+}
+
 const gb = (bytes) => new Intl.NumberFormat(groupLocale, { maximumFractionDigits: bytes >= 100e9 ? 0 : 1 }).format(bytes / 1e9);
 
 async function checkAlerts(now = Date.now()) {
