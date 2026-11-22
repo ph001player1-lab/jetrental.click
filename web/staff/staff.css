@@ -780,9 +780,18 @@ button.problem:hover { background: var(--surface-2); }
 .jr-rec--waiting { border-color: var(--reserve); }
 .jr-rec__group { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .jr-rec__state { font-weight: 600; font-size: 13px; }
-/* Сотруднику нужно действие: срок ещё идёт — оранжевый, прошёл — красный */
-.jr-rec__state--waiting { color: var(--warn); font-weight: 700; }
-.jr-rec__state--mismatch { color: var(--rent); font-weight: 700; }
+/* Сколько не внесено: до 3 рабочих часов — спокойно, дольше — жёлтый, дольше рабочего дня — красный */
+.jr-rec__state--fresh { color: var(--muted); }
+.jr-rec__state--late { color: var(--warn); font-weight: 700; }
+.jr-rec__state--overdue { color: var(--rent); font-weight: 700; }
+.jr-rec.jr-rec--fresh { border-color: var(--line); }
+.jr-rec.jr-rec--late { border-color: #f0b429; }
+.jr-rec.jr-rec--overdue { border-color: var(--rent); }
+.jr-counts { display: flex; flex-wrap: wrap; gap: 8px; }
+.jr-count { padding: 4px 10px; border-radius: 999px; font-weight: 700; font-size: 13px; background: var(--surface-2); color: var(--muted); }
+.jr-count--fresh { color: var(--text); }
+.jr-count--late { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+.jr-count--overdue { background: color-mix(in srgb, var(--rent) 16%, transparent); color: var(--rent); }
 .jr-rec--ok .jr-rec__state, .jr-rec--none .jr-rec__state, .jr-rec--unknown .jr-rec__state { color: var(--muted); font-weight: 500; }
 @media (max-width: 720px) { .jr-rec { grid-template-columns: minmax(0, 1fr) auto; } .jr-rec__group, .jr-rec__state { grid-column: 1 / -1; } }
 .jr-wa { padding: 14px; display: grid; gap: 10px; }

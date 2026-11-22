@@ -69,19 +69,6 @@ export function workingMinutes(from, to) {
   return Math.floor(total / 60000);
 }
 
-/** Момент, когда от from пройдёт minutes рабочих минут (10:00–19:00 по Бангкоку) */
-export function addWorkingMinutes(from, minutes) {
-  let left = minutes * 60000;
-  for (let day = bangkokDayStart(from); ; day += DAY_MS) {
-    const start = Math.max(from, day + LIMITS.workFromHour * HOUR_MS);
-    const end = day + LIMITS.workToHour * HOUR_MS;
-    if (end > start) {
-      if (end - start >= left) return start + left;
-      left -= end - start;
-    }
-  }
-}
-
 const carName = (car) => `${car.model || car.wsModel || 'Vehicle'} · ${car.plate}`;
 const parsed = (car) => car.segments.map((s) => ({ kind: s.kind, from: Date.parse(s.from), to: Date.parse(s.to) }));
 
@@ -359,12 +346,14 @@ async function reconcileProblems(tx, now) {
     const car = `${item.model || 'Vehicle'} · ${item.plate}`;
     const ws = tx.t(`ws.${item.ws.status}`);
     const target = { tab: 'journal', q: item.plate };
+    // Дольше рабочего дня — ошибка (красный), иначе предупреждение
+    const level = item.severity === 'overdue' ? 'error' : 'warning';
     if (item.reason === 'ws_only') {
-      return { group: 'reconcile', level: 'warning', target, title: tx.t('reconcile.ws_only.title', { car }), detail: tx.t('reconcile.wsOnlyDetail', { when: tx.dateTime(Date.parse(item.ws.from)) }) };
+      return { group: 'reconcile', level, target, title: tx.t('reconcile.ws_only.title', { car }), detail: tx.t('reconcile.wsOnlyDetail', { when: tx.dateTime(Date.parse(item.ws.from)) }) };
     }
     const who = phones.get(item.group.author) || item.group.authorName || item.group.author;
     return {
-      group: 'reconcile', level: 'warning', target,
+      group: 'reconcile', level, target,
       title: tx.t(`reconcile.${item.reason}.title`, { car, ws }),
       detail: tx.t('reconcile.detail', { when: tx.dateTime(Date.parse(item.group.at)), who })
     };

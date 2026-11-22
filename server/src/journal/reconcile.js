@@ -6,8 +6,10 @@
  *   выдача, продление, оплата, задание «забрать» → в аренде;
  *   возврат, «замена: откуда» → свободна; «замена: куда» → в аренде;
  *   бронь с госномером → бронь (если машина не в аренде).
- * В WS вносят с опозданием, поэтому расхождение сначала «ждём внесения»,
- * а через 3 рабочих часа (10:00–19:00 по Бангкоку) — предупреждение.
+ * В WS вносят с опозданием. Сколько не внесено — считаем в рабочем времени
+ * (10:00–19:00 по Бангкоку): до 3 часов — норма, больше 3 часов — жёлтый
+ * (предупреждение), больше рабочего дня — красный и счёт в днях.
+ * Бронь сверяем по датам: в WS у машины на эти дни должна быть бронь или аренда.
  * Судим только по отчётам после подключения наблюдателя: по истории из
  * выгрузки показываем статус, но расхождением не считаем — в ней бывают дыры.
  * Обратная сверка: в WS аренда началась, а отчёта о выдаче в группе нет.
@@ -17,11 +19,13 @@
 import * as db from '../db.js';
 import { plateKey } from '../fleet.js';
 import { getWsSnapshot } from '../ws/sync.js';
-import { workingMinutes, addWorkingMinutes } from '../dashboard.js';
+import { workingMinutes } from '../dashboard.js';
 import { liveSince } from './journal.js';
 import { currentSegment } from './wsHistory.js';
 
 export const GRACE_WORK_MINUTES = 180;
+// Рабочий день 10:00–19:00: дольше — «красный», счёт в днях
+export const WORK_DAY_MINUTES = 9 * 60;
 const HOUR_MS = 3600000;
 const DAY_MS = 24 * HOUR_MS;
 
@@ -43,10 +47,21 @@ export function groupStatusByPlate() {
     else status = 'rent';
     if (!status) continue;
     const fields = JSON.parse(row.data || '{}').fields || {};
-    byPlate.set(row.plate, { status, at: row.ts, id: row.id, kind: row.kind, author: row.author, authorName: row.author_name, to: fields.to || null });
+    byPlate.set(row.plate, { status, at: row.ts, id: row.id, kind: row.kind, author: row.author, authorName: row.author_name, from: fields.from || null, to: fields.to || null });
   }
   return byPlate;
 }
+
+/** Бронь из группы есть в WS: на её даты у машины в WS бронь или аренда */
+function bookingInWs(car, g) {
+  const day = (iso) => Date.parse(`${iso}T00:00:00+07:00`);
+  const from = g.from ? day(g.from) : Date.parse(g.at);
+  const to = g.to ? day(g.to) + DAY_MS : from + DAY_MS;
+  return (car.segments || []).some((s) => (s.kind === 'reserve' || s.kind === 'rent') && Date.parse(s.from) < to && Date.parse(s.to) > from);
+}
+
+/** Насколько срочно: до 3 рабочих часов — норма, дольше — жёлтый, дольше рабочего дня — красный */
+const severityOf = (minutes) => (minutes >= WORK_DAY_MINUTES ? 'overdue' : minutes >= GRACE_WORK_MINUTES ? 'late' : 'fresh');
 
 /** Совпадает ли статус по группе со статусом в WS */
 function agrees(group, wsStatus) {
@@ -59,8 +74,9 @@ function agrees(group, wsStatus) {
 
 /**
  * По каждой машине Автопроката: статус в WS, статус по группе и итог —
- * ok / waiting (сотруднику нужно внести в WS или написать отчёт — срок dueAt) /
- * mismatch (срок прошёл) / unknown (до наблюдателя) / none (нет отчётов)
+ * ok / waiting (меньше 3 рабочих часов) / mismatch (дольше) / unknown (до наблюдателя) /
+ * none (нет отчётов). reason: group_* — не внесено в WS, ws_only — нет отчёта в группе;
+ * age — сколько рабочих минут не внесено, severity — fresh / late / overdue.
  */
 export function reconcile(now = Date.now()) {
   const snapshot = getWsSnapshot();
@@ -80,14 +96,16 @@ export function reconcile(now = Date.now()) {
       state: g ? 'ok' : 'none',
       reason: null
     };
-    if (g && !agrees(g.status, car.status)) {
+    const inWs = g && (agrees(g.status, car.status) || (g.status === 'reserve' && bookingInWs(car, g)));
+    if (g && !inWs) {
       const at = Date.parse(g.at);
       if (!live || at < live) item.state = 'unknown';
       else {
-        item.state = workingMinutes(at, now) >= GRACE_WORK_MINUTES ? 'mismatch' : 'waiting';
+        item.age = workingMinutes(at, now);
+        item.state = item.age >= GRACE_WORK_MINUTES ? 'mismatch' : 'waiting';
+        item.severity = severityOf(item.age);
+        item.since = g.at;
         item.reason = `group_${g.status}`;
-        // До какого времени сотрудник должен внести это в WS
-        item.dueAt = new Date(addWorkingMinutes(at, GRACE_WORK_MINUTES)).toISOString();
       }
     }
     // Обратная сверка: аренда в WS началась после подключения наблюдателя, а отчёта о выдаче нет
@@ -95,46 +113,14 @@ export function reconcile(now = Date.now()) {
       const from = Date.parse(seg.from);
       const reported = g && g.status === 'rent' && Date.parse(g.at) >= from - DAY_MS;
       if (from >= live && !reported) {
-        item.state = workingMinutes(from, now) >= GRACE_WORK_MINUTES ? 'mismatch' : 'waiting';
+        item.age = workingMinutes(from, now);
+        item.state = item.age >= GRACE_WORK_MINUTES ? 'mismatch' : 'waiting';
+        item.severity = severityOf(item.age);
+        item.since = seg.from;
         item.reason = 'ws_only';
-        // До какого времени нужно написать отчёт о выдаче в группу
-        item.dueAt = new Date(addWorkingMinutes(from, GRACE_WORK_MINUTES)).toISOString();
       }
     }
     return item;
   });
-  return { available: true, live: live ? new Date(live).toISOString() : null, items, lag: wsLag(now) };
-}
-
-/**
- * Насколько WS отстаёт от группы: для выдач и возвратов за 30 дней находим,
- * когда WS сменил статус машины. Только после начала истории WS (+1 час).
- */
-export function wsLag(now = Date.now(), days = 30) {
-  const first = db.raw.prepare('SELECT MIN(at) a FROM ws_history').get()?.a;
-  if (!first) return null;
-  const since = new Date(Math.max(Date.parse(first) + HOUR_MS, now - days * DAY_MS)).toISOString();
-  const events = db.raw.prepare(`
-    SELECT m.ts, m.kind, p.plate, p.role FROM wa_messages m JOIN wa_message_plates p ON p.message_id = m.id
-    WHERE m.kind IN ('issue', 'return', 'changed') AND m.status != 'ignored' AND p.role != 'mention' AND m.ts >= ?`).all(since);
-  const next = db.raw.prepare('SELECT at, status FROM ws_history WHERE plate = ? AND at >= ? ORDER BY at');
-  const lags = [];
-  let pending = 0;
-  for (const e of events) {
-    const wantRent = e.kind === 'issue' || (e.kind === 'changed' && e.role === 'to');
-    const t = Date.parse(e.ts);
-    const hit = next.all(e.plate, new Date(t - 6 * HOUR_MS).toISOString())
-      .find((h) => (wantRent ? h.status === 'rent' : h.status !== 'rent'));
-    if (hit) lags.push(Math.max(0, Date.parse(hit.at) - t));
-    else pending++;
-  }
-  lags.sort((a, b) => a - b);
-  const hours = (ms) => Math.round((ms / HOUR_MS) * 10) / 10;
-  return {
-    events: events.length,
-    entered: lags.length,
-    pending,
-    medianHours: lags.length ? hours(lags[Math.floor(lags.length / 2)]) : null,
-    maxHours: lags.length ? hours(lags[lags.length - 1]) : null
-  };
+  return { available: true, live: live ? new Date(live).toISOString() : null, items };
 }

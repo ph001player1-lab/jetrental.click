@@ -280,24 +280,26 @@
       const r = st.reconcile;
       if (!r) return `<div class="empty">${esc(t('app.loading'))}</div>`;
       if (!r.available) return `<div class="empty">${esc(t('jr.rec.noWs'))}</div>`;
-      const issues = r.items.filter((i) => i.state === 'mismatch' || i.state === 'waiting');
+      // Сначала то, что не внесено дольше всего
+      const issues = r.items.filter((i) => i.state === 'mismatch' || i.state === 'waiting').sort((a, b) => (b.age || 0) - (a.age || 0));
       const shown = st.recAll ? r.items : issues;
-      // «Сейчас не внесено в WS» — те же машины, что в списке «Расхождения» (отчёт есть, в WS нет)
-      const notEntered = issues.filter((i) => i.reason !== 'ws_only').length;
-      const hours = (v) => (v == null ? '—' : v < 1 ? '<1' : v);
-      const pending = notEntered ? `<span class="warn">${esc(t('jr.rec.pending', { n: notEntered }))}</span>` : '';
-      const lag = r.lag && r.lag.events
-        ? `<p class="note">${esc(t('jr.rec.lag', { median: hours(r.lag.medianHours), max: hours(r.lag.maxHours), entered: r.lag.entered, events: r.lag.events }))}${pending ? ` · ${pending}` : ''}</p>`
-        : pending ? `<p class="note">${pending}</p>` : '';
+      // Два счётчика — те же строки, что в списке: не внесено в WS и нет отчёта в группе
+      const notInWs = issues.filter((i) => i.reason !== 'ws_only');
+      const notInGroup = issues.filter((i) => i.reason === 'ws_only');
+      const counter = (key, list) => {
+        const worst = list.some((i) => i.severity === 'overdue') ? 'overdue' : list.some((i) => i.severity === 'late') ? 'late' : 'fresh';
+        return `<span class="jr-count jr-count--${list.length ? worst : 'zero'}">${esc(t(key, { n: list.length }))}</span>`;
+      };
+      const lag = `<p class="note jr-counts">${counter('jr.rec.notInWs', notInWs)} ${counter('jr.rec.notInGroup', notInGroup)}</p>`;
       const rows = shown.map((i) => `
-        <div class="card jr-rec jr-rec--${i.state}">
+        <div class="card jr-rec jr-rec--${i.state}${i.severity ? ` jr-rec--${i.severity}` : ''}">
           <div class="jr-rec__car"><b>${esc(i.model || '—')}</b> ${plateLink(i.plate)}</div>
           <div class="jr-rec__ws"><span class="muted">WS</span> <span class="pill pill--${esc(i.ws.status)}">${esc(t(`status.${i.ws.status}`))}</span></div>
           <div class="jr-rec__group"><span class="muted">${esc(t('jr.rec.group'))}</span>
             ${i.group ? `<span class="pill pill--${i.group.status === 'reserve' ? 'reserve' : i.group.status}">${esc(t(`jr.gs.${i.group.status}`))}</span>
               <span class="muted jr-small">${esc(`${t(`jr.kind.${i.group.kind}`)} · ${ctx.dateTime(i.group.at)} · ${i.group.who}`)}</span>` : `<span class="muted">${esc(t('jr.rec.noReports'))}</span>`}
           </div>
-          <div class="jr-rec__state jr-rec__state--${i.state}">${esc(recState(i))}</div>
+          <div class="jr-rec__state jr-rec__state--${i.severity || i.state}">${esc(recState(i))}</div>
         </div>`).join('');
       return `
         ${r.live ? `<p class="note muted">${esc(t('jr.rec.liveSince', { time: ctx.dateTime(r.live) }))}</p>` : `<p class="note jr-banner">${esc(t('jr.rec.notLive'))}</p>`}
@@ -320,11 +322,18 @@
       return `<p class="warn">⚠️ ${esc(t('jr.imp.auditMissed', { n: num(audit.missed), total: num(audit.checked), times: audit.missedAt.slice(-5).map((ts) => ctx.dateTime(ts)).join(', ') }))}</p>`;
     }
 
-    /** Статус сверки как действие для сотрудника: что сделать и до какого времени */
+    /** Сколько не внесено, в рабочем времени: «<1 ч», «2 ч», «3 дн.» (рабочий день — 9 часов) */
+    function ageText(minutes) {
+      if (minutes >= 540) return t('jr.age.d', { n: Math.floor(minutes / 540) });
+      if (minutes < 60) return t('jr.age.lt1h');
+      return t('jr.age.h', { n: Math.floor(minutes / 60) });
+    }
+
+    /** Статус сверки: что не внесено и сколько уже не внесено */
     function recState(i) {
-      const report = i.reason === 'ws_only';
-      if (i.state === 'waiting') return t(report ? 'jr.rs.waitingReport' : 'jr.rs.waitingWs', { time: i.dueAt ? ctx.dateTime(i.dueAt) : '—' });
-      if (i.state === 'mismatch') return t(report ? 'jr.rs.mismatchReport' : 'jr.rs.mismatchWs');
+      if (i.state === 'waiting' || i.state === 'mismatch') {
+        return t(i.reason === 'ws_only' ? 'jr.rs.noReport' : 'jr.rs.notInWs', { age: ageText(i.age || 0) });
+      }
       return t(`jr.rs.${i.state}`);
     }
 
