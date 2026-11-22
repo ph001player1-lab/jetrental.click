@@ -1,6 +1,6 @@
 /**
  * Проверка отправки писем (Resend): отправляет тестовое письмо и печатает
- * ответ почтового сервиса — с основного адреса и с запасного.
+ * ответ почтового сервиса.
  * Ключ RESEND_API_KEY не печатается.
  *
  *   docker compose -f /opt/kokon/app/deploy/docker-compose.yml exec bot node src/tools/mailTest.js you@example.com
@@ -15,7 +15,8 @@ if (!to || !to.includes('@')) {
 }
 console.log(`RESEND_API_KEY: ${config.mail.resendApiKey ? `задан (${config.mail.resendApiKey.length} символов)` : 'НЕ ЗАДАН'}`);
 
-for (const from of [config.mail.from, config.mail.fallbackFrom].filter(Boolean)) {
+{
+  const from = config.mail.from;
   const response = await fetch(`${config.mail.apiBase}/emails`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${config.mail.resendApiKey}`, 'Content-Type': 'application/json' },
@@ -23,8 +24,5 @@ for (const from of [config.mail.from, config.mail.fallbackFrom].filter(Boolean))
   });
   const data = await response.json().catch(() => ({}));
   console.log(`\nОтправитель: ${from}\nОтвет: HTTP ${response.status} ${JSON.stringify(data)}`);
-  if (response.ok) {
-    console.log('✅ Письмо принято — проверьте почту и resend.com → Emails.');
-    break;
-  }
+  console.log(response.ok ? '✅ Письмо принято — проверьте почту и resend.com → Emails.' : '❌ Resend не принял письмо — причина в ответе выше.');
 }

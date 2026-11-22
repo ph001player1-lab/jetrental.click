@@ -56,10 +56,7 @@ export const config = {
   mail: {
     resendApiKey: process.env.RESEND_API_KEY || '',
     apiBase: (process.env.RESEND_API_BASE || 'https://api.resend.com').replace(/\/+$/, ''),
-    from: process.env.MAIL_FROM || 'Jet Mobility Staff <noreply@jetmobility.org>',
-    // Пока новый домен не подтверждён в Resend, письма уходят со старого — чтобы
-    // сотрудники не остались без кода входа при переезде (пусто — без запасного)
-    fallbackFrom: process.env.MAIL_FROM_FALLBACK ?? 'Jet Mobility Staff <noreply@jetrental.click>'
+    from: process.env.MAIL_FROM || 'Jet Mobility Staff <noreply@jetmobility.org>'
   },
 
   // Сайт сотрудников (staff.jetmobility.org): вход по коду из письма
