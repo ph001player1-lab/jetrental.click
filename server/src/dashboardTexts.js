@@ -1,12 +1,12 @@
 /**
- * Тексты окна «Проблемы» на трёх языках сайта сотрудников (en / ru / th).
+ * Тексты окна «Проблемы» на языках сайта сотрудников (en / ru / th / my).
  * Утренняя сводка в рабочей группе — на языке группы (по умолчанию русский).
  * {name} — подстановка.
  */
 
-export const DASHBOARD_LANGS = ['en', 'ru', 'th'];
+export const DASHBOARD_LANGS = ['en', 'ru', 'th', 'my'];
 
-const LOCALES = { en: 'en-GB', ru: 'ru-RU', th: 'th-TH-u-ca-gregory' };
+const LOCALES = { en: 'en-GB', ru: 'ru-RU', th: 'th-TH-u-ca-gregory', my: 'my-MM-u-nu-latn' };
 
 const TEXTS = {
   en: {
@@ -213,6 +213,74 @@ const TEXTS = {
     'mailOff.title': 'ยังไม่ได้ตั้งค่าอีเมล',
     'mailOff.detail': 'ส่งรหัสเข้าสู่ระบบของเว็บไซต์นี้ไม่ได้ (RESEND_API_KEY)',
     'mailFailed.title': 'อีเมลรหัสเข้าสู่ระบบฉบับล่าสุดส่งไม่สำเร็จ',
+    'failure.detail': '{when}: {error}'
+  },
+  my: {
+    'time.longAgo': 'ရက် ၂၀ ကျော်က',
+    'time.hoursAgo': '{n} နာရီ အကြာက',
+    'time.daysAgo': '{n} ရက် အကြာက',
+    'time.at': '{date} ({ago})',
+    'wait.hm': '{h} နာရီ {m} မိနစ်',
+    'wait.m': '{m} မိနစ်',
+    'list.sep': '၊ ',
+    'missing.price': 'စျေးနှုန်း', 'missing.photo': 'ဓာတ်ပုံ', 'missing.description': 'ဖော်ပြချက်',
+    'season.Низкий': 'နိမ့်', 'season.Средний': 'အလယ်အလတ်', 'season.Высокий': 'မြင့်', 'season.Пик': 'အမြင့်ဆုံး',
+
+    'bookingNotIssued.title': 'ကြိုတင်မှာယူမှု မထုတ်ပေးရသေး- {car}',
+    'bookingNotIssued.detail': 'ထုတ်ပေးချိန် {when} ဖြစ်သော်လည်း Avtoprokat တွင် ယာဉ်ကို မငှားရသေးပါ။',
+    'longService.title': 'ကြာရှည် ပြုပြင်ဆဲ- {car}',
+    'longService.detail': '{when} မှစ၍ ပြုပြင်ဆဲ{end}။',
+    'longService.noEnd': '၊ ပြီးဆုံးမည့်ရက် မရှိ',
+    'notInSheet.title': 'Vehicles စာရွက်တွင် မရှိ- {car}',
+    'notInSheet.detail': 'Avtoprokat တွင် ဤယာဉ် ရှိသော်လည်း Vehicles စာရွက်တွင် ဤနံပါတ်ပြား အတန်း မရှိပါ — ဝက်ဘ်ဆိုက်တွင် မပြ၊ ဘော့များကလည်း မကမ်းလှမ်းပါ။',
+    'reconcile.group_rent.title': '{car}: အုပ်စုအရ လွှဲပေးပြီး၊ WS တွင် — {ws}',
+    'reconcile.group_free.title': '{car}: အုပ်စုအရ ပြန်အပ်ပြီး၊ WS တွင် ငှားထားဆဲ',
+    'reconcile.group_reserve.title': '{car}: အုပ်စုအရ ကြိုတင်မှာထား၊ WS တွင် — {ws}',
+    'reconcile.ws_only.title': '{car}: WS တွင် ငှားထားသည်၊ အုပ်စုတွင် လွှဲပေးကြောင်း အစီရင်ခံစာ မရှိ',
+    'reconcile.detail': 'အုပ်စု အစီရင်ခံစာ {when} ({who})။ WS ကို ပြင်ပါ သို့မဟုတ် မှတ်တမ်းတွင် အစီရင်ခံစာကို ပြင်ပါ။',
+    'reconcile.wsOnlyDetail': '{when} မှစ၍ WS တွင် ငှားထားသည်။ လွှဲပေးကြောင်း အစီရင်ခံစာကို အုပ်စုတွင် ရေးပါ။',
+    'ws.free': 'အားသည်', 'ws.rent': 'ငှားထားသည်', 'ws.reserve': 'ကြိုတင်မှာထားသည်', 'ws.service': 'ပြုပြင်ဆဲ',
+    'notInWs.title': 'Avtoprokat တွင် မရှိ- {car}',
+    'notInWs.detail': 'Vehicles စာရွက်တွင် ဤနံပါတ်ပြား ရှိသော်လည်း Avtoprokat တွင် မရှိပါ — နံပါတ်ကို စစ်ပါ သို့မဟုတ် အတန်းကို ဖျက်ပါ။',
+    'notInCatalog.title': 'Catalog စာရွက်တွင် မရှိ- {model}',
+    'notInCatalog.detail': 'ဤမော်ဒယ် ယာဉ်များ ရှိသော်လည်း Catalog စာရွက်တွင် အတန်း မရှိပါ — ဝက်ဘ်ဆိုက်တွင် မပြပါ။',
+    'website.title': '{model}: ဝက်ဘ်ဆိုက်တွင် {missing} မရှိ',
+    'website.detailPrice': 'ဖောက်သည်များ “စျေးနှုန်း မေးမြန်းပါ” ဟု မြင်ရသည်။ Catalog စာရွက် သို့မဟုတ် စျေးနှုန်းစာရင်းတွင် စျေးနှုန်း ထည့်ပါ။',
+    'website.detailOther': 'ဝက်ဘ်ဆိုက် တက်ဘ်တွင် ထည့်ပါ။',
+    'translate.title': '{model}: ဖော်ပြချက်ကို {langs} သို့ မဘာသာပြန်ရသေး',
+    'translate.detail': 'ဝက်ဘ်ဆိုက်တွင် အင်္ဂလိပ်စာကို ပြထားသည်။ ဝက်ဘ်ဆိုက် တက်ဘ် → ပြင်ဆင်ရန် → “ဘာသာပြန်ရန်”။',
+    'noPrice.title': 'စျေးနှုန်း မရှိ- {car}',
+    'noPrice.detail': 'ဤနံပါတ်ပြား {sheets} တွင် မပါပါ။',
+    'typo.title': 'စျေးနှုန်း အတန်းတွင် အမှား- {car}',
+    'typo.detail': '{sheets} တွင် ကြာရှည်ငှားလေ တစ်ရက်စျေး တက်လေ သို့မဟုတ် ၃ ဆထက် ပိုကျသည် — ဘော့များ ဤအတန်းကို မသုံးပါ။',
+    'unverified.title': 'စျေးနှုန်း မစစ်ဆေးရသေး- {name} ရာသီ',
+    'unverified.detail': 'ဤရက်များအတွက် ဖောက်သည်များ “… မှ” စျေးနှုန်းသာ မြင်ရသည်။ စစ်ဆေးပြီးပါက Сезоны စာရွက်ရှိ “Цены проверены” တွင် “Да” ထည့်ပါ။',
+    'seasonGap.title': '{range} အတွက် ရာသီ မရှိ',
+    'seasonGap.detail': 'ဤရက်များ Сезоны စာရွက်တွင် မပါပါ — တိကျသော စျေးနှုန်း တွက်၍ မရပါ။',
+    'notDelivered.title': 'တောင်းဆိုချက် ဝန်ထမ်းအုပ်စုသို့ မရောက်- {what}',
+    'notDelivered.detail': '{when} တွင် ရရှိသည်။ တောင်းဆိုချက်များ တက်ဘ်ကို ဖွင့်ပြီး ဖောက်သည်ကို ပြန်ဖြေပါ။',
+    'noAnswer.title': 'တောင်းဆိုချက် {what} ကို မဖြေရသေး',
+    'noAnswer.detail': 'အလုပ်ချိန် {wait} စောင့်နေသည် ({when} မှစ၍)။ ဝန်ထမ်းအုပ်စုတွင် ယူပါ (✋ ခလုတ်)။',
+
+    'wsOff.title': 'Avtoprokat ချိတ်ဆက်မထားပါ',
+    'wsOff.detail': 'ဆာဗာတွင် WS_API_URL / WS_API_USER / WS_API_PASSWORD မသတ်မှတ်ရသေးပါ။',
+    'wsNoData.title': 'Avtoprokat မှ ဒေတာ မရသေးပါ',
+    'wsNoData.error': 'နောက်ဆုံး အမှား- {error}',
+    'wsNoData.first': 'ပထမ ချိန်ကိုက်မှု လုပ်ဆောင်နေဆဲ။',
+    'wsStale.title': 'Avtoprokat ဒေတာ {n} မိနစ် ဟောင်းနေသည်',
+    'wsStale.error': 'ချိန်ကိုက်မှု အမှား- {error}',
+    'wsStale.hint': 'ချိန်ကိုက်မှုသည် ၁၀ မိနစ်တိုင်း လုပ်သည် — ဆာဗာကို စစ်ပါ။',
+    'wsLastFailed.title': 'နောက်ဆုံး Avtoprokat ချိန်ကိုက်မှု မအောင်မြင်ပါ',
+    'sheetsOff.title': 'Google Sheets ချိတ်ဆက်မထားပါ',
+    'sheetsOff.detail': 'ဆာဗာတွင် GOOGLE_SHEET_ID / service account မသတ်မှတ်ရသေးပါ။',
+    'sheetsError.title': 'Google Sheets အမှား',
+    'sheetsError.detail': '{error} — ဆာဗာသည် နောက်ဆုံး ဒေတာဖြင့် အလုပ်လုပ်နေသည်။',
+    'groupOff.title': 'ဝန်ထမ်းအုပ်စု ချိတ်ဆက်မထားပါ',
+    'groupOff.detail': 'တောင်းဆိုချက်အသစ်များ Telegram သို့ မရောက်ပါ။ ဝန်ထမ်းအုပ်စုတွင် /bind ပို့ပါ။',
+    'groupFailed.title': 'ဝန်ထမ်းအုပ်စုသို့ မပို့နိုင်ပါ',
+    'mailOff.title': 'အီးမေးလ် မသတ်မှတ်ရသေးပါ',
+    'mailOff.detail': 'ဤဆိုက်အတွက် ဝင်ရောက်ကုဒ်များ မပို့နိုင်ပါ (RESEND_API_KEY)။',
+    'mailFailed.title': 'နောက်ဆုံး ဝင်ရောက်ကုဒ် အီးမေးလ် မအောင်မြင်ပါ',
     'failure.detail': '{when}: {error}'
   }
 };

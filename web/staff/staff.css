@@ -61,7 +61,8 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; }
 body {
-  font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    "Noto Sans Myanmar", "Myanmar Text", "Myanmar Sangam MN", "Padauk", sans-serif;
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
@@ -754,3 +755,7 @@ button.problem:hover { background: var(--surface-2); }
 .jr-wa__group, .jr-wa__pair { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; }
 @media (max-width: 520px) { .jr-wa__group, .jr-wa__pair { grid-template-columns: minmax(0, 1fr); } }
 .jr-card > .link { justify-self: start; padding: 2px 0; }
+
+/* Бирманское письмо выше латиницы: больше межстрочный интервал */
+html:lang(my) body { line-height: 1.75; }
+html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
