@@ -320,7 +320,7 @@
       const importBlock = `
         <section class="card jr-wa">
           <h3>${esc(t('jr.imp.title'))}</h3>
-          <p class="muted">${esc(t('jr.imp.how'))}</p>
+          <p class="muted">${esc(t('jr.imp.how'))} ${esc(t('jr.imp.tip'))}</p>
           ${st.imported ? `<p class="note">${esc(t('jr.imp.last', { time: ctx.dateTime(st.imported.at), added: st.imported.added, from: ctx.shortDate(st.imported.from?.slice(0, 10)), to: ctx.shortDate(st.imported.to?.slice(0, 10)) }))}</p>` : ''}
           ${auditLine(st.imported?.audit)}
           <label class="btn"><span>${esc(t('jr.imp.choose'))}</span><input type="file" accept=".txt,text/plain" data-jr-import hidden></label>
@@ -472,6 +472,7 @@
         const r = await ctx.api('/journal/import', { body: { text } });
         st.importNote = { kind: 'ok', text: t('jr.imp.done', { added: num(r.added), ops: num(r.operations), skipped: num(r.skipped) }) };
         st.imported = { at: new Date().toISOString(), added: r.added, from: r.from, to: r.to, audit: r.audit };
+        if (r.captionsLost) st.importNote = { kind: 'error', text: `${st.importNote.text} ${t('jr.imp.noCaptions')}` };
       } catch (err) {
         st.importNote = { kind: 'error', text: ctx.errorText(err) };
       }

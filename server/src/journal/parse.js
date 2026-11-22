@@ -67,6 +67,8 @@ const MONEY_LABELS = [
 
 const clean = (text) => String(text || '')
   .replace(/<(image|video|audio|sticker|document|gif) omitted>|<attached:[^>]*>|<album message>|<unknown message>|<this message was edited>/gi, '')
+  // Пометки выгрузки на других языках и с Android: «<Без медиафайлов>», «<Сообщение изменено>», «<Media omitted>»
+  .replace(/<[^<>\n]{2,40}>/g, '')
   .replace(/^\s*\[forwarded\]\s*/i, '')
   .replace(/[‎‏‪-‮]/g, '')
   .trim();

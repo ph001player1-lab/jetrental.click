@@ -64,7 +64,11 @@ const q = {
 const sha = (value) => crypto.createHash('sha1').update(value).digest('hex').slice(0, 24);
 
 const stripPlaceholders = (text) => String(text || '')
-  .replace(/<(image|video|audio|sticker|document|gif) omitted>|<attached:[^>]*>/gi, '').trim();
+  .replace(/<(image|video|audio|sticker|document|gif) omitted>|<attached:[^>]*>/gi, '')
+  // «<Без медиафайлов>», «<Media omitted>», «<Сообщение изменено>» (Android, другие языки)
+  // и прочие пометки выгрузки: «<album message>», «<unknown message>», «<Без медиафайлов>»…
+  .replace(/<[^<>\n]{2,40}>/g, '')
+  .trim();
 
 /**
  * «Отпечаток» текста для поиска одного и того же сообщения в живых данных и в
@@ -73,25 +77,88 @@ const stripPlaceholders = (text) => String(text || '')
  */
 export function textKey(text) {
   return String(text || '')
-    .replace(/<[a-z ]+(omitted|message)>|<attached:[^>]*>|<this message was edited>/gi, ' ')
+    .replace(/<[^<>\n]{2,40}>/g, ' ')
     .replace(/@\u2068[^\u2069]*\u2069/g, ' ')
     .replace(/@\S+/g, ' ')
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, '')
-    .slice(0, 120);
+    .replace(/[^\p{L}\p{N}]+/gu, '');
+}
+
+/**
+ * Один и тот же ли это текст. Разные выгрузки по-разному пишут упоминания
+ * («@~Rungchai Bum», «@Kokon Car») — поэтому допускаем одно небольшое различие
+ * внутри текста. Сообщения из одних эмодзи, знаков и упоминаний — без упоминаний.
+ */
+export function sameText(a, b) {
+  const ka = textKey(a);
+  const kb = textKey(b);
+  if (!ka || !kb) {
+    // Одни эмодзи, знаки или упоминания: сравниваем то, что осталось без упоминаний
+    const raw = (t) => String(t || '').replace(/<[^<>\n]{2,40}>/g, '').replace(/@\u2068[^\u2069]*\u2069/g, '').replace(/@\S+/g, '').replace(/\s+/g, '');
+    return !ka && !kb && raw(a) === raw(b);
+  }
+  if (ka === kb) return true;
+  if (Math.min(ka.length, kb.length) < 24) return false;
+  // Отличаются только в одном месте и не больше чем на 16 знаков (остаток упоминания)
+  const n = Math.min(ka.length, kb.length);
+  let head = 0;
+  while (head < n && ka[head] === kb[head]) head++;
+  let tail = 0;
+  while (tail < n - head && ka[ka.length - 1 - tail] === kb[kb.length - 1 - tail]) tail++;
+  if (Math.max(ka.length, kb.length) - (head + tail) <= 16) return true;
+  // Длинные отчёты: несколько мелких различий (упоминания вида «@Alexey Kokon Car»,
+  // ссылки в другом виде) — сравниваем по парам соседних знаков
+  return n >= 60 && dice(ka, kb) >= 0.9;
+}
+
+/** Похожесть строк 0…1 по парам соседних знаков (коэффициент Дайса) */
+function dice(a, b) {
+  const pairs = new Map();
+  for (let i = 0; i < a.length - 1; i++) {
+    const p = a.slice(i, i + 2);
+    pairs.set(p, (pairs.get(p) || 0) + 1);
+  }
+  let common = 0;
+  for (let i = 0; i < b.length - 1; i++) {
+    const p = b.slice(i, i + 2);
+    const left = pairs.get(p);
+    if (left) { common++; pairs.set(p, left - 1); }
+  }
+  return (2 * common) / (a.length + b.length - 2);
 }
 
 const WINDOW_MS = 180000;
+
+/** Автор для сравнения выгрузок: номер — цифрами, имя — строчными буквами */
+const authorKey = (author) => {
+  const digits = String(author || '').replace(/\D/g, '');
+  return digits.length >= 8 ? digits : String(author || '').trim().toLowerCase();
+};
+
+/** Уже есть то же сообщение того же автора из выгрузки (±90 секунд: в выгрузке Android время до минуты) */
+function exportTwin(ts, author, text, batch) {
+  const at = Date.parse(ts);
+  const who = authorKey(author);
+  // Сообщения из этой же выгрузки не сравниваем: повтор отчёта с исправлением — отдельное сообщение
+  return db.raw.prepare("SELECT id, author, author_name, text FROM wa_messages WHERE source = 'export' AND ts BETWEEN ? AND ?")
+    .all(new Date(at - 90000).toISOString(), new Date(at + 90000).toISOString())
+    .some((row) => !batch.has(row.id) && sameText(row.text, text) && (authorKey(row.author) === who || authorKey(row.author_name) === who));
+}
 // Такие строки выгрузки наблюдатель передаёт без текста (место, опрос, контакт,
 // файл) — по ним проверку не делаем, иначе будут ложные «пропущено»
 const NOT_AUDITED = /^(location:|live location|poll:|contact card|.*\.vcf\b|.*\(file attached\)|<attached:)/i;
-const twinsOf = (source, ts, text) => {
+/** Авторы совместимы: если у обоих номер — номера совпадают; имя из контактов сверить нельзя */
+const sameAuthor = (a, b) => {
+  const ka = authorKey(a);
+  const kb = authorKey(b);
+  return !/^\d+$/.test(ka) || !/^\d+$/.test(kb) || ka === kb;
+};
+
+const twinsOf = (source, ts, text, author = null) => {
   const at = Date.parse(ts);
-  const key = textKey(text);
-  if (!key) return [];
-  return db.raw.prepare('SELECT id, text FROM wa_messages WHERE source = ? AND ts BETWEEN ? AND ?')
+  return db.raw.prepare('SELECT id, author, text FROM wa_messages WHERE source = ? AND ts BETWEEN ? AND ?')
     .all(source, new Date(at - WINDOW_MS).toISOString(), new Date(at + WINDOW_MS).toISOString())
-    .filter((row) => textKey(row.text) === key);
+    .filter((row) => sameText(row.text, text) && (!author || sameAuthor(row.author, author)));
 };
 
 function savePlates(id, plates) {
@@ -107,7 +174,7 @@ export function storeMessage(msg) {
   const parsed = parseMessage(msg.text, new Date(msg.ts));
   // Живое сообщение главнее копии из выгрузки (у живого есть фото): копию убираем
   if (msg.source === 'live' && msg.text) {
-    for (const twin of twinsOf('export', msg.ts, msg.text)) {
+    for (const twin of twinsOf('export', msg.ts, msg.text, msg.author)) {
       q.clearPlates.run(twin.id);
       db.raw.prepare('DELETE FROM wa_messages WHERE id = ?').run(twin.id);
     }
@@ -229,6 +296,11 @@ export function importExport(rawText, staff, now = Date.now()) {
   const auditTo = now - 5 * 60000;
   let checked = 0;
   const missed = [];
+  const batch = new Set();
+  // Выгрузка с Android «без медиа» теряет подписи к фото (а отчёты — почти всегда подписи)
+  const bareMedia = messages.filter((m) => /^<[^<>\n]{2,40}>$/.test(m.text.trim())).length;
+  const withCaption = messages.filter((m) => /^<[^<>\n]{2,40}>\s*\S/.test(m.text.trim())).length;
+  const captionsLost = bareMedia >= 30 && withCaption === 0;
   db.raw.exec('BEGIN');
   try {
     for (const m of messages) {
@@ -240,10 +312,14 @@ export function importExport(rawText, staff, now = Date.now()) {
       const at = Date.parse(m.ts);
       const audited = auditFrom && at >= auditFrom && at <= auditTo && textKey(text) && !NOT_AUDITED.test(text);
       if (audited) checked++;
-      if (twinsOf('live', m.ts, text).length) { skipped++; continue; }
+      if (twinsOf('live', m.ts, text, m.author).length) { skipped++; continue; }
       if (audited) missed.push(m.ts);
+      // То же сообщение из другой выгрузки (другое устройство — время до минуты, другой id)
+      if (exportTwin(m.ts, m.author, text, batch)) { skipped++; continue; }
+      const id = `x:${sha(`${m.ts}|${m.author}|${text}`)}`;
+      batch.add(id);
       const parsed = storeMessage({
-        id: `x:${sha(`${m.ts}|${m.author}|${text}`)}`, source: 'export', ts: m.ts,
+        id, source: 'export', ts: m.ts,
         author: /^\+?[\d\s()-]{8,}$/.test(m.author) ? m.author.replace(/\D/g, '') : m.author,
         authorName: /^\+?[\d\s()-]{8,}$/.test(m.author) ? null : m.author,
         text, mediaCount
@@ -258,7 +334,7 @@ export function importExport(rawText, staff, now = Date.now()) {
     throw err;
   }
   const audit = auditFrom && checked ? { from: new Date(auditFrom).toISOString(), checked, missed: missed.length, missedAt: missed.slice(-20) } : null;
-  const result = { added, skipped, operations, from, to, total: messages.length, audit };
+  const result = { added, skipped, operations, from, to, total: messages.length, audit, captionsLost };
   db.setSetting('journal_import', JSON.stringify({ ...result, at: new Date().toISOString(), by: staff?.email || null }));
   return result;
 }
@@ -425,6 +501,13 @@ export function timesheet(month, phones) {
  * С какого момента наблюдатель читает группу без перерыва: сверку с WS по
  * отчётам раньше этого времени не делаем (за перерыв в журнале могут быть дыры)
  */
+/** Сколько сообщений группы наблюдатель передал сегодня (по Бангкоку) */
+export function liveToday(now = Date.now()) {
+  const dayStart = Math.floor((now + 7 * 3600000) / 86400000) * 86400000 - 7 * 3600000;
+  const row = db.raw.prepare("SELECT COUNT(*) n FROM wa_messages WHERE source = 'live' AND ts >= ?").get(new Date(dayStart).toISOString());
+  return { date: new Date(now + 7 * 3600000).toISOString().slice(0, 10), received: row?.n || 0 };
+}
+
 /** Время последнего сообщения, полученного наблюдателем (не из выгрузки) */
 export function lastLiveAt() {
   const row = db.raw.prepare("SELECT MAX(ts) ts FROM wa_messages WHERE source = 'live'").get();

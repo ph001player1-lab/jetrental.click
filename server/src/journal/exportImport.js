@@ -54,7 +54,9 @@ export function parseExport(raw) {
     if (sep <= 0 || (nl >= 0 && nl < sep) || sep > 60) continue;
     const author = body.slice(0, sep).trim();
     const content = body.slice(sep + 2).trim();
-    if (!content || /^this message was deleted/i.test(content) || /^waiting for this message/i.test(content)) continue;
+    // Удалённые и недоставленные сообщения (английская и русская выгрузки)
+    if (!content || /^(this message was deleted|you deleted this message|данное сообщение удалено|это сообщение удалено|вы удалили это сообщение)/i.test(content)
+      || /^(waiting for this message|ожидание (этого )?сообщения)/i.test(content)) continue;
     messages.push({ ts, author, text: content });
   }
   return {

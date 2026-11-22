@@ -180,7 +180,8 @@ export async function waStatus(staff, req, res) {
     pairingCode: observer.pairingCode,
     me: observer.me,
     unreadable: openUnreadable(observer.unreadable),
-    today: observer.today || null,
+    // Из базы бота: счёт не сбрасывается при перезапуске наблюдателя
+    today: journal.liveToday(),
     groups: observer.groups,
     groupId: observer.groupId,
     groupSubject: observer.groupSubject,
