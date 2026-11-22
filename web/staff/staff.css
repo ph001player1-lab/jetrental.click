@@ -941,3 +941,46 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
   .fin-table--stack tfoot tr { border-top: 2px solid var(--line); }
   .fin-table--stack tfoot td { border-top: 0; }
 }
+
+/* ------------------------------------------------------------ CRM */
+.crm { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
+.crm-stats .stat__value { font-size: 24px; }
+.crm-tools { display: flex; flex-wrap: wrap; gap: 8px; }
+.crm-search { width: 100%; }
+.chip__n { font-weight: 400; opacity: .7; margin-left: 2px; }
+.crm-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.crm-item { display: grid; gap: 3px; width: 100%; text-align: left; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: inherit; font: inherit; cursor: pointer; }
+.crm-item:hover { border-color: var(--brand); }
+.crm-item--black { border-color: var(--rent); box-shadow: 0 0 0 1px var(--rent) inset; }
+.crm-item__name { font-weight: 700; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; overflow-wrap: anywhere; }
+.crm-item__facts { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.crm-item__now { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.crm-now { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; background: var(--surface-2); color: var(--muted); }
+.crm-now--rent { background: var(--rent-bg); color: var(--rent); }
+.crm-now--booking { background: var(--reserve-bg); color: var(--warn); }
+.crm-now--debt { background: var(--rent-bg); color: var(--rent); font-weight: 600; }
+.crm-tag { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--surface-2); color: var(--muted); }
+.crm-tag--regular { background: var(--free-bg); color: var(--free); }
+.crm-tag--vip { background: var(--reserve-bg); color: var(--warn); }
+.crm-tag--problem { background: var(--service-bg); color: var(--service); }
+.crm-tag--blacklist { background: var(--navy); color: #fff; }
+.crm-back { justify-self: start; font-size: 15px; }
+.crm-name { margin: 0 0 4px; font-size: 22px; overflow-wrap: anywhere; }
+.crm-head--black { border-color: var(--rent); box-shadow: 0 0 0 2px var(--rent) inset; }
+.crm-blacknote { margin: 0 0 6px; color: var(--rent); font-weight: 700; }
+.crm-contacts, .crm-nowlist, .crm-rentals, .crm-notes, .crm-dupes { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 8px; font-size: 14px; }
+.crm-contacts li { overflow-wrap: anywhere; }
+.crm-links { margin-left: 6px; font-size: 13px; }
+.crm-links a { color: var(--brand); }
+.crm-rentals li, .crm-notes li { padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.crm-rental--active { border-left: 3px solid var(--rent); padding-left: 8px; }
+.crm-debt { color: var(--rent); }
+.crm-note--system { color: var(--muted); font-size: 13px; }
+.crm-note-form { display: grid; gap: 8px; margin-bottom: 10px; }
+.crm-note-form textarea { width: 100%; resize: vertical; }
+.crm-form { display: grid; gap: 8px; max-width: 520px; margin: 6px 0 10px; }
+.crm-tagchips { margin-top: 8px; flex-wrap: wrap; }
+.crm-tagchip--blacklist[aria-pressed="true"] { background: var(--navy); color: #fff; border-color: var(--navy); }
+.crm-dupes li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.jr-card--blacklist { border-color: var(--rent); box-shadow: 0 0 0 2px var(--rent) inset; }
+.jr-blacklist { margin: 0; font-size: 14px; color: var(--rent); font-weight: 700; }

@@ -20,9 +20,19 @@ import { staffPhones } from '../staffUsers.js';
 import * as journal from './journal.js';
 import { reconcile } from './reconcile.js';
 import { observerStatus } from './observer.js';
+import { blacklisted } from '../crm.js';
 
 const FEED_KINDS = [...journal.OPERATION_KINDS, ...journal.SHIFT_KINDS, 'question', 'note', 'media'];
 const MAX_IMPORT_BYTES = 30 * 1024 * 1024;
+
+/** Клиент отчёта в чёрном списке CRM — пометка видна всем (без имени и контакта клиента) */
+function withBlacklist(row, event) {
+  let contact = null;
+  try {
+    contact = JSON.parse(row.data || '{}').fields?.contact;
+  } catch { /* без разбора — без пометки */ }
+  return blacklisted(contact) ? { ...event, blacklist: true } : event;
+}
 
 /** Нет права: «только смотреть», «только админ» или раздел закрыт для роли */
 function need(staff, perm) {
@@ -50,7 +60,7 @@ export async function getJournal(staff, req, res, url) {
   });
   const imported = db.getSetting('journal_import');
   sendJson(res, 200, {
-    events: rows.map((row) => journal.toEvent(row, phones, privateOk)),
+    events: rows.map((row) => withBlacklist(row, journal.toEvent(row, phones, privateOk))),
     counts: journal.counts(),
     live: journal.liveSince() ? new Date(journal.liveSince()).toISOString() : null,
     observer: observerStatus(),

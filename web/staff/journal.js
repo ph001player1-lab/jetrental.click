@@ -179,7 +179,7 @@
       const chat = CHAT_KINDS.includes(e.kind);
       const notes = chat ? [] : [...(f.notes || [])];
       return `
-        <article class="card jr-card${e.status === 'review' ? ' jr-card--review' : ''}">
+        <article class="card jr-card${e.status === 'review' ? ' jr-card--review' : ''}${e.blacklist ? ' jr-card--blacklist' : ''}">
           <div class="jr-card__head">
             <span class="jr-kind jr-kind--${KIND_TONE[e.kind] || 'task'}">${esc(t(`jr.kind.${e.kind}`))}</span>
             <span class="jr-when">${esc(ctx.time(e.ts))}</span>
@@ -197,6 +197,7 @@
             <a href="/api/staff/journal/media?id=${m.id}" target="_blank" rel="noopener"><img src="/api/staff/journal/media?id=${m.id}" alt="" loading="lazy"></a>`).join('')}</div>`
             : e.mediaCount && !ctx.can('journal.private') ? `<div class="muted jr-small">📷 ${esc(t('jr.photosHidden'))}</div>` : ''}
           ${e.text && !chat && !shift ? `<details class="jr-raw"${st.open.has(e.id) ? ' open' : ''} data-jr-raw="${esc(e.id)}"><summary>${esc(t('jr.raw'))}</summary><pre>${esc(e.text)}</pre></details>` : ''}
+          ${e.blacklist ? `<p class="jr-blacklist">⛔ ${esc(t('jr.blacklist'))}</p>` : ''}
           ${e.status === 'review' ? `<p class="jr-review-note">⚠️ ${esc(t('jr.reviewNote'))}</p>` : ''}
           ${canFix && (e.status === 'review' || st.fixing === e.id) ? fixForm(e)
             : canFix && !shift && e.kind !== 'media' ? `<button type="button" class="link jr-small" data-jr-fixopen="${esc(e.id)}">${esc(t('jr.fix.open'))}</button>` : ''}

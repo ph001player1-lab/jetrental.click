@@ -28,6 +28,7 @@ export const SECTIONS = [
   { id: 'whatsapp', levels: ['edit', 'view', 'none'] },
   { id: 'site', levels: ['edit', 'view', 'none'] },
   { id: 'finance', levels: ['view', 'none'] },
+  { id: 'crm', levels: ['edit', 'view', 'none'] },
   { id: 'server', levels: ['view', 'none'] }
 ];
 const SECTION_IDS = SECTIONS.map((s) => s.id);
@@ -39,10 +40,11 @@ export const ADMIN_ROLE = 'admin';
 const V = 'view';
 const E = 'edit';
 const N = 'none';
-const preset = (overview, fleet, calendar, requests, journal, clients, timesheet, reconcile, whatsapp, site, finance, server) =>
-  ({ overview, fleet, calendar, requests, journal, clients, timesheet, reconcile, whatsapp, site, finance, server });
+const preset = (overview, fleet, calendar, requests, journal, clients, timesheet, reconcile, whatsapp, site, finance, server, crm = N) =>
+  ({ overview, fleet, calendar, requests, journal, clients, timesheet, reconcile, whatsapp, site, finance, server, crm });
 const DEFAULT_ROLES = [
-  ['owner', 'Владелец', preset(V, V, V, V, E, V, V, V, V, E, V, V)],
+  // CRM по умолчанию — только у владельца (и админа); остальным админ открывает сам
+  ['owner', 'Владелец', preset(V, V, V, V, E, V, V, V, V, E, V, V, E)],
   ['finance', 'Финансист', preset(V, V, V, N, V, V, N, V, N, N, V, N)],
   // Один «Менеджер» без отдела: разные права — разные роли, их админ создаёт сам
   ['manager', 'Менеджер', preset(V, V, V, V, E, V, N, V, N, E, N, N)],
@@ -112,6 +114,17 @@ const q = {
 // Готовые роли — один раз, при первом запуске
 if (!db.raw.prepare('SELECT COUNT(*) n FROM access_roles').get().n) {
   DEFAULT_ROLES.forEach(([id, name, perms], i) => q.addRole.run(id, name, JSON.stringify(perms), i, now(), now()));
+}
+
+// Раздел «CRM» появился позже: в уже созданной роли «Владелец» открываем его один раз,
+// у остальных ролей он «нет доступа» (так решил владелец бизнеса)
+if (db.getSetting('access_crm_section') !== '1') {
+  const owner = q.role.get('owner');
+  if (owner) {
+    const perms = JSON.parse(owner.perms || '{}');
+    if (!perms.crm) q.updateRole.run(owner.name, JSON.stringify({ ...perms, crm: 'edit' }), now(), owner.id);
+  }
+  db.setSetting('access_crm_section', '1');
 }
 
 /** Уровни роли по всем разделам (неизвестное и недопустимое — «нет доступа») */

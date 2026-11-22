@@ -32,6 +32,7 @@ import { reconcile } from './journal/reconcile.js';
 import { observerStatus, observerConfigured } from './journal/observer.js';
 import { liveSince, lastLiveAt } from './journal/journal.js';
 import { staffPhones } from './staffUsers.js';
+import { blacklistReports } from './crm.js';
 
 const HOUR_MS = 3600000;
 const DAY_MS = 24 * HOUR_MS;
@@ -337,6 +338,15 @@ export function whatsappProblems(tx, now = Date.now()) {
   return problems;
 }
 
+/** Бронь, выдача или продление клиенту из чёрного списка CRM — видно всем, кто видит главную */
+function blacklistProblems(tx, now) {
+  return blacklistReports(now).map((r) => ({
+    group: 'bookings', level: 'error', target: { tab: 'journal', q: r.plate || '' },
+    title: tx.t('blacklist.title', { car: [r.model, r.plate ? `#${r.plate}` : ''].filter(Boolean).join(' ') || '—' }),
+    detail: tx.t(`blacklist.${r.kind}`, { when: tx.dateTime(Date.parse(r.ts)), date: r.from ? r.from.split('-').reverse().join('.') : '—' })
+  }));
+}
+
 /** Расхождения рабочей группы WhatsApp и WS (journal/reconcile.js) */
 async function reconcileProblems(tx, now) {
   const result = reconcile(now);
@@ -377,6 +387,7 @@ export async function collectProblems(now = Date.now(), lang = 'en') {
   const problems = [
     ...systemProblems(tx, now),
     ...requestProblems(tx, now),
+    ...blacklistProblems(tx, now),
     ...(snapshot ? vehicleProblems(tx, snapshot, now) : []),
     ...(snapshot ? matchProblems(tx, snapshot, fleet) : []),
     ...priceProblems(tx, fleet),

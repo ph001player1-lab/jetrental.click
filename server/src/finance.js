@@ -118,7 +118,7 @@ export function receiverOf(text) {
 }
 
 /** Деньги одного сообщения: по каждой статье — наибольшая сумма (итог), в батах */
-function moneyOf(row, rates) {
+export function moneyOf(row, rates) {
   const data = JSON.parse(row.data || '{}');
   const fields = data.fields || {};
   const byKey = {};
@@ -397,7 +397,7 @@ const PAY_KINDS = new Set(['issue', 'extension', 'payment', 'return', 'changed']
 const isOwner = (name) => /alex|boss|kokon/i.test(name || '');
 
 /** Повтор того же отчёта тем же автором в течение 6 часов — оставляем последний */
-function withoutRepeats(rows) {
+export function withoutRepeats(rows) {
   const kept = [];
   for (const row of rows) {
     const at = Date.parse(row.ts);
@@ -409,6 +409,38 @@ function withoutRepeats(rows) {
     kept.push({ ...row, at });
   }
   return kept.filter(Boolean);
+}
+
+/**
+ * Долги клиентов на сегодня: «Left amount / To collect» в выдаче, продлении, оплате —
+ * пока после них по той же машине не пришёл отчёт с полученными деньгами.
+ * parsed — [{ row, m }] по времени (m — moneyOf). Общий расчёт для «Финансов» и CRM.
+ */
+export function findDebts(parsed, now, who) {
+  const today = bangkokIso(now);
+  const debtList = [];
+  for (let i = 0; i < parsed.length; i++) {
+    const { row, m } = parsed[i];
+    if (row.at < now - 90 * DAY_MS || row.at > now || !['issue', 'extension', 'payment', 'changed'].includes(row.kind)) continue;
+    const amount = m.debt;
+    if (amount < 100 || !m.plates.length) continue;
+    const plates = m.plates.map((p) => p.plate);
+    const paid = parsed.slice(i + 1).some((x) => x.row.at <= now && PAY_KINDS.has(x.row.kind) && x.m.moneyIn > 0 && x.m.plates.some((p) => plates.includes(p.plate)));
+    if (paid) continue;
+    // Срок: «at return» — конец аренды, «tomorrow» — следующий день, «end of the month» — конец месяца
+    const promise = `${m.debtNote || ''} ${row.text}`;
+    const reportDay = bangkokIso(row.at);
+    let due = reportDay;
+    if (/\b(at|on|upon|when|after|before)\s+(the\s+)?(return|drop ?off|pick ?up)|при возврате/i.test(promise) && m.to) due = m.to;
+    else if (/tomorrow|завтра/i.test(m.debtNote || '')) due = bangkokIso(row.at + DAY_MS);
+    else if (/end of (the )?month|конце месяца/i.test(promise)) {
+      const [y, mo] = reportDay.split('-').map(Number);
+      due = new Date(Date.UTC(y, mo, 0)).toISOString().slice(0, 10);
+    }
+    const late = Math.round((dayStart(today) - dayStart(due)) / DAY_MS);
+    debtList.push({ id: row.id, ts: row.ts, kind: row.kind, author: who(row), plates, amount: round(amount), due, note: m.debtNote, late: Math.max(0, late), overdue: late > 0 });
+  }
+  return debtList.sort((a, b) => b.overdue - a.overdue || b.late - a.late || b.amount - a.amount);
 }
 
 /**
@@ -593,31 +625,7 @@ export async function financeReport({ from, to }, now = Date.now(), { clientsVis
     }
   }
 
-  // Долги клиентов на сегодня: «Left amount / To receive» в выдаче, продлении, оплате —
-  // пока после них по той же машине не пришёл отчёт с полученными деньгами
-  const debtList = [];
-  for (let i = 0; i < parsed.length; i++) {
-    const { row, m } = parsed[i];
-    if (row.at < now - 90 * DAY_MS || row.at > now || !['issue', 'extension', 'payment', 'changed'].includes(row.kind)) continue;
-    const amount = m.debt;
-    if (amount < 100 || !m.plates.length) continue;
-    const plates = m.plates.map((p) => p.plate);
-    const paid = parsed.slice(i + 1).some((x) => x.row.at <= now && PAY_KINDS.has(x.row.kind) && x.m.moneyIn > 0 && x.m.plates.some((p) => plates.includes(p.plate)));
-    if (paid) continue;
-    // Срок: «at return» — конец аренды, «tomorrow» — следующий день, «end of the month» — конец месяца
-    const promise = `${m.debtNote || ''} ${row.text}`;
-    const reportDay = bangkokIso(row.at);
-    let due = reportDay;
-    if (/\b(at|on|upon|when|after|before)\s+(the\s+)?(return|drop ?off|pick ?up)|при возврате/i.test(promise) && m.to) due = m.to;
-    else if (/tomorrow|завтра/i.test(m.debtNote || '')) due = bangkokIso(row.at + DAY_MS);
-    else if (/end of (the )?month|конце месяца/i.test(promise)) {
-      const [y, mo] = reportDay.split('-').map(Number);
-      due = new Date(Date.UTC(y, mo, 0)).toISOString().slice(0, 10);
-    }
-    const late = Math.round((dayStart(today) - dayStart(due)) / DAY_MS);
-    debtList.push({ id: row.id, ts: row.ts, kind: row.kind, author: who(row), plates, amount: round(amount), due, note: m.debtNote, late: Math.max(0, late), overdue: late > 0 });
-  }
-  debtList.sort((a, b) => b.overdue - a.overdue || b.late - a.late || b.amount - a.amount);
+  const debtList = findDebts(parsed, now, who);
   const overdue = debtList.filter((d) => d.overdue);
   const upcoming = debtList.filter((d) => !d.overdue);
 

@@ -42,6 +42,7 @@ import { collectProblems, bookingOutlook, requestStats, LIMITS } from './dashboa
 import { roleOf, roleNameOf, permissionsOf, can, canAny } from './roles.js';
 import { accessOverview, saveRole, deleteRole, saveStaff, deleteStaff, importStaffList, AccessError } from './access.js';
 import { financeReport, saveLoans } from './finance.js';
+import { crmList, crmClient, saveClient, setTags, addNote, mergeClients, importClients, CrmError } from './crm.js';
 import { importCashbook } from './cashbook.js';
 import { serverReport, saveServerSettings, alertAdminsOnce } from './serverStats.js';
 import { g } from './groupTexts.js';
@@ -351,6 +352,47 @@ async function financeCashbook(staff, req, res) {
   }
 }
 
+/* ------------------------------------------------------------ Вкладка «CRM» */
+
+/** Ошибки CRM — 400 (или 404 для неизвестного клиента) с понятным кодом */
+async function crmCall(fn) {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err instanceof CrmError) throw new HttpError(err.code === 'not_found' ? 404 : 400, err.code);
+    throw err;
+  }
+}
+
+/** GET /api/staff/crm?filter=&q= — список клиентов */
+async function crmListRoute(staff, req, res, url) {
+  needAny(staff, ['crm.view']);
+  sendJson(res, 200, await crmList({ filter: url.searchParams.get('filter') || 'all', q: (url.searchParams.get('q') || '').slice(0, 100) }));
+}
+
+/** GET /api/staff/crm/client?id= — карточка клиента */
+async function crmClientRoute(staff, req, res, url) {
+  needAny(staff, ['crm.view']);
+  sendJson(res, 200, await crmCall(() => crmClient(url.searchParams.get('id'))));
+}
+
+/** Изменения в CRM — только с правом «CRM: меняет» */
+function crmEdit(handler) {
+  return async (staff, req, res) => {
+    if (!can(staff, 'crm.edit')) throw new HttpError(403, 'read_only');
+    const body = await readJson(req);
+    const id = await crmCall(() => handler(body, staff.email));
+    sendJson(res, 200, await crmCall(() => crmClient(id)));
+  };
+}
+
+/** POST /api/staff/crm/import — список клиентов из WS (.xlsx) */
+async function crmImport(staff, req, res) {
+  if (!can(staff, 'crm.edit')) throw new HttpError(403, 'read_only');
+  const buffer = await readBody(req, 20 * 1024 * 1024);
+  sendJson(res, 200, await crmCall(() => importClients(buffer, staff.email)));
+}
+
 /* ------------------------------------------------- Вкладка «Доступы» (админ) */
 
 function needAccessAdmin(staff) {
@@ -443,7 +485,14 @@ const ROUTES = {
   'POST /api/staff/access/import': signedIn(accessImport),
   'GET /api/staff/finance': signedIn(finance),
   'POST /api/staff/finance/cashbook': signedIn(financeCashbook),
-  'POST /api/staff/finance/loans': signedIn(financeLoans)
+  'POST /api/staff/finance/loans': signedIn(financeLoans),
+  'GET /api/staff/crm': signedIn(crmListRoute),
+  'GET /api/staff/crm/client': signedIn(crmClientRoute),
+  'POST /api/staff/crm/client': signedIn(crmEdit((b, by) => saveClient(b, by))),
+  'POST /api/staff/crm/tags': signedIn(crmEdit((b, by) => { setTags(b.id, b.tags, by); return b.id; })),
+  'POST /api/staff/crm/note': signedIn(crmEdit((b, by) => { addNote(b.id, b.text, by); return b.id; })),
+  'POST /api/staff/crm/merge': signedIn(crmEdit((b, by) => mergeClients(b.into, b.from, by))),
+  'POST /api/staff/crm/import': signedIn(crmImport)
 };
 
 /** Обработчик для пути /api/staff/*; null — такого маршрута нет */

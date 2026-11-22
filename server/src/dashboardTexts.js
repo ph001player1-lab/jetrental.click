@@ -82,7 +82,11 @@ const TEXTS = {
     'waUnreadable.title': 'WhatsApp: {n} message(s) could not be read',
     'waUnreadable.detail': 'The latest one — {when}. WhatsApp usually re-sends them within minutes. If not, upload a chat export (Journal → WhatsApp): the missing messages will be added.',
     'waSilent.title': 'WhatsApp: no new messages from the work group for {h} h',
-    'waSilent.detail': 'The observer is connected but has received nothing since {when}. If people wrote in the group during this time, check Journal → WhatsApp.'
+    'waSilent.detail': 'The observer is connected but has received nothing since {when}. If people wrote in the group during this time, check Journal → WhatsApp.',
+    'blacklist.title': 'Blacklisted client: {car}',
+    'blacklist.booking': 'Booking for {date} (report {when}). The client is on the CRM blacklist — check before handing over the vehicle.',
+    'blacklist.issue': 'Handed over {when}. The client is on the CRM blacklist — tell the manager.',
+    'blacklist.extension': 'Rental extended {when}. The client is on the CRM blacklist — tell the manager.'
   },
 
   ru: {
@@ -158,7 +162,11 @@ const TEXTS = {
     'waUnreadable.title': 'WhatsApp: не удалось прочитать сообщений — {n}',
     'waUnreadable.detail': 'Последнее — {when}. Обычно WhatsApp досылает их сам за несколько минут. Если нет — загрузите выгрузку чата («Журнал → WhatsApp»): недостающие сообщения добавятся.',
     'waSilent.title': 'WhatsApp: из рабочей группы нет новых сообщений {h} ч',
-    'waSilent.detail': 'Наблюдатель подключён, но ничего не получал с {when}. Если в группе за это время писали — проверьте «Журнал → WhatsApp».'
+    'waSilent.detail': 'Наблюдатель подключён, но ничего не получал с {when}. Если в группе за это время писали — проверьте «Журнал → WhatsApp».',
+    'blacklist.title': 'Клиент из чёрного списка: {car}',
+    'blacklist.booking': 'Бронь на {date} (отчёт {when}). Клиент в чёрном списке CRM — проверьте до выдачи.',
+    'blacklist.issue': 'Выдача {when}. Клиент в чёрном списке CRM — сообщите менеджеру.',
+    'blacklist.extension': 'Продление {when}. Клиент в чёрном списке CRM — сообщите менеджеру.'
   },
 
   th: {
@@ -234,7 +242,11 @@ const TEXTS = {
     'waUnreadable.title': 'WhatsApp: อ่านข้อความไม่ได้ {n} ข้อความ',
     'waUnreadable.detail': 'ล่าสุด — {when} โดยปกติ WhatsApp จะส่งซ้ำเองภายในไม่กี่นาที ถ้าไม่ ให้อัปโหลดไฟล์ส่งออกแชท (บันทึก → WhatsApp) ข้อความที่ขาดจะถูกเพิ่ม',
     'waSilent.title': 'WhatsApp: ไม่มีข้อความใหม่จากกลุ่มงาน {h} ชม.',
-    'waSilent.detail': 'ตัวอ่านเชื่อมต่ออยู่ แต่ไม่ได้รับอะไรตั้งแต่ {when} ถ้ามีคนเขียนในกลุ่มช่วงนี้ ให้ตรวจ บันทึก → WhatsApp'
+    'waSilent.detail': 'ตัวอ่านเชื่อมต่ออยู่ แต่ไม่ได้รับอะไรตั้งแต่ {when} ถ้ามีคนเขียนในกลุ่มช่วงนี้ ให้ตรวจ บันทึก → WhatsApp',
+    'blacklist.title': 'ลูกค้าในบัญชีดำ: {car}',
+    'blacklist.booking': 'จองวันที่ {date} (รายงาน {when}) ลูกค้าอยู่ในบัญชีดำของ CRM — ตรวจสอบก่อนส่งมอบรถ',
+    'blacklist.issue': 'ส่งมอบรถ {when} ลูกค้าอยู่ในบัญชีดำของ CRM — แจ้งผู้จัดการ',
+    'blacklist.extension': 'ต่อสัญญาเช่า {when} ลูกค้าอยู่ในบัญชีดำของ CRM — แจ้งผู้จัดการ'
   },
   my: {
     'time.longAgo': 'ရက် ၂၀ ကျော်က',
@@ -309,7 +321,11 @@ const TEXTS = {
     'waUnreadable.title': "WhatsApp- မက်ဆေ့ချ် {n} ခု ဖတ်၍မရပါ",
     'waUnreadable.detail': "နောက်ဆုံး — {when}။ WhatsApp က မိနစ်အနည်းငယ်အတွင်း ပြန်ပို့လေ့ရှိသည်။ မပို့ပါက chat export ကို တင်ပါ (မှတ်တမ်း → WhatsApp)- ကျန်နေသော မက်ဆေ့ချ်များ ထည့်ပေးမည်။",
     'waSilent.title': "WhatsApp- အလုပ်အုပ်စုမှ မက်ဆေ့ချ်အသစ် {h} နာရီ မရှိပါ",
-    'waSilent.detail': "စောင့်ကြည့်သူ ချိတ်ဆက်ထားသော်လည်း {when} မှစ၍ ဘာမှ မရရှိပါ။ ဤအတောအတွင်း အုပ်စုတွင် ရေးခဲ့ပါက မှတ်တမ်း → WhatsApp ကို စစ်ပါ။"
+    'waSilent.detail': "စောင့်ကြည့်သူ ချိတ်ဆက်ထားသော်လည်း {when} မှစ၍ ဘာမှ မရရှိပါ။ ဤအတောအတွင်း အုပ်စုတွင် ရေးခဲ့ပါက မှတ်တမ်း → WhatsApp ကို စစ်ပါ။",
+    'blacklist.title': "အမည်ပျက်စာရင်းဝင် ဖောက်သည်- {car}",
+    'blacklist.booking': "{date} အတွက် ဘိုကင် (အစီရင်ခံစာ {when})။ ဖောက်သည်သည် CRM အမည်ပျက်စာရင်းတွင် ရှိသည် — ယာဉ်မပေးမီ စစ်ဆေးပါ။",
+    'blacklist.issue': "ယာဉ်ပေးအပ် {when}။ ဖောက်သည်သည် CRM အမည်ပျက်စာရင်းတွင် ရှိသည် — မန်နေဂျာကို အသိပေးပါ။",
+    'blacklist.extension': "ငှားရမ်းမှု သက်တမ်းတိုး {when}။ ဖောက်သည်သည် CRM အမည်ပျက်စာရင်းတွင် ရှိသည် — မန်နေဂျာကို အသိပေးပါ။"
   }
 };
 
