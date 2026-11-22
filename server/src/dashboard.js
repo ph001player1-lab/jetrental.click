@@ -29,6 +29,8 @@ import { telegramEnabled } from './telegram/api.js';
 import { whatsappEnabled } from './whatsapp/api.js';
 import { dashboardTranslator } from './dashboardTexts.js';
 import { reconcile } from './journal/reconcile.js';
+import { observerStatus, observerConfigured } from './journal/observer.js';
+import { liveSince, lastLiveAt } from './journal/journal.js';
 import { staffPhones } from './staffUsers.js';
 
 const HOUR_MS = 3600000;
@@ -41,7 +43,11 @@ export const LIMITS = {
   requestWaitMinutes: 30,
   workFromHour: 10,
   workToHour: 19,
-  syncStaleMinutes: 30
+  syncStaleMinutes: 30,
+  // Наблюдатель WhatsApp: сообщение не расшифровалось и не пришло повторно за 10 минут;
+  // из группы нет сообщений 4 часа рабочего времени
+  waUnreadableMinutes: 10,
+  waSilentWorkMinutes: 240
 };
 
 const LOAD_DAYS = 14;
@@ -298,6 +304,36 @@ function systemProblems(tx, now) {
   else if (staffGroupFailure()) add('error', 'groupFailed', failure(staffGroupFailure()));
   if (!mailEnabled) add('warning', 'mailOff');
   else if (mailFailure()) add('warning', 'mailFailed', failure(mailFailure()));
+  problems.push(...whatsappProblems(tx, now));
+  return problems;
+}
+
+/** Наблюдатель рабочей группы: на связи ли, всё ли прочитал, не подозрительно ли тихо */
+export function whatsappProblems(tx, now = Date.now()) {
+  const wa = observerStatus(now);
+  if (!observerConfigured || !wa.everLinked) return [];
+  const target = { tab: 'journal' };
+  if (!wa.connected) {
+    return [{ group: 'system', level: 'error', target, title: tx.t('waDown.title'), detail: tx.t('waDown.detail') }];
+  }
+  const problems = [];
+  const stuck = (wa.unreadable || []).filter((u) => now - Date.parse(u.ts) >= LIMITS.waUnreadableMinutes * 60000);
+  if (stuck.length) {
+    const last = Math.max(...stuck.map((u) => Date.parse(u.ts)));
+    problems.push({
+      group: 'system', level: 'warning', target,
+      title: tx.t('waUnreadable.title', { n: stuck.length }),
+      detail: tx.t('waUnreadable.detail', { when: tx.dateTime(last) })
+    });
+  }
+  const since = Math.max(lastLiveAt() || 0, liveSince() || 0);
+  if (wa.groupChosen && since && workingMinutes(since, now) >= LIMITS.waSilentWorkMinutes) {
+    problems.push({
+      group: 'system', level: 'warning', target,
+      title: tx.t('waSilent.title', { h: Math.floor(workingMinutes(since, now) / 60) }),
+      detail: tx.t('waSilent.detail', { when: tx.dateTime(since) })
+    });
+  }
   return problems;
 }
 

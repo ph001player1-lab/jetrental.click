@@ -7,7 +7,7 @@
  * INTERNAL_SECRET в заголовке X-Internal-Secret.
  *   POST /internal/wa/message  { op: add | edit | revoke, … } — сообщение группы
  *   POST /internal/wa/media?id=…&mime=…   тело — фото / видео
- *   POST /internal/wa/status   { connected, status, me, groupId } — раз в 2 минуты
+ *   POST /internal/wa/status   { connected, status, me, groupId, unreadable, today } — раз в 2 минуты
  * Для админа на сайте сотрудников (вкладка «Журнал» → WhatsApp):
  *   GET  /api/staff/wa          — состояние, QR-код, список групп
  *   POST /api/staff/wa/config   { groupId } — какую группу читать
@@ -21,6 +21,7 @@ import crypto from 'node:crypto';
 import { config } from '../config.js';
 import { HttpError, sendJson, readJson, readBody } from '../http.js';
 import { can } from '../roles.js';
+import * as db from '../db.js';
 import * as journal from './journal.js';
 
 const MAX_MESSAGE_BYTES = 256 * 1024;
@@ -30,7 +31,22 @@ const STALE_MS = 6 * 60 * 1000;
 
 export const observerConfigured = Boolean(config.internal.secret);
 
-const status = { connected: false, status: null, me: null, groupId: null, groupSubject: null, lastSeenAt: null, lastMessageAt: null };
+const status = {
+  connected: false, status: null, me: null, groupId: null, groupSubject: null, lastSeenAt: null, lastMessageAt: null,
+  // Сообщения группы, которые наблюдатель не смог расшифровать: [{ id, ts, author, reason }]
+  unreadable: [],
+  today: null
+};
+
+/**
+ * Непрочитанные сообщения, которые ещё не закрыты выгрузкой чата: после загрузки
+ * выгрузки, где они есть, предупреждение пропадает
+ */
+function openUnreadable(list) {
+  let coveredTo = 0;
+  try { coveredTo = Date.parse(JSON.parse(db.getSetting('journal_import') || 'null')?.to || '') || 0; } catch { /* нет загрузок */ }
+  return (list || []).filter((u) => !(Date.parse(u.ts) <= coveredTo));
+}
 
 /** Для вкладки «Сервер», журнала и предупреждений */
 export function observerStatus(now = Date.now()) {
@@ -42,6 +58,9 @@ export function observerStatus(now = Date.now()) {
     groupSubject: status.groupSubject,
     lastSeenAt: status.lastSeenAt,
     lastMessageAt: status.lastMessageAt,
+    groupChosen: Boolean(status.groupId),
+    unreadable: openUnreadable(status.unreadable),
+    today: status.today,
     // Подключали ли хоть раз (тогда «не на связи» — это авария, а не «ещё не настроен»)
     everLinked: Boolean(journal.liveSince())
   };
@@ -88,7 +107,11 @@ async function handleInternal(req, res) {
     const body = await readJson(req);
     Object.assign(status, {
       connected: Boolean(body.connected), status: String(body.status || ''), me: body.me || null,
-      groupId: body.groupId || null, groupSubject: body.groupSubject || null, lastSeenAt: new Date().toISOString()
+      groupId: body.groupId || null, groupSubject: body.groupSubject || null, lastSeenAt: new Date().toISOString(),
+      unreadable: Array.isArray(body.unreadable) ? body.unreadable.slice(-50).map((u) => ({
+        id: String(u.id || '').slice(0, 64), ts: String(u.ts || ''), author: String(u.author || '').slice(0, 40), reason: String(u.reason || '').slice(0, 80)
+      })) : [],
+      today: body.today?.date ? { date: String(body.today.date).slice(0, 10), received: Number(body.today.received) || 0 } : null
     });
     // Наблюдение «без перерыва» считаем только когда выбрана группа
     journal.setObserverConnected(status.connected && Boolean(status.groupId));
@@ -156,6 +179,8 @@ export async function waStatus(staff, req, res) {
     qr: observer.qrSvg ? `data:image/svg+xml;base64,${Buffer.from(observer.qrSvg).toString('base64')}` : null,
     pairingCode: observer.pairingCode,
     me: observer.me,
+    unreadable: openUnreadable(observer.unreadable),
+    today: observer.today || null,
     groups: observer.groups,
     groupId: observer.groupId,
     groupSubject: observer.groupSubject,

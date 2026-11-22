@@ -747,6 +747,9 @@ button.problem:hover { background: var(--surface-2); }
 .jr-money small { font-weight: 500; color: var(--muted); }
 .jr-contact, .jr-assign { font-size: 13px; }
 .jr-notes { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.jr-text { font-size: 14px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* На компьютере фильтры журнала переносятся на вторую строку, а не уезжают вбок */
+@media (min-width: 860px) { .jr .filters .chips { flex-wrap: wrap; overflow: visible; } }
 .jr-photos { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
 .jr-photos img { width: 84px; height: 84px; object-fit: cover; border-radius: 8px; display: block; background: var(--surface-2); }
 .jr-raw summary { cursor: pointer; font-size: 13px; color: var(--brand); font-weight: 600; }

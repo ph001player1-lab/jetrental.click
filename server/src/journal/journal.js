@@ -44,7 +44,6 @@ const q = {
   plate: db.raw.prepare('INSERT OR IGNORE INTO wa_message_plates (message_id, plate, role) VALUES (?, ?, ?)'),
   clearPlates: db.raw.prepare('DELETE FROM wa_message_plates WHERE message_id = ?'),
   get: db.raw.prepare('SELECT * FROM wa_messages WHERE id = ?'),
-  liveTwin: db.raw.prepare("SELECT 1 FROM wa_messages WHERE source = 'live' AND ts BETWEEN ? AND ? AND text = ? LIMIT 1"),
   stale: db.raw.prepare('SELECT id, ts, text FROM wa_messages WHERE parser < ? AND edited_by IS NULL'),
   update: db.raw.prepare('UPDATE wa_messages SET kind = ?, status = ?, data = ?, parser = ? WHERE id = ?'),
   fix: db.raw.prepare('UPDATE wa_messages SET kind = ?, status = ?, data = ?, edited_by = ?, edited_at = ? WHERE id = ?'),
@@ -67,6 +66,34 @@ const sha = (value) => crypto.createHash('sha1').update(value).digest('hex').sli
 const stripPlaceholders = (text) => String(text || '')
   .replace(/<(image|video|audio|sticker|document|gif) omitted>|<attached:[^>]*>/gi, '').trim();
 
+/**
+ * «Отпечаток» текста для поиска одного и того же сообщения в живых данных и в
+ * выгрузке. Тексты там отличаются мелочами: упоминания («@~Nic» в выгрузке,
+ * «@66…» у наблюдателя), служебные пометки, пробелы и знаки — их не учитываем.
+ */
+export function textKey(text) {
+  return String(text || '')
+    .replace(/<[a-z ]+(omitted|message)>|<attached:[^>]*>|<this message was edited>/gi, ' ')
+    .replace(/@\u2068[^\u2069]*\u2069/g, ' ')
+    .replace(/@\S+/g, ' ')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '')
+    .slice(0, 120);
+}
+
+const WINDOW_MS = 180000;
+// Такие строки выгрузки наблюдатель передаёт без текста (место, опрос, контакт,
+// файл) — по ним проверку не делаем, иначе будут ложные «пропущено»
+const NOT_AUDITED = /^(location:|live location|poll:|contact card|.*\.vcf\b|.*\(file attached\)|<attached:)/i;
+const twinsOf = (source, ts, text) => {
+  const at = Date.parse(ts);
+  const key = textKey(text);
+  if (!key) return [];
+  return db.raw.prepare('SELECT id, text FROM wa_messages WHERE source = ? AND ts BETWEEN ? AND ?')
+    .all(source, new Date(at - WINDOW_MS).toISOString(), new Date(at + WINDOW_MS).toISOString())
+    .filter((row) => textKey(row.text) === key);
+};
+
 function savePlates(id, plates) {
   q.clearPlates.run(id);
   for (const p of plates || []) q.plate.run(id, p.plate, p.role);
@@ -80,10 +107,7 @@ export function storeMessage(msg) {
   const parsed = parseMessage(msg.text, new Date(msg.ts));
   // Живое сообщение главнее копии из выгрузки (у живого есть фото): копию убираем
   if (msg.source === 'live' && msg.text) {
-    const at = Date.parse(msg.ts);
-    const twins = db.raw.prepare("SELECT id FROM wa_messages WHERE source = 'export' AND text = ? AND ts BETWEEN ? AND ?")
-      .all(msg.text, new Date(at - 180000).toISOString(), new Date(at + 180000).toISOString());
-    for (const twin of twins) {
+    for (const twin of twinsOf('export', msg.ts, msg.text)) {
       q.clearPlates.run(twin.id);
       db.raw.prepare('DELETE FROM wa_messages WHERE id = ?').run(twin.id);
     }
@@ -189,11 +213,22 @@ export function applyMediaRetention(now = Date.now()) {
 /* ------------------------------------------------- История из выгрузки */
 
 /** Загрузка «Экспорта чата»: повторная загрузка того же файла ничего не задвоит */
-export function importExport(rawText, staff) {
-  const { messages, from, to } = parseExport(rawText);
+export function importExport(rawText, staff, now = Date.now()) {
+  const { messages } = parseExport(rawText);
+  // Период выгрузки — по самим сообщениям (по нему же закрываются «не прочитано»)
+  const times = messages.map((m) => m.ts).sort();
+  const from = times[0] || null;
+  const to = times[times.length - 1] || null;
   let added = 0;
   let skipped = 0;
   let operations = 0;
+  // Проверка наблюдателя: сообщения выгрузки за время, когда он читал группу
+  // (с небольшим запасом по краям), должны найтись среди живых
+  const since = liveSince();
+  const auditFrom = since ? since + 5 * 60000 : null;
+  const auditTo = now - 5 * 60000;
+  let checked = 0;
+  const missed = [];
   db.raw.exec('BEGIN');
   try {
     for (const m of messages) {
@@ -203,7 +238,10 @@ export function importExport(rawText, staff) {
       if (!text) { skipped++; continue; }
       // То же сообщение уже пришло от наблюдателя
       const at = Date.parse(m.ts);
-      if (q.liveTwin.get(new Date(at - 180000).toISOString(), new Date(at + 180000).toISOString(), text)) { skipped++; continue; }
+      const audited = auditFrom && at >= auditFrom && at <= auditTo && textKey(text) && !NOT_AUDITED.test(text);
+      if (audited) checked++;
+      if (twinsOf('live', m.ts, text).length) { skipped++; continue; }
+      if (audited) missed.push(m.ts);
       const parsed = storeMessage({
         id: `x:${sha(`${m.ts}|${m.author}|${text}`)}`, source: 'export', ts: m.ts,
         author: /^\+?[\d\s()-]{8,}$/.test(m.author) ? m.author.replace(/\D/g, '') : m.author,
@@ -219,7 +257,8 @@ export function importExport(rawText, staff) {
     db.raw.exec('ROLLBACK');
     throw err;
   }
-  const result = { added, skipped, operations, from, to, total: messages.length };
+  const audit = auditFrom && checked ? { from: new Date(auditFrom).toISOString(), checked, missed: missed.length, missedAt: missed.slice(-20) } : null;
+  const result = { added, skipped, operations, from, to, total: messages.length, audit };
   db.setSetting('journal_import', JSON.stringify({ ...result, at: new Date().toISOString(), by: staff?.email || null }));
   return result;
 }
@@ -279,6 +318,8 @@ export function listMessages(filter = {}) {
   where.push(`kind IN (${kinds.map(() => '?').join(',')})`);
   params.push(...kinds);
   if (filter.status) { where.push('status = ?'); params.push(filter.status); } else where.push("status != 'ignored'");
+  // Фото из выгрузки — без самих файлов, в ленте от них толку нет
+  if (kinds.includes('media')) where.push("NOT (kind = 'media' AND source = 'export')");
   if (filter.plate) { where.push('id IN (SELECT message_id FROM wa_message_plates WHERE plate = ?)'); params.push(String(filter.plate).replace(/\D/g, '')); }
   if (filter.author) { where.push('(author = ? OR author_name = ?)'); params.push(filter.author, filter.author); }
   if (filter.q) { where.push('text LIKE ?'); params.push(`%${String(filter.q).slice(0, 60)}%`); }
@@ -384,6 +425,12 @@ export function timesheet(month, phones) {
  * С какого момента наблюдатель читает группу без перерыва: сверку с WS по
  * отчётам раньше этого времени не делаем (за перерыв в журнале могут быть дыры)
  */
+/** Время последнего сообщения, полученного наблюдателем (не из выгрузки) */
+export function lastLiveAt() {
+  const row = db.raw.prepare("SELECT MAX(ts) ts FROM wa_messages WHERE source = 'live'").get();
+  return row?.ts ? Date.parse(row.ts) : null;
+}
+
 export function liveSince() {
   const value = db.getSetting('wa_live_since');
   return value ? Date.parse(value) : null;

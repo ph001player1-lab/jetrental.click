@@ -416,6 +416,11 @@ async function checkAlerts(now = Date.now()) {
     await notifyAdmins(g('alert.waDown') + link);
     db.setSetting('alert_wa_down', '1');
   }
+  // Сообщения группы не расшифровались, и WhatsApp не дослал их за 15 минут — не чаще раза в 6 часов
+  const stuck = (wa.unreadable || []).filter((u) => now - Date.parse(u.ts) > 15 * 60000);
+  if (wa.connected && stuck.length) {
+    await alertAdminsOnce('wa_unreadable', g('alert.waUnreadable', { n: stuck.length }) + `\n\n👉 ${config.staff.url}/#journal`, 6 * 3600000);
+  }
 
   // Мало места: меньше 15% — один раз, снова — когда освободится больше 20%
   if (host.disk) {

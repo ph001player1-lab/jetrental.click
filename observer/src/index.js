@@ -23,7 +23,8 @@ import path from 'node:path';
 import http from 'node:http';
 import crypto from 'node:crypto';
 import makeWASocket, {
-  useMultiFileAuthState, DisconnectReason, Browsers, normalizeMessageContent, getContentType, downloadMediaMessage
+  useMultiFileAuthState, DisconnectReason, Browsers, normalizeMessageContent, getContentType, downloadMediaMessage,
+  WAMessageStubType
 } from 'baileys';
 import QRCode from 'qrcode';
 
@@ -76,8 +77,22 @@ const state = {
   error: null,
   connectedAt: null,
   lastMessageAt: null,
-  forwarded: 0
+  forwarded: 0,
+  // Сообщения группы, которые не удалось расшифровать (WhatsApp обычно досылает
+  // их сам через несколько минут — тогда они отсюда пропадают)
+  unreadable: [],
+  // Сколько сообщений группы получено за день (по Бангкоку)
+  today: { date: null, received: 0 }
 };
+
+const MAX_UNREADABLE = 50;
+const bangkokDay = (ms) => new Date(ms + 7 * 3600000).toISOString().slice(0, 10);
+
+function countReceived(ms) {
+  const day = bangkokDay(ms);
+  if (state.today.date !== day) state.today = { date: day, received: 0 };
+  state.today.received++;
+}
 
 /* ------------------------------------------------------ Связь с ботом */
 
@@ -121,7 +136,9 @@ function reportStatus() {
     status: state.status,
     me: state.me,
     groupId: config.groupId,
-    groupSubject: config.groupSubject
+    groupSubject: config.groupSubject,
+    unreadable: state.unreadable,
+    today: state.today
   }));
 }
 
@@ -169,6 +186,26 @@ async function handleMessage(msg) {
   // Только выбранная рабочая группа. Сообщения «от себя» тоже берём: если
   // наблюдатель подключён к номеру сотрудника, его сообщения — часть журнала
   if (!config.groupId || msg.key.remoteJid !== config.groupId) return;
+  const id = msg.key.id;
+  // Не расшифровалось: Baileys сам попросит отправителя прислать ещё раз.
+  // Запоминаем — если так и не придёт, админ увидит это в журнале и предупреждениях
+  if (msg.messageStubType === WAMessageStubType.CIPHERTEXT && !msg.message) {
+    if (id && !state.unreadable.some((u) => u.id === id)) {
+      const ts = new Date(toMs(msg.messageTimestamp) || Date.now()).toISOString();
+      const reason = String(msg.messageStubParameters?.[0] || '').slice(0, 80);
+      state.unreadable.push({ id, ts, author: await authorOf(msg), reason });
+      if (state.unreadable.length > MAX_UNREADABLE) state.unreadable.shift();
+      log(`unreadable message ${id} at ${ts} (${reason}) — waiting for WhatsApp to resend`);
+      reportStatus();
+    }
+    return;
+  }
+  const waiting = state.unreadable.findIndex((u) => u.id === id);
+  if (waiting >= 0 && msg.message) {
+    state.unreadable.splice(waiting, 1);
+    log(`message ${id} recovered`);
+    reportStatus();
+  }
   const content = normalizeMessageContent(msg.message);
   if (!content) return;
   const type = getContentType(content);
@@ -200,6 +237,7 @@ async function handleMessage(msg) {
     albumId: content.messageContextInfo?.messageAssociation?.parentMessageKey?.id || null
   };
   state.lastMessageAt = message.ts;
+  countReceived(Date.parse(message.ts));
   enqueue(async () => {
     const ok = await botRequest('/internal/wa/message', message);
     if (ok) state.forwarded++;

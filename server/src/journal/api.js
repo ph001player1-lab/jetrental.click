@@ -21,7 +21,7 @@ import * as journal from './journal.js';
 import { reconcile } from './reconcile.js';
 import { observerStatus } from './observer.js';
 
-const FEED_KINDS = [...journal.OPERATION_KINDS, ...journal.SHIFT_KINDS, 'question', 'note'];
+const FEED_KINDS = [...journal.OPERATION_KINDS, ...journal.SHIFT_KINDS, 'question', 'note', 'media'];
 const MAX_IMPORT_BYTES = 30 * 1024 * 1024;
 
 const ADMIN_ONLY = new Set(['journal.admin', 'journal.timesheet']);
@@ -34,7 +34,10 @@ export async function getJournal(staff, req, res, url) {
   const p = url.searchParams;
   const privateOk = can(staff, 'journal.private');
   const phones = await staffPhones();
-  const kinds = (p.get('kinds') || '').split(',').filter((k) => FEED_KINDS.includes(k));
+  // kinds=* — «Весь чат»: все сообщения группы (переписка — только тем, кто видит контакты)
+  const kinds = p.get('kinds') === '*'
+    ? FEED_KINDS.filter((k) => privateOk || !['note', 'question', 'media'].includes(k))
+    : (p.get('kinds') || '').split(',').filter((k) => FEED_KINDS.includes(k));
   const rows = journal.listMessages({
     kinds,
     plate: p.get('plate') || null,
@@ -99,6 +102,6 @@ export async function importHistory(staff, req, res) {
   if (text.length < 20) throw new HttpError(400, 'empty_file');
   const result = journal.importExport(text, staff);
   if (!result.total) throw new HttpError(400, 'not_whatsapp_export');
-  console.log(`Journal import by ${staff.email}: ${result.added} new of ${result.total}`);
+  console.log(`Journal import by ${staff.email}: ${result.added} new of ${result.total}${result.audit ? `, observer missed ${result.audit.missed} of ${result.audit.checked}` : ''}`);
   sendJson(res, 200, result);
 }

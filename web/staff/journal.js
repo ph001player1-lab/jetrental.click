@@ -26,11 +26,15 @@
     tasks: 'pickup_task,change_task',
     service: 'service',
     shifts: 'shift_start,shift_end',
-    notes: 'note'
+    notes: 'note',
+    // Все сообщения группы: операции, смены, переписка, вопросы и фото
+    chat: '*'
   };
+  // Не операции: в карточке — сам текст сообщения, а не «машина без госномера»
+  const CHAT_KINDS = ['note', 'question', 'media'];
   const KIND_TONE = {
     booking: 'reserve', issue: 'rent', return: 'free', changed: 'service', change_task: 'task', pickup_task: 'task',
-    extension: 'reserve', reschedule: 'task', payment: 'free', service: 'service', shift_start: 'task', shift_end: 'task', note: 'task', question: 'task'
+    extension: 'reserve', reschedule: 'task', payment: 'free', service: 'service', shift_start: 'task', shift_end: 'task', note: 'task', question: 'task', media: 'task'
   };
   const FIX_KINDS = ['booking', 'issue', 'return', 'pickup_task', 'change_task', 'changed', 'reschedule', 'extension', 'payment', 'service', 'shift_start', 'shift_end'];
   const PAGE = 50;
@@ -157,11 +161,18 @@
         </form>`;
     }
 
+    /** Текст сообщения без служебных пометок выгрузки («<image omitted>» и т. п.) */
+    function chatText(text) {
+      const clean = String(text || '').replace(/<[a-z ]+(omitted|message)>|<attached:[^>]*>|<this message was edited>/gi, '').trim();
+      return clean.length > 600 ? `${clean.slice(0, 600)}…` : clean;
+    }
+
     function card(e) {
       const f = e.fields || {};
       const canFix = ctx.can('journal.edit');
       const shift = e.kind === 'shift_start' || e.kind === 'shift_end';
-      const notes = [...(f.notes || [])];
+      const chat = CHAT_KINDS.includes(e.kind);
+      const notes = chat ? [] : [...(f.notes || [])];
       return `
         <article class="card jr-card${e.status === 'review' ? ' jr-card--review' : ''}">
           <div class="jr-card__head">
@@ -170,7 +181,8 @@
             <span class="jr-who">${esc(e.author)}</span>
             ${e.edited ? `<span class="jr-edited" title="${esc(e.edited.by)}">✎</span>` : ''}
           </div>
-          ${shift ? '' : `<div class="jr-title">${title(e) || `<span class="muted">${esc(t('jr.noPlate'))}</span>`}</div>`}
+          ${shift || (chat && !title(e)) ? '' : `<div class="jr-title">${title(e) || `<span class="muted">${esc(t('jr.noPlate'))}</span>`}</div>`}
+          ${(chat || shift) && e.text ? `<div class="jr-text">${esc(chatText(e.text))}</div>` : ''}
           ${facts(f) ? `<div class="jr-facts">${facts(f)}</div>` : ''}
           ${f.money ? `<div class="jr-moneys">${moneyChips(f.money)}</div>` : ''}
           ${f.contact ? `<div class="jr-contact">👤 ${esc(f.contact)}</div>` : ''}
@@ -179,10 +191,10 @@
           ${e.media?.length ? `<div class="jr-photos">${e.media.map((m) => `
             <a href="/api/staff/journal/media?id=${m.id}" target="_blank" rel="noopener"><img src="/api/staff/journal/media?id=${m.id}" alt="" loading="lazy"></a>`).join('')}</div>`
             : e.mediaCount && !ctx.can('journal.private') ? `<div class="muted jr-small">📷 ${esc(t('jr.photosHidden'))}</div>` : ''}
-          ${e.text ? `<details class="jr-raw"${st.open.has(e.id) ? ' open' : ''} data-jr-raw="${esc(e.id)}"><summary>${esc(t('jr.raw'))}</summary><pre>${esc(e.text)}</pre></details>` : ''}
+          ${e.text && !chat && !shift ? `<details class="jr-raw"${st.open.has(e.id) ? ' open' : ''} data-jr-raw="${esc(e.id)}"><summary>${esc(t('jr.raw'))}</summary><pre>${esc(e.text)}</pre></details>` : ''}
           ${e.status === 'review' ? `<p class="jr-review-note">⚠️ ${esc(t('jr.reviewNote'))}</p>` : ''}
           ${canFix && (e.status === 'review' || st.fixing === e.id) ? fixForm(e)
-            : canFix && !shift ? `<button type="button" class="link jr-small" data-jr-fixopen="${esc(e.id)}">${esc(t('jr.fix.open'))}</button>` : ''}
+            : canFix && !shift && e.kind !== 'media' ? `<button type="button" class="link jr-small" data-jr-fixopen="${esc(e.id)}">${esc(t('jr.fix.open'))}</button>` : ''}
         </article>`;
     }
 
@@ -190,7 +202,7 @@
 
     function renderFeed() {
       const chips = Object.keys(FILTERS)
-        .filter((k) => k !== 'notes' || ctx.can('journal.private'))
+        .filter((k) => (k !== 'notes' && k !== 'chat') || ctx.can('journal.private'))
         .map((k) => `<button type="button" class="chip" data-jr-filter="${k}" aria-pressed="${st.filter === k}">${esc(t(`jr.f.${k}`))}</button>`).join('');
       const events = st.events || [];
       let lastDay = '';
@@ -294,6 +306,15 @@
 
     /* --------------------------------------------------- WhatsApp (Admin) */
 
+    const bangkokToday = () => new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
+
+    /** Итог проверки наблюдателя по выгрузке: всё ли он получил за время наблюдения */
+    function auditLine(audit) {
+      if (!audit) return '';
+      if (!audit.missed) return `<p class="ok-line">✓ ${esc(t('jr.imp.auditOk', { n: num(audit.checked), from: ctx.dateTime(audit.from) }))}</p>`;
+      return `<p class="warn">⚠️ ${esc(t('jr.imp.auditMissed', { n: num(audit.missed), total: num(audit.checked), times: audit.missedAt.slice(-5).map((ts) => ctx.dateTime(ts)).join(', ') }))}</p>`;
+    }
+
     function renderWa() {
       const w = st.wa;
       const importBlock = `
@@ -301,6 +322,7 @@
           <h3>${esc(t('jr.imp.title'))}</h3>
           <p class="muted">${esc(t('jr.imp.how'))}</p>
           ${st.imported ? `<p class="note">${esc(t('jr.imp.last', { time: ctx.dateTime(st.imported.at), added: st.imported.added, from: ctx.shortDate(st.imported.from?.slice(0, 10)), to: ctx.shortDate(st.imported.to?.slice(0, 10)) }))}</p>` : ''}
+          ${auditLine(st.imported?.audit)}
           <label class="btn"><span>${esc(t('jr.imp.choose'))}</span><input type="file" accept=".txt,text/plain" data-jr-import hidden></label>
           ${st.importNote ? `<p class="md-status is-${st.importNote.kind}" role="status">${esc(st.importNote.text)}</p>` : ''}
         </section>`;
@@ -317,7 +339,9 @@
               <select name="groupId" class="search"><option value="">${esc(t('jr.wa.chooseGroup'))}</option>${groups}</select></label>
             <button type="submit" class="btn btn--primary">${esc(t('jr.wa.watch'))}</button>
           </form>
-          ${w.groupId ? `<p class="note">👀 ${esc(t('jr.wa.watching', { group: w.groupSubject || '—' }))}${w.lastMessageAt ? ` · ${esc(t('jr.wa.lastMsg', { time: ctx.dateTime(w.lastMessageAt) }))}` : ''}</p>` : `<p class="warn">${esc(t('jr.wa.pickGroup'))}</p>`}
+          ${w.groupId ? `<p class="note">👀 ${esc(t('jr.wa.watching', { group: w.groupSubject || '—' }))}${w.lastMessageAt ? ` · ${esc(t('jr.wa.lastMsg', { time: ctx.dateTime(w.lastMessageAt) }))}` : ''}</p>
+          <p class="muted jr-small">${esc(t('jr.wa.today', { n: w.today?.date === bangkokToday() ? w.today.received : 0 }))}</p>` : `<p class="warn">${esc(t('jr.wa.pickGroup'))}</p>`}
+          ${w.unreadable?.length ? `<p class="warn">⚠️ ${esc(t('jr.wa.unreadable', { n: w.unreadable.length, times: w.unreadable.slice(-5).map((u) => ctx.dateTime(u.ts)).join(', ') }))}</p>` : ''}
           <p class="muted jr-small">${esc(t('jr.wa.readOnly'))}</p>
           <button type="button" class="btn btn--small" data-jr-logout>${esc(t('jr.wa.logout'))}</button>`;
       } else if (w.status === 'qr') {
@@ -447,7 +471,7 @@
         const text = await file.text();
         const r = await ctx.api('/journal/import', { body: { text } });
         st.importNote = { kind: 'ok', text: t('jr.imp.done', { added: num(r.added), ops: num(r.operations), skipped: num(r.skipped) }) };
-        st.imported = { at: new Date().toISOString(), added: r.added, from: r.from, to: r.to };
+        st.imported = { at: new Date().toISOString(), added: r.added, from: r.from, to: r.to, audit: r.audit };
       } catch (err) {
         st.importNote = { kind: 'error', text: ctx.errorText(err) };
       }

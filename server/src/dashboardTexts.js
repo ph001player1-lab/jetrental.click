@@ -76,7 +76,13 @@ const TEXTS = {
     'mailOff.title': 'Email is not set up',
     'mailOff.detail': 'Login codes for this site cannot be sent (RESEND_API_KEY).',
     'mailFailed.title': 'Last login email failed',
-    'failure.detail': '{when}: {error}'
+    'failure.detail': '{when}: {error}',
+    'waDown.title': 'WhatsApp observer is not connected',
+    'waDown.detail': 'The journal is not getting new messages. Open Journal → WhatsApp: if there is a QR code, link the number again.',
+    'waUnreadable.title': 'WhatsApp: {n} message(s) could not be read',
+    'waUnreadable.detail': 'The latest one — {when}. WhatsApp usually re-sends them within minutes. If not, upload a chat export (Journal → WhatsApp): the missing messages will be added.',
+    'waSilent.title': 'WhatsApp: no new messages from the work group for {h} h',
+    'waSilent.detail': 'The observer is connected but has received nothing since {when}. If people wrote in the group during this time, check Journal → WhatsApp.'
   },
 
   ru: {
@@ -146,7 +152,13 @@ const TEXTS = {
     'mailOff.title': 'Почта не настроена',
     'mailOff.detail': 'Коды входа на этот сайт не отправляются (RESEND_API_KEY).',
     'mailFailed.title': 'Последнее письмо с кодом входа не отправилось',
-    'failure.detail': '{when}: {error}'
+    'failure.detail': '{when}: {error}',
+    'waDown.title': 'Наблюдатель WhatsApp не подключён',
+    'waDown.detail': 'Журнал не получает новые сообщения. Откройте «Журнал → WhatsApp»: если там QR-код — привяжите номер заново.',
+    'waUnreadable.title': 'WhatsApp: не удалось прочитать сообщений — {n}',
+    'waUnreadable.detail': 'Последнее — {when}. Обычно WhatsApp досылает их сам за несколько минут. Если нет — загрузите выгрузку чата («Журнал → WhatsApp»): недостающие сообщения добавятся.',
+    'waSilent.title': 'WhatsApp: из рабочей группы нет новых сообщений {h} ч',
+    'waSilent.detail': 'Наблюдатель подключён, но ничего не получал с {when}. Если в группе за это время писали — проверьте «Журнал → WhatsApp».'
   },
 
   th: {
@@ -216,7 +228,13 @@ const TEXTS = {
     'mailOff.title': 'ยังไม่ได้ตั้งค่าอีเมล',
     'mailOff.detail': 'ส่งรหัสเข้าสู่ระบบของเว็บไซต์นี้ไม่ได้ (RESEND_API_KEY)',
     'mailFailed.title': 'อีเมลรหัสเข้าสู่ระบบฉบับล่าสุดส่งไม่สำเร็จ',
-    'failure.detail': '{when}: {error}'
+    'failure.detail': '{when}: {error}',
+    'waDown.title': 'ตัวอ่าน WhatsApp ไม่ได้เชื่อมต่อ',
+    'waDown.detail': 'บันทึกไม่ได้รับข้อความใหม่ เปิด บันทึก → WhatsApp: ถ้ามี QR โค้ด ให้เชื่อมเบอร์อีกครั้ง',
+    'waUnreadable.title': 'WhatsApp: อ่านข้อความไม่ได้ {n} ข้อความ',
+    'waUnreadable.detail': 'ล่าสุด — {when} โดยปกติ WhatsApp จะส่งซ้ำเองภายในไม่กี่นาที ถ้าไม่ ให้อัปโหลดไฟล์ส่งออกแชท (บันทึก → WhatsApp) ข้อความที่ขาดจะถูกเพิ่ม',
+    'waSilent.title': 'WhatsApp: ไม่มีข้อความใหม่จากกลุ่มงาน {h} ชม.',
+    'waSilent.detail': 'ตัวอ่านเชื่อมต่ออยู่ แต่ไม่ได้รับอะไรตั้งแต่ {when} ถ้ามีคนเขียนในกลุ่มช่วงนี้ ให้ตรวจ บันทึก → WhatsApp'
   },
   my: {
     'time.longAgo': 'ရက် ၂၀ ကျော်က',
@@ -285,7 +303,13 @@ const TEXTS = {
     'mailOff.title': 'အီးမေးလ် မသတ်မှတ်ရသေးပါ',
     'mailOff.detail': 'ဤဆိုက်အတွက် ဝင်ရောက်ကုဒ်များ မပို့နိုင်ပါ (RESEND_API_KEY)။',
     'mailFailed.title': 'နောက်ဆုံး ဝင်ရောက်ကုဒ် အီးမေးလ် မအောင်မြင်ပါ',
-    'failure.detail': '{when}: {error}'
+    'failure.detail': '{when}: {error}',
+    'waDown.title': "WhatsApp စောင့်ကြည့်သူ ချိတ်ဆက်မထားပါ",
+    'waDown.detail': "မှတ်တမ်းသို့ မက်ဆေ့ချ်အသစ် မရောက်ပါ။ မှတ်တမ်း → WhatsApp ကိုဖွင့်ပါ- QR ကုဒ် ရှိပါက နံပါတ်ကို ပြန်ချိတ်ပါ။",
+    'waUnreadable.title': "WhatsApp- မက်ဆေ့ချ် {n} ခု ဖတ်၍မရပါ",
+    'waUnreadable.detail': "နောက်ဆုံး — {when}။ WhatsApp က မိနစ်အနည်းငယ်အတွင်း ပြန်ပို့လေ့ရှိသည်။ မပို့ပါက chat export ကို တင်ပါ (မှတ်တမ်း → WhatsApp)- ကျန်နေသော မက်ဆေ့ချ်များ ထည့်ပေးမည်။",
+    'waSilent.title': "WhatsApp- အလုပ်အုပ်စုမှ မက်ဆေ့ချ်အသစ် {h} နာရီ မရှိပါ",
+    'waSilent.detail': "စောင့်ကြည့်သူ ချိတ်ဆက်ထားသော်လည်း {when} မှစ၍ ဘာမှ မရရှိပါ။ ဤအတောအတွင်း အုပ်စုတွင် ရေးခဲ့ပါက မှတ်တမ်း → WhatsApp ကို စစ်ပါ။"
   }
 };
 
