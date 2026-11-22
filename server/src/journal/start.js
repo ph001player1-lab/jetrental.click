@@ -4,7 +4,7 @@
  * сроки хранения фото и чистка старой истории WS.
  */
 
-import { reparseStale, applyMediaRetention } from './journal.js';
+import { reparseStale, applyMediaRetention, relinkMediaOnce } from './journal.js';
 import { startInternalServer } from './observer.js';
 import { pruneWsHistory } from './wsHistory.js';
 
@@ -24,6 +24,8 @@ export function startJournal() {
   try {
     const n = reparseStale();
     if (n) console.log(`Journal: re-parsed ${n} messages`);
+    const unlinked = relinkMediaOnce();
+    if (unlinked) console.log(`Journal: unlinked ${unlinked} photos attached to the wrong report`);
   } catch (err) {
     console.error('Journal re-parse failed:', err.message);
   }

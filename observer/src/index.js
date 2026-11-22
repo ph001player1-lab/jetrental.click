@@ -146,6 +146,30 @@ function reportStatus() {
 
 const digits = (jid) => String(jid || '').split('@')[0].split(':')[0].replace(/\D/g, '');
 
+// Внутренний номер WhatsApp (LID) → телефон: из списка участников группы
+// (на случай, если Baileys ещё не знает соответствия)
+const lidToPhone = new Map();
+
+/** Телефон по LID ('7302065160246@lid' → '66…'); null — если неизвестен */
+async function phoneOfLid(lidJid) {
+  try {
+    const mapped = await sock?.signalRepository?.lidMapping?.getPNForLID(lidJid);
+    if (mapped) return digits(mapped);
+  } catch { /* нет соответствия */ }
+  return lidToPhone.get(digits(lidJid)) || null;
+}
+
+/** Упоминания в тексте приходят как «@7302065160246» (LID) — заменяем на телефон */
+async function mentionsToPhones(text, mentioned) {
+  let out = text;
+  for (const jid of mentioned || []) {
+    if (!String(jid).endsWith('@lid')) continue;
+    const phone = await phoneOfLid(jid);
+    if (phone) out = out.split(`@${digits(jid)}`).join(`@${phone}`);
+  }
+  return out;
+}
+
 /** Номер автора: из @s.whatsapp.net; если пришёл только LID — спрашиваем соответствие у Baileys */
 async function authorOf(msg) {
   // Своё сообщение (с телефона этого номера) — автор сам номер наблюдателя
@@ -154,13 +178,7 @@ async function authorOf(msg) {
   const pn = candidates.find((j) => j.endsWith('@s.whatsapp.net'));
   if (pn) return digits(pn);
   const lid = candidates.find((j) => j.endsWith('@lid'));
-  if (lid) {
-    try {
-      const mapped = await sock?.signalRepository?.lidMapping?.getPNForLID(lid);
-      if (mapped) return digits(mapped);
-    } catch { /* нет соответствия */ }
-    return `lid:${digits(lid)}`;
-  }
+  if (lid) return (await phoneOfLid(lid)) || `lid:${digits(lid)}`;
   return digits(candidates[0]) || 'unknown';
 }
 
@@ -230,7 +248,7 @@ async function handleMessage(msg) {
     ts: new Date(toMs(msg.messageTimestamp) || Date.now()).toISOString(),
     author: await authorOf(msg),
     authorName: msg.pushName || (msg.key.fromMe ? sock?.user?.name : null) || null,
-    text: textOf(content),
+    text: await mentionsToPhones(textOf(content), inner.contextInfo?.mentionedJid),
     mediaCount: media ? 1 : 0,
     quotedId: inner.contextInfo?.stanzaId || null,
     // Фото альбома ссылаются на «родителя» — по нему отчёт найдёт все фото
@@ -259,6 +277,13 @@ async function handleMessage(msg) {
 async function refreshGroups() {
   try {
     const all = await sock.groupFetchAllParticipating();
+    for (const g of Object.values(all)) {
+      for (const p of g.participants || []) {
+        const lid = [p.id, p.lid].find((j) => String(j || '').endsWith('@lid'));
+        const phone = [p.phoneNumber, p.id].find((j) => String(j || '').endsWith('@s.whatsapp.net'));
+        if (lid && phone) lidToPhone.set(digits(lid), digits(phone));
+      }
+    }
     state.groups = Object.values(all).map((g) => ({ id: g.id, subject: g.subject, size: g.participants?.length || 0 }))
       .sort((a, b) => a.subject.localeCompare(b.subject));
     // Название группы могли сменить — обновим, но выбор оставим тем же

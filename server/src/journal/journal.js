@@ -59,8 +59,24 @@ const q = {
     WHERE report_id IS NULL AND message_id IN (
       SELECT id FROM wa_messages WHERE author = ? AND kind = 'media' AND ts BETWEEN ? AND ?)`),
   waitingReport: db.raw.prepare(`
-    SELECT id, kind FROM wa_messages WHERE (quoted_id = ? OR quoted_id = ?) AND kind != 'media' ORDER BY ts LIMIT 1`)
+    SELECT id, kind FROM wa_messages WHERE (quoted_id = ? OR quoted_id = ?) AND kind != 'media' ORDER BY ts LIMIT 1`),
+  // Подпись — у одного из фото альбома: остальные фото того же альбома — к этому отчёту
+  linkAlbum: db.raw.prepare(`
+    UPDATE wa_media SET report_id = ?, sensitive = ?, delete_after = CASE WHEN ? = 1 THEN NULL ELSE delete_after END
+    WHERE report_id IS NULL AND message_id IN (SELECT id FROM wa_messages WHERE album_id = ? OR id = ?)`),
+  albumReport: db.raw.prepare(`
+    SELECT id, kind FROM wa_messages WHERE album_id = ? AND kind != 'media' AND id != ? ORDER BY ts LIMIT 1`),
+  // Прошлое текстовое сообщение того же автора: фото до него к новому отчёту не относятся
+  // Имя, под которым номер пишет в группе (для упоминаний «@66…»)
+  nameOf: db.raw.prepare("SELECT author_name FROM wa_messages WHERE author = ? AND author_name IS NOT NULL AND author_name != '' ORDER BY ts DESC LIMIT 1"),
+  prevText: db.raw.prepare(`
+    SELECT ts FROM wa_messages WHERE author = ? AND ts < ? AND id != ? AND kind != 'media' ORDER BY ts DESC LIMIT 1`)
 };
+
+// Фото без подписи, отправленные отдельно прямо перед отчётом, берём только для
+// передачи машины (выдача, возврат, замена, ремонт) и только за 5 минут до отчёта
+const RECENT_PHOTO_KINDS = new Set(['issue', 'return', 'changed', 'service']);
+const RECENT_PHOTO_MS = 5 * 60000;
 
 const sha = (value) => crypto.createHash('sha1').update(value).digest('hex').slice(0, 24);
 
@@ -214,10 +230,13 @@ function linkMedia(report) {
   const sensitive = SENSITIVE_KINDS.has(report.kind) ? 1 : 0;
   let linked = 0;
   if (report.quotedId) linked = Number(q.linkQuoted.run(report.id, sensitive, sensitive, report.quotedId, report.quotedId).changes);
-  if (!linked && OPERATION_KINDS.includes(report.kind)) {
+  if (report.albumId) linked += Number(q.linkAlbum.run(report.id, sensitive, sensitive, report.albumId, report.albumId).changes);
+  if (!linked && RECENT_PHOTO_KINDS.has(report.kind)) {
     const at = Date.parse(report.ts);
+    const prev = q.prevText.get(report.author, report.ts, report.id)?.ts;
+    const from = Math.max(at - RECENT_PHOTO_MS, prev ? Date.parse(prev) + 1000 : 0);
     linked = Number(q.linkRecent.run(report.id, sensitive, sensitive, report.author,
-      new Date(at - 15 * 60000).toISOString(), report.ts).changes);
+      new Date(from).toISOString(), report.ts).changes);
   }
   // Подпись прямо под фото: само сообщение и есть фото отчёта
   db.raw.prepare('UPDATE wa_media SET report_id = ?, sensitive = ?, delete_after = CASE WHEN ? = 1 THEN NULL ELSE delete_after END WHERE message_id = ? AND report_id IS NULL')
@@ -234,7 +253,11 @@ export function saveMedia(messageId, buffer, mime) {
   const name = `${sha(`${messageId}:${Date.now()}:${Math.random()}`)}.${ext}`;
   fs.mkdirSync(path.join(mediaDir, month), { recursive: true });
   fs.writeFileSync(path.join(mediaDir, month, name), buffer);
-  const report = q.waitingReport.get(messageId, message.album_id || messageId);
+  // Отчёт уже пришёл: фото — ответ на него или из того же альбома, что и подпись
+  // Фото с подписью — фото самого этого сообщения
+  const report = (message.kind !== 'media' ? { id: message.id, kind: message.kind } : null)
+    || q.waitingReport.get(messageId, message.album_id || messageId)
+    || (message.album_id ? q.albumReport.get(message.album_id, messageId) : null);
   const sensitive = report && SENSITIVE_KINDS.has(report.kind) ? 1 : 0;
   const deleteAfter = sensitive ? null : new Date(Date.parse(message.ts) + MEDIA_KEEP_DAYS * DAY_MS).toISOString();
   const info = q.addMedia.run(messageId, report?.id || null, `${month}/${name}`, mime || 'image/jpeg', buffer.length,
@@ -340,6 +363,34 @@ export function importExport(rawText, staff, now = Date.now()) {
   return result;
 }
 
+/**
+ * Один раз после смены правил: отвязать фото, которые попали к отчёту только
+ * «по времени» (тот же автор за 15 минут), если по новым правилам они к нему
+ * не относятся — например, фото скутера у брони машины. Возвращает число фото.
+ */
+export function relinkMediaOnce() {
+  if (db.getSetting('journal_media_relink') === '1') return 0;
+  const rows = db.raw.prepare(`
+    SELECT wa_media.id, m.ts AS mts, m.id AS mid, m.album_id AS malbum, r.id AS rid, r.ts AS rts, r.kind AS rkind,
+           r.album_id AS ralbum, r.quoted_id AS rquoted, r.author AS rauthor
+    FROM wa_media JOIN wa_messages m ON m.id = wa_media.message_id JOIN wa_messages r ON r.id = wa_media.report_id
+    WHERE wa_media.report_id IS NOT NULL AND wa_media.report_id != wa_media.message_id`).all();
+  const unlink = db.raw.prepare('UPDATE wa_media SET report_id = NULL, sensitive = 0, delete_after = ? WHERE id = ?');
+  let n = 0;
+  for (const row of rows) {
+    const sameAlbum = row.ralbum && (row.malbum === row.ralbum || row.mid === row.ralbum);
+    const quoted = row.rquoted && (row.mid === row.rquoted || row.malbum === row.rquoted);
+    if (sameAlbum || quoted) continue;
+    const prev = q.prevText.get(row.rauthor, row.rts, row.rid)?.ts;
+    const from = Math.max(Date.parse(row.rts) - RECENT_PHOTO_MS, prev ? Date.parse(prev) + 1000 : 0);
+    if (RECENT_PHOTO_KINDS.has(row.rkind) && Date.parse(row.mts) >= from) continue;
+    unlink.run(new Date(Date.parse(row.mts) + MEDIA_KEEP_DAYS * DAY_MS).toISOString(), row.id);
+    n++;
+  }
+  db.setSetting('journal_media_relink', '1');
+  return n;
+}
+
 /** После улучшения разбора — переразобрать старые сообщения (кроме исправленных вручную) */
 export function reparseStale() {
   const rows = q.stale.all(PARSER_VERSION);
@@ -368,6 +419,13 @@ export function toEvent(row, phones, privateOk) {
   const data = JSON.parse(row.data || '{}');
   const fields = { ...(data.fields || {}) };
   if (!privateOk) delete fields.contact;
+  // Упоминания от наблюдателя — номерами: показываем имя сотрудника, если знаем
+  if (fields.assignees?.length) {
+    fields.assignees = fields.assignees.map((a) => (/^\d{8,}$/.test(a)
+      // Не нашли: телефон (до 12 цифр) — с «+», внутренний номер WhatsApp — с «@»
+      ? phones.get(a) || q.nameOf.get(a)?.author_name || q.nameOf.get(`lid:${a}`)?.author_name || (a.length <= 12 ? `+${a}` : `@${a}`)
+      : a));
+  }
   return {
     id: row.id,
     ts: row.ts,
