@@ -282,8 +282,13 @@
       if (!r.available) return `<div class="empty">${esc(t('jr.rec.noWs'))}</div>`;
       const issues = r.items.filter((i) => i.state === 'mismatch' || i.state === 'waiting');
       const shown = st.recAll ? r.items : issues;
+      // «Сейчас не внесено в WS» — те же машины, что в списке «Расхождения» (отчёт есть, в WS нет)
+      const notEntered = issues.filter((i) => i.reason !== 'ws_only').length;
+      const hours = (v) => (v == null ? '—' : v < 1 ? '<1' : v);
+      const pending = notEntered ? `<span class="warn">${esc(t('jr.rec.pending', { n: notEntered }))}</span>` : '';
       const lag = r.lag && r.lag.events
-        ? `<p class="note">${esc(t('jr.rec.lag', { median: r.lag.medianHours ?? '—', max: r.lag.maxHours ?? '—', entered: r.lag.entered, events: r.lag.events }))}${r.lag.pending ? ` · <span class="warn">${esc(t('jr.rec.pending', { n: r.lag.pending }))}</span>` : ''}</p>` : '';
+        ? `<p class="note">${esc(t('jr.rec.lag', { median: hours(r.lag.medianHours), max: hours(r.lag.maxHours), entered: r.lag.entered, events: r.lag.events }))}${pending ? ` · ${pending}` : ''}</p>`
+        : pending ? `<p class="note">${pending}</p>` : '';
       const rows = shown.map((i) => `
         <div class="card jr-rec jr-rec--${i.state}">
           <div class="jr-rec__car"><b>${esc(i.model || '—')}</b> ${plateLink(i.plate)}</div>
