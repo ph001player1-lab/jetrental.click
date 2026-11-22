@@ -31,7 +31,7 @@ import crypto from 'node:crypto';
 import { config } from './config.js';
 import * as db from './db.js';
 import { HttpError, sendJson, readJson, parseCookies, clientIp, rateLimiter } from './http.js';
-import { findStaff, normalizeEmail, isValidEmail } from './staffUsers.js';
+import { findStaff, normalizeEmail, isValidEmail, adminList, isAdminEmail } from './staffUsers.js';
 import { mailEnabled, sendMail } from './mail.js';
 import { getWsSnapshot, wsSyncStatus } from './ws/sync.js';
 import { getFleet, sheetsEnabled, plateKey } from './fleet.js';
@@ -39,7 +39,8 @@ import { tariffOn } from './pricing.js';
 import { todayIso } from './dates.js';
 import { canEdit, listModels, saveDescription, uploadPhoto, uploadThumb, saveGallery } from './staffCatalog.js';
 import { collectProblems, bookingOutlook, requestStats, LIMITS } from './dashboard.js';
-import { roleOf, permissionsOf } from './roles.js';
+import { roleOf, roleNameOf, permissionsOf, can, canAny } from './roles.js';
+import { accessOverview, saveRole, deleteRole, saveStaff, deleteStaff, importStaffList, AccessError } from './access.js';
 import { serverReport, saveServerSettings, alertAdminsOnce } from './serverStats.js';
 import { g } from './groupTexts.js';
 import { escapeHtml } from './format.js';
@@ -187,7 +188,15 @@ async function verify(req, res) {
 }
 
 function publicUser(staff) {
-  return { email: staff.email, name: staff.name, role: roleOf(staff), permissions: permissionsOf(staff), canEdit: canEdit(staff) };
+  return {
+    email: staff.email, name: staff.name, role: roleOf(staff), roleName: roleNameOf(staff),
+    permissions: permissionsOf(staff), canEdit: canEdit(staff)
+  };
+}
+
+/** Нет права на раздел — 403 (портал такой раздел и не показывает) */
+function needAny(staff, perms) {
+  if (!canAny(staff, perms)) throw new HttpError(403, 'no_section_access');
 }
 
 /** Сотрудник текущего запроса; 401, если не вошёл или доступ отозван */
@@ -249,7 +258,8 @@ async function priceData(cars) {
 }
 
 async function fleet(req, res) {
-  await requireStaff(req);
+  // Парк нужен и обзору, и календарю
+  needAny(await requireStaff(req), ['fleet.view', 'calendar.view', 'overview.view']);
   const snapshot = getWsSnapshot();
   const sync = wsSyncStatus();
   sendJson(res, 200, {
@@ -266,13 +276,16 @@ async function fleet(req, res) {
 }
 
 async function requests(req, res) {
-  await requireStaff(req);
+  const staff = await requireStaff(req);
+  needAny(staff, ['requests.view', 'overview.view']);
+  // Телефон клиента — только тем, кому открыты контакты клиентов
+  const contacts = can(staff, 'clients.view');
   const rows = db.listRecentRequests(100).map((r) => ({
     id: r.id,
     createdAt: r.created_at,
     channel: r.channel,
     clientName: r.client_name,
-    clientPhone: r.client_phone,
+    clientPhone: contacts ? r.client_phone : null,
     vehicleType: r.vehicle_type,
     model: r.model,
     dateFrom: r.date_from,
@@ -290,9 +303,65 @@ async function requests(req, res) {
 }
 
 async function dashboard(req, res, url) {
-  await requireStaff(req);
+  needAny(await requireStaff(req), ['overview.view']);
   const problems = await collectProblems(Date.now(), url.searchParams.get('lang') || 'en');
   sendJson(res, 200, { problems, outlook: bookingOutlook(), requests: requestStats(), limits: LIMITS });
+}
+
+/* ------------------------------------------------- Вкладка «Доступы» (админ) */
+
+function needAccessAdmin(staff) {
+  if (!can(staff, 'access.admin')) throw new HttpError(403, 'admin_only');
+}
+
+/** Ошибки проверки ролей и сотрудников — 400 с понятным кодом */
+async function accessCall(fn) {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err instanceof AccessError) throw new HttpError(400, err.code);
+    throw err;
+  }
+}
+
+async function accessGet(staff, req, res) {
+  needAccessAdmin(staff);
+  sendJson(res, 200, accessOverview(await adminList()));
+}
+
+async function accessRole(staff, req, res) {
+  needAccessAdmin(staff);
+  const body = await readJson(req);
+  sendJson(res, 200, { role: await accessCall(() => saveRole(body, staff.email)) });
+}
+
+async function accessRoleDelete(staff, req, res) {
+  needAccessAdmin(staff);
+  const { id } = await readJson(req);
+  await accessCall(() => deleteRole(id, staff.email));
+  sendJson(res, 200, { ok: true });
+}
+
+async function accessStaff(staff, req, res) {
+  needAccessAdmin(staff);
+  const body = await readJson(req);
+  const admin = await isAdminEmail(body.email);
+  sendJson(res, 200, { staff: await accessCall(() => saveStaff(body, staff.email, { isAdminEmail: () => admin })) });
+}
+
+async function accessImport(staff, req, res) {
+  needAccessAdmin(staff);
+  const { text } = await readJson(req);
+  // Почты админов из таблицы нельзя занять сотрудником
+  const admins = new Set((await adminList()).map((a) => a.email));
+  sendJson(res, 200, importStaffList(text, staff.email, { isAdminEmail: (email) => admins.has(String(email || '').toLowerCase()) }));
+}
+
+async function accessStaffDelete(staff, req, res) {
+  needAccessAdmin(staff);
+  const { id } = await readJson(req);
+  await accessCall(() => deleteStaff(id, staff.email));
+  sendJson(res, 200, { ok: true });
 }
 
 /** Обработчик, которому нужен вошедший сотрудник: handler(staff, req, res, url) */
@@ -322,7 +391,13 @@ const ROUTES = {
   'GET /api/staff/wa': signedIn(waStatus),
   'POST /api/staff/wa/config': signedIn(waConfig),
   'POST /api/staff/wa/pair': signedIn(waPair),
-  'POST /api/staff/wa/logout': signedIn(waLogout)
+  'POST /api/staff/wa/logout': signedIn(waLogout),
+  'GET /api/staff/access': signedIn(accessGet),
+  'POST /api/staff/access/role': signedIn(accessRole),
+  'POST /api/staff/access/role/delete': signedIn(accessRoleDelete),
+  'POST /api/staff/access/staff': signedIn(accessStaff),
+  'POST /api/staff/access/staff/delete': signedIn(accessStaffDelete),
+  'POST /api/staff/access/import': signedIn(accessImport)
 };
 
 /** Обработчик для пути /api/staff/*; null — такого маршрута нет */

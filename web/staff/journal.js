@@ -84,15 +84,20 @@
       ctx.rerender();
     }
 
-    /** Разделы журнала по роли: табель и WhatsApp — только админам */
+    /** Разделы журнала по правам роли (настраивает админ на вкладке «Доступы») */
     function allowedViews() {
-      return ['feed', 'review', ...(ctx.can('journal.timesheet') ? ['timesheet'] : []), 'reconcile', ...(ctx.can('journal.admin') ? ['wa'] : [])];
+      return [
+        ...(ctx.can('journal.view') ? ['feed', 'review'] : []),
+        ...(ctx.can('journal.timesheet') ? ['timesheet'] : []),
+        ...(ctx.can('reconcile.view') ? ['reconcile'] : []),
+        ...(ctx.can('whatsapp.view') ? ['wa'] : [])
+      ];
     }
 
     /** Открыть журнал (с фильтром по госномеру — из предупреждения на обзоре) */
     function show(params = {}) {
-      // После смены пользователя открытый раздел мог стать недоступен
-      if (!allowedViews().includes(st.view)) st.view = 'feed';
+      // После смены пользователя или прав открытый раздел мог стать недоступен
+      if (!allowedViews().includes(st.view)) st.view = allowedViews()[0] || 'feed';
       if (params.plate) {
         st.view = 'feed';
         st.filter = 'all';
@@ -339,7 +344,9 @@
 
     function renderWa() {
       const w = st.wa;
-      const importBlock = `
+      // «Смотрит»: состояние видно, а привязать, сменить группу и загрузить историю — нет
+      const manage = ctx.can('journal.admin');
+      const importBlock = !manage ? '' : `
         <section class="card jr-wa">
           <h3>${esc(t('jr.imp.title'))}</h3>
           <p class="muted">${esc(t('jr.imp.how'))} ${esc(t('jr.imp.tip'))}</p>
@@ -356,16 +363,18 @@
         const groups = (w.groups || []).map((g) => `<option value="${esc(g.id)}"${g.id === w.groupId ? ' selected' : ''}>${esc(`${g.subject} (${g.size})`)}</option>`).join('');
         body = `
           <p>✅ ${esc(t('jr.wa.connected', { me: w.me?.id ? `+${w.me.id}` : '—' }))}</p>
-          <form class="jr-wa__group" data-jr-group>
+          ${manage ? `<form class="jr-wa__group" data-jr-group>
             <label class="field"><span>${esc(t('jr.wa.group'))}</span>
               <select name="groupId" class="search"><option value="">${esc(t('jr.wa.chooseGroup'))}</option>${groups}</select></label>
             <button type="submit" class="btn btn--primary">${esc(t('jr.wa.watch'))}</button>
-          </form>
+          </form>` : ''}
           ${w.groupId ? `<p class="note">👀 ${esc(t('jr.wa.watching', { group: w.groupSubject || '—' }))}${w.lastMessageAt ? ` · ${esc(t('jr.wa.lastMsg', { time: ctx.dateTime(w.lastMessageAt) }))}` : ''}</p>
           <p class="muted jr-small">${esc(t('jr.wa.today', { n: w.today?.date === bangkokToday() ? w.today.received : 0 }))}</p>` : `<p class="warn">${esc(t('jr.wa.pickGroup'))}</p>`}
           ${w.unreadable?.length ? `<p class="warn">⚠️ ${esc(t('jr.wa.unreadable', { n: w.unreadable.length, times: w.unreadable.slice(-5).map((u) => ctx.dateTime(u.ts)).join(', ') }))}</p>` : ''}
           <p class="muted jr-small">${esc(t('jr.wa.readOnly'))}</p>
-          <button type="button" class="btn btn--small" data-jr-logout>${esc(t('jr.wa.logout'))}</button>`;
+          ${manage ? `<button type="button" class="btn btn--small" data-jr-logout>${esc(t('jr.wa.logout'))}</button>` : ''}`;
+      } else if (w.status === 'qr' && !manage) {
+        body = `<p class="warn">${esc(t('jr.wa.notLinked'))}</p>`;
       } else if (w.status === 'qr') {
         body = `
           <ol class="jr-steps"><li>${esc(t('jr.wa.step1'))}</li><li>${esc(t('jr.wa.step2'))}</li><li>${esc(t('jr.wa.step3'))}</li></ol>
@@ -410,7 +419,7 @@
       if (!el.closest('#journal')) return false;
       const view = el.closest('[data-jr-view]');
       if (view) {
-        st.view = allowedViews().includes(view.dataset.jrView) ? view.dataset.jrView : 'feed';
+        st.view = allowedViews().includes(view.dataset.jrView) ? view.dataset.jrView : allowedViews()[0] || 'feed';
         st.events = st.view === 'feed' || st.view === 'review' ? null : st.events;
         load();
         return true;

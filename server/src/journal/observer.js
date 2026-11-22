@@ -165,7 +165,8 @@ function needAdmin(staff) {
 }
 
 export async function waStatus(staff, req, res) {
-  needAdmin(staff);
+  // Смотреть состояние наблюдателя — право «WhatsApp: смотрит»; менять — «меняет»
+  if (!can(staff, 'whatsapp.view')) throw new HttpError(403, 'admin_only');
   let observer = null;
   try {
     observer = await observerCall('GET', '/status');

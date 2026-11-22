@@ -24,13 +24,14 @@ import { observerStatus } from './observer.js';
 const FEED_KINDS = [...journal.OPERATION_KINDS, ...journal.SHIFT_KINDS, 'question', 'note', 'media'];
 const MAX_IMPORT_BYTES = 30 * 1024 * 1024;
 
-const ADMIN_ONLY = new Set(['journal.admin', 'journal.timesheet']);
-
+/** Нет права: «только смотреть», «только админ» или раздел закрыт для роли */
 function need(staff, perm) {
-  if (!can(staff, perm)) throw new HttpError(403, ADMIN_ONLY.has(perm) ? 'admin_only' : 'read_only');
+  if (can(staff, perm)) return;
+  throw new HttpError(403, perm === 'journal.edit' ? 'read_only' : perm === 'journal.admin' ? 'admin_only' : 'no_section_access');
 }
 
 export async function getJournal(staff, req, res, url) {
+  need(staff, 'journal.view');
   const p = url.searchParams;
   const privateOk = can(staff, 'journal.private');
   const phones = await staffPhones();
@@ -74,6 +75,7 @@ export async function getTimesheet(staff, req, res, url) {
 }
 
 export async function getReconcile(staff, req, res) {
+  need(staff, 'reconcile.view');
   const result = reconcile();
   const phones = await staffPhones();
   for (const item of result.items) {

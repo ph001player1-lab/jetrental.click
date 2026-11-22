@@ -74,7 +74,7 @@
     'invalid_email', 'invalid_code', 'too_many_attempts', 'wait_a_minute', 'too_many_codes', 'too_many_requests',
     'mail_not_configured', 'mail_failed', 'no_access', 'read_only', 'model_not_found', 'bad_image', 'image_required',
     'too_many_uploads', 'body_too_large', 'unknown_photo', 'too_many_photos', 'sheets_not_configured',
-    'admin_only', 'invalid_settings'
+    'admin_only', 'invalid_settings', 'no_section_access'
   ]);
 
   const ICONS = {
@@ -90,14 +90,19 @@
   // Значок «Поделиться» Safari — для подсказки на iPhone
   const SHARE_ICON = '<svg class="install__share" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2 7.5 6.5l1.4 1.4L11 5.8V15h2V5.8l2.1 2.1 1.4-1.4L12 2zM5 10v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V10h-3v2h1v8H7v-8h1v-2H5z"/></svg>';
   ICONS.more = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm6 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm6 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg>';
-  const ALL_TABS = ['overview', 'fleet', 'journal', 'calendar', 'requests', 'site', 'server'];
+  ICONS.access = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 1 3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 6a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm5.4 10.4A7.06 7.06 0 0 1 12 20.9a7.06 7.06 0 0 1-5.4-3.5c.03-1.8 3.6-2.8 5.4-2.8s5.37 1 5.4 2.8z"/></svg>';
+  const ALL_TABS = ['overview', 'fleet', 'journal', 'calendar', 'requests', 'site', 'server', 'access'];
   // Внизу на телефоне помещается 6 кнопок; если вкладок больше — последние уходят в «Ещё»
   const BOTTOM_MAX = 6;
-  // Вкладка — и право, без которого её не видно
-  const TAB_PERMISSION = { server: 'server.view' };
+  // Вкладка видна, если у роли есть хотя бы одно из этих прав (настраивает админ на вкладке «Доступы»)
+  const TAB_PERMISSION = {
+    overview: ['overview.view'], fleet: ['fleet.view'], calendar: ['calendar.view'], requests: ['requests.view'],
+    journal: ['journal.view', 'timesheet.view', 'reconcile.view', 'whatsapp.view'],
+    site: ['site.view'], server: ['server.view'], access: ['access.admin']
+  };
   const can = (perm) => Boolean(state.user?.permissions?.includes(perm));
   /** Вкладки, доступные роли вошедшего сотрудника */
-  const tabs = () => ALL_TABS.filter((id) => !TAB_PERMISSION[id] || can(TAB_PERMISSION[id]))
+  const tabs = () => ALL_TABS.filter((id) => TAB_PERMISSION[id].some(can))
     .map((id) => ({ id, title: t(`tab.${id}`) }));
 
   const state = {
@@ -389,23 +394,27 @@
     renderWho();
     const fromHash = location.hash.slice(1);
     if (tabs().some((tab) => tab.id === fromHash)) state.tab = fromHash;
-    if (!tabs().some((tab) => tab.id === state.tab)) state.tab = 'overview';
+    if (!tabs().some((tab) => tab.id === state.tab)) state.tab = tabs()[0]?.id || 'overview';
     renderTabs();
     render();
     loadData();
     if (state.tab === 'site') loadModels();
     if (state.tab === 'server') startServerPolling();
     if (state.tab === 'journal') journal.show();
+    if (state.tab === 'access') access.load();
     clearInterval(state.timer);
     state.timer = setInterval(() => { if (!document.hidden) loadData(); }, REFRESH_MS);
   }
 
   async function loadData() {
     try {
+      // Загружаем только то, что роли разрешено видеть
+      const empty = (value) => Promise.resolve(value);
       const [fleet, requests, dashboard] = await Promise.all([
-        api('/fleet'), api('/requests'),
+        can('fleet.view') || can('calendar.view') || can('overview.view') ? api('/fleet') : empty({ cars: [], group: {} }),
+        can('requests.view') || can('overview.view') ? api('/requests') : empty({ requests: [] }),
         // Без проблем и прогноза обзор всё равно покажем
-        api(`/dashboard?lang=${lang}`).catch((err) => (err.status === 401 ? Promise.reject(err) : null))
+        can('overview.view') ? api(`/dashboard?lang=${lang}`).catch((err) => (err.status === 401 ? Promise.reject(err) : null)) : empty(null)
       ]);
       state.fleet = fleet;
       state.requests = requests.requests || [];
@@ -436,8 +445,9 @@
   function renderWho() {
     const user = state.user;
     if (!user) return;
-    const role = user.role || 'viewer';
-    $('#who').innerHTML = `${esc(user.name || user.email)} <span class="role role--${esc(role)}">${esc(t(`role.${role}`))}</span>`;
+    const role = user.role === 'admin' ? 'admin' : 'staff';
+    const name = user.role === 'admin' ? t('role.admin') : user.roleName || t('role.viewer');
+    $('#who').innerHTML = `${esc(user.name || user.email)} <span class="role role--${role}">${esc(name)}</span>`;
   }
 
   function renderTabs() {
@@ -453,6 +463,7 @@
     const html = list.map(button).join('');
     const top = document.querySelector('.tabs--top');
     top.innerHTML = html;
+    top.classList.toggle('tabs--many', list.length > 6);
     const bottom = document.querySelector('.tabs--bottom');
     // «Установить приложение» — пункт меню «Ещё» (пока портал не установлен)
     const extras = installOffered() ? [`
@@ -550,10 +561,11 @@
   });
 
   function setTab(tab) {
-    if (!tabs().some((x) => x.id === tab)) tab = 'overview';
+    if (!tabs().some((x) => x.id === tab)) tab = tabs()[0]?.id || 'overview';
     state.tab = tab;
     state.moreOpen = false;
     if (tab === 'journal') journal.show();
+    if (tab === 'access') access.load();
     if (tab === 'site' && !state.models) loadModels();
     if (tab === 'server') startServerPolling();
     else stopServerPolling();
@@ -579,7 +591,19 @@
     if (state.tab === 'site') view.innerHTML = renderSite();
     if (state.tab === 'server') renderServer();
     if (state.tab === 'journal') renderJournal();
+    if (state.tab === 'access') view.innerHTML = access.render();
+    // Роли не открыт ни один раздел — подсказка вместо пустого экрана
+    if (!tabs().length) view.innerHTML = `<div class="empty">${esc(t('app.noSections'))}</div>`;
   }
+
+  /* ------------------------------------------------------ Вкладка «Доступы» */
+
+  const access = window.STAFF_ACCESS.create({
+    api, t, esc,
+    dateTime,
+    errorText: (err) => ERRORS[err.code] || t('md.saveFailed'),
+    rerender: () => { if (state.tab === 'access') $('#view').innerHTML = access.render(); }
+  });
 
   /* ------------------------------------------------------ Вкладка «Журнал» */
 
@@ -1674,6 +1698,7 @@
   function bindApp() {
     document.addEventListener('click', (event) => {
       if (state.tab === 'journal' && journal.onClick(event)) return;
+      if (state.tab === 'access' && access.onClick(event)) return;
       if (event.target.closest('[data-more]')) {
         state.moreOpen = !state.moreOpen;
         return renderTabs();
@@ -1741,7 +1766,10 @@
       }
     });
 
-    document.addEventListener('change', (event) => { if (state.tab === 'journal') journal.onChange(event); });
+    document.addEventListener('change', (event) => {
+      if (state.tab === 'journal') journal.onChange(event);
+      if (state.tab === 'access') access.onChange(event);
+    });
     // Ссылка вида …/#journal или кнопки «назад/вперёд» — открыть эту вкладку
     window.addEventListener('hashchange', () => {
       const id = location.hash.slice(1);
@@ -1767,6 +1795,7 @@
     });
     document.addEventListener('submit', (event) => {
       if (state.tab === 'journal' && journal.onSubmit(event)) return;
+      if (state.tab === 'access' && access.onSubmit(event)) return;
       if (event.target.id !== 'srv-settings') return;
       event.preventDefault();
       saveServerSettings(event.target);

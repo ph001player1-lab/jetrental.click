@@ -105,6 +105,7 @@ function photoUrl(value) {
 }
 
 export async function listModels(staff, req, res) {
+  if (!can(staff, 'site.view')) throw new HttpError(403, 'no_section_access');
   if (!sheetsEnabled) return sendJson(res, 200, { canEdit: false, models: [] });
   const { units, catalog } = await getFleet();
   const unitCount = new Map();

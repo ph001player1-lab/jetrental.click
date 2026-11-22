@@ -188,6 +188,15 @@ a { color: var(--brand); }
   .tabs--top button[aria-current="page"] { color: #fff; background: rgba(255, 255, 255, .1); }
   .tabs--top .count { position: static; }
 }
+/* Много вкладок (у админа — 8): на средних экранах подпись только у открытой, у остальных — значок */
+@media (min-width: 860px) and (max-width: 1439px) {
+  .tabs--top.tabs--many { margin-left: 12px; gap: 2px; }
+  .tabs--top.tabs--many button { padding: 8px 10px; }
+  .tabs--top.tabs--many button:not([aria-current="page"]) .tab__label {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%);
+  }
+}
+@media (min-width: 860px) and (max-width: 1100px) { .topbar .brand__tag { display: none; } }
 
 /* --- Карточки и списки --- */
 
@@ -807,3 +816,58 @@ button.problem:hover { background: var(--surface-2); }
 /* Бирманское письмо выше латиницы: больше межстрочный интервал */
 html:lang(my) body { line-height: 1.75; }
 html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
+
+/* --- Вкладка «Доступы» (админ): сотрудники, роли, история --- */
+
+.role--staff { background: var(--free-bg); color: var(--free); }
+.ac { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+.ac-sec h3 { margin: 0 0 6px; }
+.ac-sec h4 { margin: 0 0 10px; }
+.ac-note { position: sticky; top: 64px; z-index: 6; margin: 0; }
+.ac-admins { list-style: none; padding: 0; margin: 6px 0 12px; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 14px; }
+.ac-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.ac-table th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 600; }
+.ac-table th, .ac-table td { padding: 8px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.ac-off td { opacity: .55; }
+.ac-nomail td { background: color-mix(in srgb, var(--warn) 9%, var(--surface)); }
+.ac-badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; color: var(--warn); background: color-mix(in srgb, var(--warn) 16%, transparent); }
+.ac-email { overflow-wrap: anywhere; }
+.ac-select { min-height: 36px; padding: 4px 8px; width: auto; }
+.ac-switch { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; cursor: pointer; }
+.ac-actions { white-space: nowrap; text-align: right; }
+.ac-actions .link + .link { margin-left: 12px; }
+.ac-danger { color: var(--rent); }
+.ac-form { margin-top: 12px; padding: 14px; box-shadow: none; }
+.ac-form__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+.ac-form__buttons { display: flex; gap: 8px; margin-top: 8px; }
+.ac-matrix-wrap { border: 1px solid var(--line); border-radius: 12px; }
+.ac-matrix { border-collapse: separate; border-spacing: 0; font-size: 13px; min-width: max-content; }
+.ac-matrix th, .ac-matrix td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; background: var(--surface); }
+.ac-matrix thead th { vertical-align: bottom; }
+.ac-matrix .ac-sec-name { text-align: left; min-width: 190px; position: sticky; left: 0; z-index: 1; font-weight: 600; }
+.ac-role { min-width: 128px; text-align: left; }
+.ac-role--admin { font-weight: 700; }
+.ac-rname { width: 100%; font: inherit; font-weight: 700; border: 1px solid transparent; border-radius: 8px; padding: 4px 6px; background: transparent; color: var(--text); }
+.ac-rname:hover, .ac-rname:focus { border-color: var(--line); background: var(--surface-2); outline: none; }
+.ac-role__meta { display: flex; gap: 6px; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 500; padding: 0 6px; }
+.ac-admin-cell { text-align: center; color: var(--muted); }
+.ac-level { font: inherit; font-size: 13px; padding: 4px 6px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--text); cursor: pointer; }
+.ac-level--edit { background: color-mix(in srgb, var(--free) 16%, var(--surface)); }
+.ac-level--view { background: color-mix(in srgb, var(--reserve) 14%, var(--surface)); }
+.ac-level--none { color: var(--muted); }
+.ac-bulk { margin-top: 12px; }
+.ac-bulk summary { cursor: pointer; font-weight: 600; color: var(--brand); }
+.ac-bulk form { display: grid; gap: 8px; margin-top: 8px; }
+.ac-bulk__text { min-height: 140px; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; }
+.ac-bulk button { justify-self: start; }
+.ac-newrole { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.ac-newrole input { max-width: 260px; }
+.ac-log { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; font-size: 14px; }
+.ac-log li { border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+@media (max-width: 640px) {
+  .ac-table thead { display: none; }
+  .ac-table, .ac-table tbody, .ac-table tr, .ac-table td { display: block; width: 100%; }
+  .ac-table tr { padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .ac-table td { border: 0; padding: 3px 0; }
+  .ac-actions { text-align: left; }
+}
