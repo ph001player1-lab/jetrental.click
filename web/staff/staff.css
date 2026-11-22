@@ -780,6 +780,9 @@ button.problem:hover { background: var(--surface-2); }
 .jr-rec--waiting { border-color: var(--reserve); }
 .jr-rec__group { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .jr-rec__state { font-weight: 600; font-size: 13px; }
+/* Сотруднику нужно действие: срок ещё идёт — оранжевый, прошёл — красный */
+.jr-rec__state--waiting { color: var(--warn); font-weight: 700; }
+.jr-rec__state--mismatch { color: var(--rent); font-weight: 700; }
 .jr-rec--ok .jr-rec__state, .jr-rec--none .jr-rec__state, .jr-rec--unknown .jr-rec__state { color: var(--muted); font-weight: 500; }
 @media (max-width: 720px) { .jr-rec { grid-template-columns: minmax(0, 1fr) auto; } .jr-rec__group, .jr-rec__state { grid-column: 1 / -1; } }
 .jr-wa { padding: 14px; display: grid; gap: 10px; }

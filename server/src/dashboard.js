@@ -69,6 +69,19 @@ export function workingMinutes(from, to) {
   return Math.floor(total / 60000);
 }
 
+/** Момент, когда от from пройдёт minutes рабочих минут (10:00–19:00 по Бангкоку) */
+export function addWorkingMinutes(from, minutes) {
+  let left = minutes * 60000;
+  for (let day = bangkokDayStart(from); ; day += DAY_MS) {
+    const start = Math.max(from, day + LIMITS.workFromHour * HOUR_MS);
+    const end = day + LIMITS.workToHour * HOUR_MS;
+    if (end > start) {
+      if (end - start >= left) return start + left;
+      left -= end - start;
+    }
+  }
+}
+
 const carName = (car) => `${car.model || car.wsModel || 'Vehicle'} · ${car.plate}`;
 const parsed = (car) => car.segments.map((s) => ({ kind: s.kind, from: Date.parse(s.from), to: Date.parse(s.to) }));
 

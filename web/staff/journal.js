@@ -292,7 +292,7 @@
             ${i.group ? `<span class="pill pill--${i.group.status === 'reserve' ? 'reserve' : i.group.status}">${esc(t(`jr.gs.${i.group.status}`))}</span>
               <span class="muted jr-small">${esc(`${t(`jr.kind.${i.group.kind}`)} · ${ctx.dateTime(i.group.at)} · ${i.group.who}`)}</span>` : `<span class="muted">${esc(t('jr.rec.noReports'))}</span>`}
           </div>
-          <div class="jr-rec__state">${esc(t(`jr.rs.${i.state}`))}${i.reason === 'ws_only' ? ` — ${esc(t('jr.rec.wsOnly'))}` : ''}</div>
+          <div class="jr-rec__state jr-rec__state--${i.state}">${esc(recState(i))}</div>
         </div>`).join('');
       return `
         ${r.live ? `<p class="note muted">${esc(t('jr.rec.liveSince', { time: ctx.dateTime(r.live) }))}</p>` : `<p class="note jr-banner">${esc(t('jr.rec.notLive'))}</p>`}
@@ -313,6 +313,14 @@
       if (!audit) return '';
       if (!audit.missed) return `<p class="ok-line">✓ ${esc(t('jr.imp.auditOk', { n: num(audit.checked), from: ctx.dateTime(audit.from) }))}</p>`;
       return `<p class="warn">⚠️ ${esc(t('jr.imp.auditMissed', { n: num(audit.missed), total: num(audit.checked), times: audit.missedAt.slice(-5).map((ts) => ctx.dateTime(ts)).join(', ') }))}</p>`;
+    }
+
+    /** Статус сверки как действие для сотрудника: что сделать и до какого времени */
+    function recState(i) {
+      const report = i.reason === 'ws_only';
+      if (i.state === 'waiting') return t(report ? 'jr.rs.waitingReport' : 'jr.rs.waitingWs', { time: i.dueAt ? ctx.dateTime(i.dueAt) : '—' });
+      if (i.state === 'mismatch') return t(report ? 'jr.rs.mismatchReport' : 'jr.rs.mismatchWs');
+      return t(`jr.rs.${i.state}`);
     }
 
     function renderWa() {

@@ -17,7 +17,7 @@
 import * as db from '../db.js';
 import { plateKey } from '../fleet.js';
 import { getWsSnapshot } from '../ws/sync.js';
-import { workingMinutes } from '../dashboard.js';
+import { workingMinutes, addWorkingMinutes } from '../dashboard.js';
 import { liveSince } from './journal.js';
 import { currentSegment } from './wsHistory.js';
 
@@ -59,7 +59,8 @@ function agrees(group, wsStatus) {
 
 /**
  * По каждой машине Автопроката: статус в WS, статус по группе и итог —
- * ok / waiting (ждём внесения в WS) / mismatch / unknown (до наблюдателя) / none (нет отчётов)
+ * ok / waiting (сотруднику нужно внести в WS или написать отчёт — срок dueAt) /
+ * mismatch (срок прошёл) / unknown (до наблюдателя) / none (нет отчётов)
  */
 export function reconcile(now = Date.now()) {
   const snapshot = getWsSnapshot();
@@ -85,6 +86,8 @@ export function reconcile(now = Date.now()) {
       else {
         item.state = workingMinutes(at, now) >= GRACE_WORK_MINUTES ? 'mismatch' : 'waiting';
         item.reason = `group_${g.status}`;
+        // До какого времени сотрудник должен внести это в WS
+        item.dueAt = new Date(addWorkingMinutes(at, GRACE_WORK_MINUTES)).toISOString();
       }
     }
     // Обратная сверка: аренда в WS началась после подключения наблюдателя, а отчёта о выдаче нет
@@ -94,6 +97,8 @@ export function reconcile(now = Date.now()) {
       if (from >= live && !reported) {
         item.state = workingMinutes(from, now) >= GRACE_WORK_MINUTES ? 'mismatch' : 'waiting';
         item.reason = 'ws_only';
+        // До какого времени нужно написать отчёт о выдаче в группу
+        item.dueAt = new Date(addWorkingMinutes(from, GRACE_WORK_MINUTES)).toISOString();
       }
     }
     return item;
