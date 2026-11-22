@@ -821,6 +821,9 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
 
 .role--staff { background: var(--free-bg); color: var(--free); }
 .ac { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+/* Внутренний отступ карточек: текст не прилипает к краю */
+.ac-sec { padding: 16px 18px; }
+@media (max-width: 640px) { .ac-sec { padding: 14px 14px; } }
 .ac-sec h3 { margin: 0 0 6px; }
 .ac-sec h4 { margin: 0 0 10px; }
 .ac-note { position: sticky; top: 64px; z-index: 6; margin: 0; }
