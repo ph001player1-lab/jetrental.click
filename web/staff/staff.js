@@ -454,6 +454,29 @@
     $('#who').innerHTML = `${esc(user.name || user.email)} <span class="role role--${role}">${esc(name)}</span>`;
   }
 
+  /**
+   * Вкладки сверху: подписи у всех, если помещаются; иначе подпись только у открытой;
+   * если тесно и так — одни значки (название — во всплывающей подсказке)
+   */
+  function fitTopTabs() {
+    const top = document.querySelector('.tabs--top');
+    const bar = top?.closest('.topbar');
+    if (!bar || getComputedStyle(top).display === 'none') return;
+    const right = bar.querySelector('.topbar__right');
+    const fits = () => {
+      const last = top.lastElementChild?.getBoundingClientRect();
+      return bar.scrollWidth <= bar.clientWidth + 1 && top.scrollWidth <= top.clientWidth + 1
+        && (!last || !right || last.right <= right.getBoundingClientRect().left - 6);
+    };
+    top.classList.remove('tabs--compact', 'tabs--icons');
+    if (fits()) return;
+    top.classList.add('tabs--compact');
+    if (!fits()) top.classList.add('tabs--icons');
+  }
+  let fitTimer = null;
+  window.addEventListener('resize', () => { clearTimeout(fitTimer); fitTimer = setTimeout(fitTopTabs, 100); });
+  document.fonts?.ready?.then(() => fitTopTabs());
+
   function renderTabs() {
     const count = newRequestsCount();
     const list = tabs();
@@ -467,7 +490,7 @@
     const html = list.map(button).join('');
     const top = document.querySelector('.tabs--top');
     top.innerHTML = html;
-    top.classList.toggle('tabs--many', list.length > 6);
+    fitTopTabs();
     const bottom = document.querySelector('.tabs--bottom');
     // «Установить приложение» — пункт меню «Ещё» (пока портал не установлен)
     const extras = installOffered() ? [`

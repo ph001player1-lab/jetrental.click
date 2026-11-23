@@ -188,11 +188,13 @@ a { color: var(--brand); }
   .tabs--top button[aria-current="page"] { color: #fff; background: rgba(255, 255, 255, .1); }
   .tabs--top .count { position: static; }
 }
-/* Много вкладок (у админа — 8): на средних экранах подпись только у открытой, у остальных — значок */
-@media (min-width: 860px) and (max-width: 1439px) {
-  .tabs--top.tabs--many { margin-left: 12px; gap: 2px; }
-  .tabs--top.tabs--many button { padding: 8px 10px; }
-  .tabs--top.tabs--many button:not([aria-current="page"]) .tab__label {
+/* Вкладки не помещаются в шапку (зависит от языка, числа вкладок и ширины экрана — проверяет
+   staff.js): сначала подпись только у открытой, у остальных значок; если и так тесно — одни значки */
+@media (min-width: 860px) {
+  .tabs--top.tabs--compact { margin-left: 12px; gap: 2px; }
+  .tabs--top.tabs--compact button { padding: 8px 10px; }
+  .tabs--top.tabs--compact button:not([aria-current="page"]) .tab__label,
+  .tabs--top.tabs--icons button .tab__label {
     position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%);
   }
 }
