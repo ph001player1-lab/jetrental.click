@@ -11,7 +11,7 @@
 
   function create(ctx) {
     const { api, t, esc } = ctx;
-    const st = { data: null, failed: false, editing: null, note: null, busy: false };
+    const st = { data: null, failed: false, editing: null, note: null, busy: false, pick: null };
 
     async function load() {
       try {
@@ -144,15 +144,43 @@
         <section class="card ac-sec">
           <h3>${esc(t('ac.roles.title'))}</h3>
           <p class="muted jr-small">${esc(t('ac.roles.note'))}</p>
-          <div class="table-wrap ac-matrix-wrap"><table class="ac-matrix">
+          <div class="table-wrap ac-matrix-wrap ac-roles-desk"><table class="ac-matrix">
             <thead><tr><th></th><th class="ac-role ac-role--admin">${esc(t('role.admin'))}<div class="muted jr-small">${esc(t('ac.adminFromSheet'))}</div></th>${head}</tr></thead>
             <tbody>${body}</tbody>
           </table></div>
+          ${renderRolesPhone()}
           <form class="ac-newrole" data-ac-newrole>
             <input name="name" class="search" maxlength="40" placeholder="${esc(t('ac.roles.newName'))}" required>
             <button type="submit" class="btn btn--small">＋ ${esc(t('ac.roles.add'))}</button>
           </form>
         </section>`;
+    }
+
+    /** Телефон: одна роль за раз — выбор роли сверху, у разделов крупные кнопки уровней */
+    function renderRolesPhone() {
+      const d = st.data;
+      const role = d.roles.find((r) => r.id === st.pick) || d.roles[0];
+      if (!role) return '';
+      const chips = d.roles.map((r) => `<button type="button" class="chip" data-ac-pick="${esc(r.id)}" aria-pressed="${r.id === role.id}">${esc(r.name)}</button>`).join('');
+      const sections = d.sections.map((sec) => `
+        <li>
+          <div class="ac-phone-sec"><b>${esc(t(`ac.s.${sec.id}`))}</b><div class="muted jr-small">${esc(t(`ac.h.${sec.id}`))}</div></div>
+          <div class="ac-seg" role="group" aria-label="${esc(`${role.name}: ${t(`ac.s.${sec.id}`)}`)}">
+            ${sec.levels.map((l) => `<button type="button" class="ac-seg__btn ac-seg__btn--${l}" data-ac-set="${esc(role.id)}" data-ac-section="${esc(sec.id)}" data-ac-level="${l}" aria-pressed="${role.perms[sec.id] === l}">${LEVEL_ICON[l]} ${esc(t(`ac.l.${l}`))}</button>`).join('')}
+          </div>
+        </li>`).join('');
+      return `
+        <div class="ac-roles-phone">
+          <p class="muted jr-small">👑 ${esc(t('role.admin'))} (${esc(t('ac.adminFromSheet'))}) — ${esc(t('ac.adminFixed'))}</p>
+          <div class="chips ac-rolechips">${chips}</div>
+          <div class="ac-phone-role">
+            <label class="field"><span>${esc(t('ac.roleName'))}</span>
+              <input class="search ac-rname" data-ac-rname="${esc(role.id)}" value="${esc(role.name)}" maxlength="40"></label>
+            <p class="muted jr-small">${esc(t('ac.people', { n: role.staffCount }))}</p>
+            <ul class="ac-phone-secs">${sections}</ul>
+            ${role.staffCount ? '' : `<button type="button" class="btn btn--small ac-danger" data-ac-rdel="${esc(role.id)}">🗑 ${esc(t('ac.delete'))}</button>`}
+          </div>
+        </div>`;
     }
 
     /* ------------------------------------------------------------ История */
@@ -217,6 +245,16 @@
       if (del) {
         const s = staffById(del.dataset.acDel);
         if (s && window.confirm(t('ac.confirmDelete', { name: s.name }))) call('/access/staff/delete', { id: s.id }, t('ac.deleted'));
+        return true;
+      }
+      const pick = el.closest('[data-ac-pick]');
+      if (pick) { st.pick = pick.dataset.acPick; ctx.rerender(); return true; }
+      const set = el.closest('[data-ac-set]');
+      if (set) {
+        const role = st.data.roles.find((r) => r.id === set.dataset.acSet);
+        if (role && role.perms[set.dataset.acSection] !== set.dataset.acLevel) {
+          call('/access/role', { id: role.id, name: role.name, perms: { ...role.perms, [set.dataset.acSection]: set.dataset.acLevel } });
+        }
         return true;
       }
       const rdel = el.closest('[data-ac-rdel]');

@@ -346,6 +346,9 @@ a.vcard__media { text-decoration: none; }
 .model__lead { color: var(--muted); font-size: 17px; margin: 14px 0 0; }
 .model__price { margin-top: 18px; font-size: 17px; color: var(--muted); }
 .model__price b { font-size: 34px; color: var(--navy); font-weight: 800; letter-spacing: -.02em; }
+.model__soldout { margin-top: 18px; padding: 14px 16px; border-radius: 14px; background: var(--sand); border: 1px solid var(--line); }
+.model__soldout b { display: block; font-size: 20px; color: var(--navy); }
+.model__soldout p { margin: 6px 0 0; color: var(--muted); }
 .model__actions { display: flex; gap: 10px; margin-top: 20px; }
 .model__actions .btn--primary { flex: 1; max-width: 280px; }
 .model__actions .btn--wa, .model__actions .btn--tg { width: 48px; min-height: 48px; padding: 0; }

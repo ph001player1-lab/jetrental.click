@@ -17,6 +17,7 @@ import { carSegments, statusAt, freeFromAt, isFreeBetween, mapLimit } from './ti
 import { getFleet, plateKey } from '../fleet.js';
 import { sheetsEnabled, ensureSheet, updateRange, clearRange } from '../google/sheets.js';
 import { recordWsSnapshot } from '../journal/wsHistory.js';
+import { isSold, rememberSoldModels } from '../sold.js';
 
 const SHEET = 'Автопрокат';
 const HEADERS = [
@@ -59,6 +60,8 @@ async function buildSnapshot(now) {
     sheetsEnabled ? getFleet().catch(() => null) : null
   ]);
   const unitsByPlate = new Map((fleet?.units || []).map((u) => [plateKey(u.plate), u]));
+  // Модель проданной машины запоминаем, пока она есть в WS (саму машину убирает getWsSnapshot)
+  rememberSoldModels([], cars);
   const sorted = [...cars].sort((a, b) => String(a.model).localeCompare(String(b.model)));
   const timelines = await mapLimit(sorted, CONCURRENCY, (car) => carSegments(car.car_id, windowFrom, windowTo));
 
@@ -120,8 +123,9 @@ async function writeSheet(snap) {
 
 async function runSync() {
   try {
-    const snap = await buildSnapshot(Date.now());
-    snapshot = snap;
+    snapshot = await buildSnapshot(Date.now());
+    // Дальше — без проданных машин (отметка в портале; «Вернуть в парк» действует сразу)
+    const snap = getWsSnapshot();
     // Когда в WS менялись статусы машин — для сверки с рабочей группой
     try { recordWsSnapshot(snap, Date.parse(snap.updatedAt)); } catch (err) { console.error('WS history failed:', err.message); }
     Object.assign(status, {
@@ -144,9 +148,10 @@ export function syncWs() {
   return running;
 }
 
-/** Последний снимок парка из Автопроката (null — ещё не загружен) */
+/** Последний снимок парка из Автопроката (null — ещё не загружен); отмеченные проданными — сразу без них */
 export function getWsSnapshot() {
-  return snapshot;
+  if (!snapshot || !snapshot.cars.some((c) => isSold(c.plate))) return snapshot;
+  return { ...snapshot, cars: snapshot.cars.filter((c) => !isSold(c.plate)) };
 }
 
 export function startWsSync() {

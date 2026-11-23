@@ -195,7 +195,7 @@ function slider(ctx, items, data) {
 function catalogSection(ctx, type, data, { band = false } = {}) {
   const { lang, t } = ctx;
   const category = CATEGORY_BY_TYPE[type];
-  const items = data.models.filter((m) => m.type === type);
+  const items = data.models.filter((m) => m.type === type && !m.soldOut);
   return `
     <section class="cl-section${band ? ' cl-band' : ''}" id="${SECTION_ID[type]}">
       <div class="cl-wrap">
@@ -301,7 +301,7 @@ ${reviews()}`;
 export function renderCategory(ctx, data, type) {
   const { t } = ctx;
   const category = CATEGORY_BY_TYPE[type];
-  const items = data.models.filter((m) => m.type === type);
+  const items = data.models.filter((m) => m.type === type && !m.soldOut);
   const main = `
     <section class="cl-section cl-page">
       <div class="cl-wrap">
@@ -354,7 +354,7 @@ export function renderModel(ctx, data, item, tariffs) {
   const { brand, lang, t } = ctx;
   const type = item.type;
   const { brand: make, name } = splitName(item.model);
-  const others = data.models.filter((m) => m.type === type && m.model !== item.model);
+  const others = data.models.filter((m) => m.type === type && m.model !== item.model && !m.soldOut);
   const main = `
     <section class="cl-section cl-page">
       <div class="cl-wrap">
@@ -363,11 +363,15 @@ export function renderModel(ctx, data, item, tariffs) {
           ${galleryBlock(ctx, item, { frame: 'cl-model__media', photoClass: 'is-photo' })}
           <div class="cl-model__info" data-reveal>
             <h1><b>${esc(make)}</b>${name ? ` <span>${esc(name)}</span>` : ''}</h1>
-            <p class="cl-model__from">${item.priceFrom ? esc(t('cl.from', { price: baht(item.priceFrom) })) : esc(t('card.ask'))}</p>
+            ${item.soldOut
+              ? `<div class="cl-model__soldout"><b>${esc(t('model.soldOut'))}</b><p>${esc(t('model.soldOutText'))}</p></div>`
+              : `<p class="cl-model__from">${item.priceFrom ? esc(t('cl.from', { price: baht(item.priceFrom) })) : esc(t('card.ask'))}</p>`}
             ${descOf(ctx, item) ? `<p class="cl-model__spec">${ICON_SPEC}<span>${esc(descOf(ctx, item))}</span></p>` : ''}
             <p class="cl-model__lead">${esc(t(`model.lead.${type}`, { model: item.model }))}</p>
             <div class="cl-model__actions">
-              <button class="cl-btn cl-btn--red cl-btn--big" type="button" data-book="${esc(item.model)}" data-type="${esc(type)}">${esc(t('card.book'))}</button>
+              ${item.soldOut && others.length
+                ? `<a class="cl-btn cl-btn--red cl-btn--big" href="#${SECTION_ID[type]}">${esc(t('model.similar'))}</a>`
+                : item.soldOut ? '' : `<button class="cl-btn cl-btn--red cl-btn--big" type="button" data-book="${esc(item.model)}" data-type="${esc(type)}">${esc(t('card.book'))}</button>`}
               <a class="cl-btn cl-btn--tg cl-btn--big" href="${tgLink(brand)}" target="_blank" rel="noopener">${icon('tg', 22)}Telegram</a>
               <a class="cl-btn cl-btn--wa2 cl-btn--big" href="${esc(waLink(brand, t('wa.model', { model: item.model })))}" target="_blank" rel="noopener">${icon('wa', 22)}What'sApp</a>
             </div>
@@ -376,12 +380,13 @@ export function renderModel(ctx, data, item, tariffs) {
       </div>
     </section>
 
+${item.soldOut ? '' : `
     <section class="cl-section" id="prices">
       <div class="cl-wrap">
         <div class="cl-head" data-reveal><h2>${esc(t('model.prices'))}</h2></div>
         ${priceBlock(ctx, item, tariffs)}
       </div>
-    </section>
+    </section>`}
 ${others.length ? `
     <section class="cl-section" id="${SECTION_ID[type]}">
       <div class="cl-wrap">

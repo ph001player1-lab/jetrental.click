@@ -256,6 +256,7 @@
     /* ------------------------------------------------------- 5. Машины */
 
     function verdict(v, days) {
+      if (v.sold) return `<span class="fin-badge">продана${v.sold.soldOn ? ` ${esc(day(v.sold.soldOn))}` : ''}</span>`;
       if (!v.revenue && !v.rentedDays) return v.loan ? '<span class="fin-badge fin-badge--bad">простаивает, кредит идёт</span>' : '<span class="fin-badge">простаивает</span>';
       if (v.result < 0) return '<span class="fin-badge fin-badge--bad">в минусе</span>';
       if (days >= 28 && v.rentedDays && v.utilization < 25) return '<span class="fin-badge fin-badge--warn">мало аренды</span>';
@@ -282,7 +283,7 @@
         if (st.sort === 'result') return a.result - b.result;
         return b.revenue - a.revenue || b.rentedDays - a.rentedDays;
       });
-      const idle = list.filter((v) => !v.revenue && !v.rentedDays).length;
+      const idle = list.filter((v) => !v.sold && !v.revenue && !v.rentedDays).length;
       const rows = list.map((v) => `
         <tr${v.revenue || v.rentedDays ? '' : ' class="fin-idle"'}>
           <td><b>${esc(v.model || '—')}</b> <span class="plate">#${esc(v.plate)}</span><div>${verdict(v, d.period.days)}</div></td>
@@ -305,6 +306,28 @@
           <tbody>${rows}</tbody></table></div>
         ${renderLoans(d)}`,
       'Выручка и дни аренды — из отчётов группы; ремонт, топливо, мойка, страховка, налог — из кассы WS (колонка «Автомобиль») и сообщений «Expense: … #госномер»; кредит вводит админ.');
+    }
+
+    function renderSoldVehicles(d) {
+      const list = d.soldVehicles || [];
+      if (!list.length) return '';
+      const rows = list.map((v) => `
+        <tr>
+          <td><b>${esc(v.model || '—')}</b> <span class="plate">#${esc(v.plate)}</span>
+            <div class="muted jr-small">продана ${esc(v.soldOn ? day(v.soldOn) : '— дата не указана')}${v.first ? ` · в отчётах с ${esc(day(v.first))} по ${esc(day(v.last))}` : ''}</div></td>
+          <td class="fin-num" data-label="Выручка">${esc(v.revenue ? num(v.revenue) : '—')}</td>
+          <td class="fin-num" data-label="Покупка">${esc(v.purchase ? num(v.purchase) : '—')}</td>
+          <td class="fin-num" data-label="Ремонт">${esc(v.repair ? num(v.repair) : '—')}</td>
+          <td class="fin-num" data-label="Прочие расходы">${esc(v.other ? num(v.other) : '—')}</td>
+          <td class="fin-num" data-label="Цена продажи">${v.price ? esc(num(v.price)) : '<span class="muted">не указана</span>'}</td>
+          <td class="fin-num" data-label="Итог"><b class="${v.result < 0 ? 'fin-less' : ''}">${esc(num(v.result))}</b></td>
+        </tr>`).join('');
+      return section('sold', 'Проданные машины — за всё время', `
+        <div class="table-wrap"><table class="fin-table fin-table--wide fin-table--stack">
+          <thead><tr><th>Машина</th><th class="fin-num">Выручка</th><th class="fin-num">Покупка</th><th class="fin-num">Ремонт</th><th class="fin-num">Прочие расходы</th><th class="fin-num">Цена продажи</th><th class="fin-num">Итог</th></tr></thead>
+          <tbody>${rows}</tbody></table></div>
+        <p class="muted jr-small">Итог = выручка − покупка − ремонт − прочие расходы + цена продажи. Покупка и расходы — по кассе WS (с ${esc(d.cashbook ? day(d.cashbook.coveredFrom) : '—')}): если машину купили раньше, покупки здесь нет. Дату и цену продажи админ вносит во вкладке «Парк» → «Проданные машины».</p>`,
+      'Отмечены «Продана» во вкладке «Парк». В парк, календарь, сайт и простой они больше не входят.');
     }
 
     /* ------------------------------------------------------ 6. Расходы */
@@ -444,6 +467,7 @@
           ${renderDeposits(d)}
           ${renderDebts(d)}
           ${renderVehicles(d)}
+          ${renderSoldVehicles(d)}
           ${renderExpenses(d)}
           ${renderForecast(d)}
           ${renderWsCheck(d)}

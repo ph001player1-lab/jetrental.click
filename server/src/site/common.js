@@ -159,6 +159,8 @@ export function modelUrl(lang, item) {
 }
 
 export function badge(ctx, item) {
+  // Проданная модель — надпись «нет в наличии» уже рядом, плашка «занят» только путает
+  if (item.soldOut) return '';
   if (item.availableNow === true) return `<span class="badge badge--free">${esc(ctx.t('badge.free'))}</span>`;
   if (item.availableNow === false) return `<span class="badge badge--busy">${esc(ctx.t('badge.busy'))}</span>`;
   return '';
@@ -297,7 +299,7 @@ export function homeMeta(ctx) {
 export function categoryMeta(ctx, data, type, category) {
   const { lang, t } = ctx;
   const page = { kind: 'category', type };
-  const from = minPrice(data.models.filter((m) => m.type === type));
+  const from = minPrice(data.models.filter((m) => m.type === type && !m.soldOut));
   return {
     title: t(`page.${category}.title`),
     description: Number.isFinite(from) ? t(`page.${category}.desc`, { price: money(from) }) : t(`page.${category}.descAsk`),

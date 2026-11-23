@@ -194,7 +194,7 @@ function grid(ctx, items, catalogError) {
 
 function catalogSection(ctx, type, data, { sand = false, more = false } = {}) {
   const { lang, t } = ctx;
-  const items = data.models.filter((m) => m.type === type);
+  const items = data.models.filter((m) => m.type === type && !m.soldOut);
   const category = CATEGORY_BY_TYPE[type];
   return `
     <section class="section${sand ? ' section--sand' : ''}" id="${SECTION_ID[type]}">
@@ -386,7 +386,8 @@ export function renderModel(ctx, data, item, tariffs) {
   const price = item.priceFrom
     ? `<div class="model__price">${t('card.from', { price: money(item.priceFrom) })}</div>`
     : `<div class="model__price"><span class="vcard__ask">${esc(t('card.ask'))}</span></div>`;
-  const others = data.models.filter((m) => m.type === type && m.model !== item.model).slice(0, 8);
+  const others = data.models.filter((m) => m.type === type && m.model !== item.model && !m.soldOut).slice(0, 8);
+  // Все машины модели проданы: страница остаётся (её находят в поиске), но без брони и цен
 
   const main = `
     <div class="container">${crumbs(ctx, crumbItems)}</div>
@@ -396,9 +397,11 @@ export function renderModel(ctx, data, item, tariffs) {
         <p class="eyebrow eyebrow--dark">${esc(t(`type.${type}`))}${descOf(ctx, item) ? ` · ${esc(descOf(ctx, item))}` : ''}</p>
         <h1>${esc(t('model.h1', { model: item.model }))}</h1>
         <p class="model__lead">${esc(t(`model.lead.${type}`, { model: item.model }))}</p>
-        ${price}
+        ${item.soldOut ? `<div class="model__soldout"><b>${esc(t('model.soldOut'))}</b><p>${esc(t('model.soldOutText'))}</p></div>` : price}
         <div class="model__actions">
-          <button class="btn btn--primary" type="button" data-book="${esc(item.model)}" data-type="${esc(type)}">${esc(t('card.book'))}</button>
+          ${item.soldOut
+            ? `<a class="btn btn--primary" href="#${SECTION_ID[type]}">${esc(t('model.similar'))}</a>`
+            : `<button class="btn btn--primary" type="button" data-book="${esc(item.model)}" data-type="${esc(type)}">${esc(t('card.book'))}</button>`}
           ${messengerButtons(ctx, item.model)}
         </div>
         <ul class="model__facts">
@@ -409,6 +412,7 @@ export function renderModel(ctx, data, item, tariffs) {
       </div>
     </section>
 
+${item.soldOut ? '' : `
     <section class="section section--sand" id="prices">
       <div class="container">
         <div class="section__head">
@@ -420,7 +424,7 @@ export function renderModel(ctx, data, item, tariffs) {
         <p class="muted prices__lead">${esc(t('model.pricesLead'))}</p>
         ${priceTable(ctx, item, tariffs)}
       </div>
-    </section>
+    </section>`}
 ${search(ctx, type, true)}
     <section class="section" id="${SECTION_ID[type]}">
       <div class="container">

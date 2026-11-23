@@ -14,6 +14,7 @@
 import * as db from './db.js';
 import { HttpError, sendJson, readJson, clientIp, rateLimiter } from './http.js';
 import { findAvailableModels, getFleet, sheetsEnabled } from './fleet.js';
+import { soldList } from './sold.js';
 import { getWsSnapshot } from './ws/sync.js';
 import { publishRequest } from './staff.js';
 import { todayIso } from './dates.js';
@@ -47,11 +48,13 @@ function descriptionsFor(entry) {
 
 async function buildCatalog() {
   if (!sheetsEnabled) return { updatedAt: null, models: [] };
-  const { units, catalog } = await getFleet();
+  const { units, catalog, soldUnits = [] } = await getFleet();
   const snapshot = getWsSnapshot();
 
   const unitCount = new Map();
   for (const unit of units) if (unit.model) unitCount.set(unit.model, (unitCount.get(unit.model) || 0) + 1);
+  // Модели, все машины которых проданы: страница остаётся с надписью «нет в наличии»
+  const soldModels = new Set([...soldUnits.map((u) => u.model), ...soldList().map((r) => r.model)].filter((m) => m && !unitCount.get(m)));
   const freeNow = new Map();
   for (const car of snapshot?.cars || []) {
     if (car.model && car.status === 'free') freeNow.set(car.model, (freeNow.get(car.model) || 0) + 1);
@@ -59,7 +62,8 @@ async function buildCatalog() {
 
   const models = [];
   for (const [model, entry] of catalog) {
-    if (!unitCount.get(model) || !entry.type) continue;
+    const soldOut = soldModels.has(model);
+    if ((!unitCount.get(model) && !soldOut) || !entry.type) continue;
     const tiers = [entry.pricePerDay, entry.pricePerDayWeek, entry.pricePerDayMonth].filter(Boolean);
     // Удалённые с сервера файлы не показываем; нет главного фото — берём первое из галереи
     const gallery = parseGallery(entry.gallery).filter(photoExists);
@@ -81,7 +85,8 @@ async function buildCatalog() {
       gallery: [photo, ...gallery.filter((src) => src !== photo)].filter(Boolean).slice(0, MAX_GALLERY + 1)
         .map((src) => ({ src, thumb: thumbOf(src) })),
       // null — данных из Автопроката пока нет
-      availableNow: snapshot ? (freeNow.get(model) || 0) > 0 : null
+      availableNow: soldOut ? false : snapshot ? (freeNow.get(model) || 0) > 0 : null,
+      ...(soldOut ? { soldOut: true } : {})
     });
   }
 
@@ -111,7 +116,9 @@ export async function getCatalog() {
 }
 
 async function catalog(req, res) {
-  sendJson(res, 200, await getCatalog(), { 'Cache-Control': 'public, max-age=60' });
+  // Окну брони проданные модели не нужны (их страницы сайт показывает сам)
+  const data = await getCatalog();
+  sendJson(res, 200, { ...data, models: data.models.filter((m) => !m.soldOut) }, { 'Cache-Control': 'public, max-age=60' });
 }
 
 function isIsoDate(value) {

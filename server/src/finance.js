@@ -19,6 +19,7 @@ import * as db from './db.js';
 import { amountsIn, parseNumber } from './journal/parse.js';
 import { sameText, lidPhones, timesheet } from './journal/journal.js';
 import { staffRates } from './access.js';
+import { isSold, soldList } from './sold.js';
 import { groupStatusByPlate } from './journal/reconcile.js';
 import { getFleet, plateKey } from './fleet.js';
 import { staffPhones } from './staffUsers.js';
@@ -444,6 +445,53 @@ export function findDebts(parsed, now, who) {
 }
 
 /**
+ * Проданные машины за всё время: выручка (касса WS там, где она загружена, вне её —
+ * отчёты группы), покупка и расходы по кассе WS, цена продажи и итог.
+ */
+function soldVehicles(parsed, soldMap) {
+  if (!soldMap.size) return [];
+  const meta = cashbookMeta();
+  const cashFrom = meta ? Date.parse(meta.coveredFrom) : Infinity;
+  const cashTo = meta ? Date.parse(meta.coveredTo) + 60000 : -Infinity;
+  const rows = new Map([...soldMap.keys()].map((plate) => [plate, { revenue: 0, purchase: 0, repair: 0, other: 0, first: null, last: null }]));
+  const seen = (r, iso) => {
+    if (!r.first || iso < r.first) r.first = iso;
+    if (!r.last || iso > r.last) r.last = iso;
+  };
+  for (const { row, m } of parsed) {
+    const share = m.revenue / Math.max(1, m.plates.length);
+    for (const p of m.plates) {
+      const r = rows.get(p.plate);
+      if (!r) continue;
+      seen(r, row.ts);
+      if (share && (row.at < cashFrom || row.at >= cashTo)) r.revenue += share;
+    }
+  }
+  if (meta) {
+    for (const c of cashbookRows('0000', '9999')) {
+      const r = c.plate && rows.get(c.plate);
+      if (!r) continue;
+      seen(r, c.ts);
+      if (!r.vehicle && c.vehicle) r.vehicle = c.vehicle.replace(/\s*\(\d+\)\s*$/, '');
+      const group = PURPOSE_GROUP[c.purpose];
+      if (['rent', 'extras', 'prepaid'].includes(group)) r.revenue += c.income;
+      else if (group === 'refund') r.revenue -= c.expense;
+      else if (c.expense && group !== 'depositOut' && group !== 'transfer') {
+        const key = PURPOSE_CATEGORY[c.purpose] || 'other';
+        if (key === 'vehicles') r.purchase += c.expense;
+        else if (key === 'repair') r.repair += c.expense;
+        else if (!['salary', 'office', 'ads', 'personal'].includes(key)) r.other += c.expense;
+      }
+    }
+  }
+  return [...rows].map(([plate, r]) => {
+    const sold = soldMap.get(plate);
+    const out = { plate, model: sold.model || sold.wsModel || r.vehicle || null, soldOn: sold.soldOn, price: sold.price, revenue: round(r.revenue), purchase: round(r.purchase), repair: round(r.repair), other: round(r.other), first: r.first, last: r.last };
+    return { ...out, result: out.revenue - out.purchase - out.repair - out.other + (out.price || 0) };
+  }).sort((a, b) => String(b.soldOn || '').localeCompare(String(a.soldOn || '')) || b.revenue - a.revenue);
+}
+
+/**
  * Финансовый отчёт за период [from, to] (даты по Бангкоку, включительно).
  * Всё в батах (округлено), плюс наличные по валютам у тех, кто принял.
  */
@@ -632,8 +680,9 @@ export async function financeReport({ from, to }, now = Date.now(), { clientsVis
   // Депозиты на руках сейчас: машины в аренде по группе → депозит из их последней выдачи
   let depositsHeld = 0;
   let depositsHeldCars = 0;
-  for (const g of groupStatusByPlate().values()) {
-    if (g.status !== 'rent') continue;
+  for (const [plate, g] of groupStatusByPlate()) {
+    // Проданная машина «в аренде» по группе — просто не написали возврат
+    if (g.status !== 'rent' || isSold(plate)) continue;
     const row = db.raw.prepare('SELECT id, kind, author, text, data, ts FROM wa_messages WHERE id = ?').get(g.id);
     if (!row) continue;
     const m = moneyOf(row, rates);
@@ -660,8 +709,13 @@ export async function financeReport({ from, to }, now = Date.now(), { clientsVis
     const plate = plateKey(u.plate);
     if (plate) vehicles.set(plate, { plate, model: u.model || `${u.brand || ''} ${u.modelName || ''}`.trim() || null, type: u.type || null });
   }
+  // Проданные — в таблице только если в периоде у них были аренды или расходы (с пометкой «продана»)
+  const soldMap = new Map(soldList().map((r) => [r.plate, r]));
   for (const plate of new Set([...revenueByPlate.keys(), ...rentals.keys(), ...expenses.byPlate.keys(), ...Object.keys(loanMap)])) {
-    if (!vehicles.has(plate)) vehicles.set(plate, { plate, model: null, type: null });
+    if (vehicles.has(plate)) continue;
+    const sold = soldMap.get(plate);
+    if (sold && !revenueByPlate.has(plate) && !expenses.byPlate.has(plate) && !(rentals.get(plate) || []).some(([a, b]) => b > start && a < end)) continue;
+    vehicles.set(plate, { plate, model: sold ? sold.model || sold.wsModel : null, type: null });
   }
   const vehicleRows = [...vehicles.values()].map((v) => {
     // Дни аренды в периоде: объединяем пересекающиеся периоды
@@ -675,13 +729,16 @@ export async function financeReport({ from, to }, now = Date.now(), { clientsVis
     }
     const rentedDays = Math.round(rented / DAY_MS);
     const costs = expenses.byPlate.get(v.plate) || { repair: 0, other: 0 };
-    const loanMonthly = loanMap[v.plate] || 0;
+    const sold = soldMap.get(v.plate) || null;
+    // Кредит проданной машины не начисляем
+    const loanMonthly = sold ? 0 : loanMap[v.plate] || 0;
     const loan = round((loanMonthly * days) / 30.44);
     const revenue = round(revenueByPlate.get(v.plate) || 0);
     return {
       ...v, revenue, rentedDays, utilization: Math.min(100, Math.round((rentedDays / days) * 100)),
       repair: round(costs.repair), otherCosts: round(costs.other), loanMonthly, loan,
-      result: revenue - round(costs.repair) - round(costs.other) - loan
+      result: revenue - round(costs.repair) - round(costs.other) - loan,
+      sold: sold ? { soldOn: sold.soldOn, price: sold.price } : null
     };
   }).sort((a, b) => b.revenue - a.revenue || b.rentedDays - a.rentedDays);
 
@@ -744,6 +801,7 @@ export async function financeReport({ from, to }, now = Date.now(), { clientsVis
     },
     forecast: { ...forecast, total: round(forecast.total), prepaid: round(forecast.prepaid), left: round(forecast.left) },
     vehicles: vehicleRows,
+    soldVehicles: soldVehicles(parsed, soldMap),
     loans: loanMap,
     operations: operations.reverse().slice(0, 300)
   };

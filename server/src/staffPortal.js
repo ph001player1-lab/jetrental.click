@@ -38,10 +38,12 @@ import { getFleet, sheetsEnabled, plateKey } from './fleet.js';
 import { tariffOn } from './pricing.js';
 import { todayIso } from './dates.js';
 import { canEdit, listModels, saveDescription, uploadPhoto, uploadThumb, saveGallery } from './staffCatalog.js';
+import { resetCatalog } from './publicApi.js';
 import { collectProblems, bookingOutlook, requestStats, LIMITS } from './dashboard.js';
 import { roleOf, roleNameOf, permissionsOf, can, canAny } from './roles.js';
 import { accessOverview, saveRole, deleteRole, saveStaff, deleteStaff, importStaffList, AccessError } from './access.js';
 import { financeReport, saveLoans } from './finance.js';
+import { soldList, markSold, unmarkSold, markSoldList, SoldError } from './sold.js';
 import { crmList, crmClient, saveClient, setTags, addNote, mergeClients, importClients, CrmError } from './crm.js';
 import { importCashbook } from './cashbook.js';
 import { serverReport, saveServerSettings, alertAdminsOnce } from './serverStats.js';
@@ -262,7 +264,8 @@ async function priceData(cars) {
 
 async function fleet(req, res) {
   // Парк нужен и обзору, и календарю
-  needAny(await requireStaff(req), ['fleet.view', 'calendar.view', 'overview.view']);
+  const staff = await requireStaff(req);
+  needAny(staff, ['fleet.view', 'calendar.view', 'overview.view']);
   const snapshot = getWsSnapshot();
   const sync = wsSyncStatus();
   sendJson(res, 200, {
@@ -272,6 +275,8 @@ async function fleet(req, res) {
     windowFrom: snapshot?.windowFrom || null,
     windowTo: snapshot?.windowTo || null,
     cars: snapshot?.cars || [],
+    // Проданные машины (отметка в портале) — админу, чтобы поправить дату, цену или вернуть в парк
+    ...(can(staff, 'access.admin') ? { sold: soldList() } : {}),
     // Статус машин по рабочей группе WhatsApp: госномер → последний отчёт
     group: Object.fromEntries([...groupStatusByPlate()].map(([plate, g]) => [plate, { status: g.status, at: g.at, kind: g.kind }])),
     ...(await priceData(snapshot?.cars || []))
@@ -309,6 +314,26 @@ async function dashboard(req, res, url) {
   needAny(await requireStaff(req), ['overview.view']);
   const problems = await collectProblems(Date.now(), url.searchParams.get('lang') || 'en');
   sendJson(res, 200, { problems, outlook: bookingOutlook(), requests: requestStats(), limits: LIMITS });
+}
+
+/* ------------------------------------------------- Проданные машины (админ) */
+
+/** POST /api/staff/fleet/sold { plate, date?, price?, model?, wsModel? } | { text } | { plate, restore: true } */
+async function fleetSold(staff, req, res) {
+  if (!can(staff, 'access.admin')) throw new HttpError(403, 'admin_only');
+  const body = await readJson(req);
+  let result = {};
+  try {
+    if (body.restore) unmarkSold(body.plate, staff.email);
+    else if (typeof body.text === 'string') result = markSoldList(body.text, staff.email);
+    else markSold(body, staff.email);
+  } catch (err) {
+    if (err instanceof SoldError) throw new HttpError(400, err.code);
+    throw err;
+  }
+  // Сайт сразу показывает модель без проданной машины
+  resetCatalog();
+  sendJson(res, 200, { ...result, sold: soldList() });
 }
 
 /* ----------------------------------------------------- Вкладка «Финансы» */
@@ -485,6 +510,7 @@ const ROUTES = {
   'POST /api/staff/access/import': signedIn(accessImport),
   'GET /api/staff/finance': signedIn(finance),
   'POST /api/staff/finance/cashbook': signedIn(financeCashbook),
+  'POST /api/staff/fleet/sold': signedIn(fleetSold),
   'POST /api/staff/finance/loans': signedIn(financeLoans),
   'GET /api/staff/crm': signedIn(crmListRoute),
   'GET /api/staff/crm/client': signedIn(crmClientRoute),

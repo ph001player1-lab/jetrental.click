@@ -826,7 +826,7 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
 @media (max-width: 640px) { .ac-sec { padding: 14px 14px; } }
 .ac-sec h3 { margin: 0 0 6px; }
 .ac-sec h4 { margin: 0 0 10px; }
-.ac-note { position: sticky; top: 64px; z-index: 6; margin: 0; }
+.ac-note { position: sticky; top: 64px; z-index: 6; margin: 0; padding: 6px 10px; border-radius: 8px; background: var(--surface); box-shadow: var(--shadow); justify-self: start; }
 .ac-admins { list-style: none; padding: 0; margin: 6px 0 12px; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 14px; }
 .ac-table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .ac-table th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 600; }
@@ -984,3 +984,32 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
 .crm-dupes li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 .jr-card--blacklist { border-color: var(--rent); box-shadow: 0 0 0 2px var(--rent) inset; }
 .jr-blacklist { margin: 0; font-size: 14px; color: var(--rent); font-weight: 700; }
+
+/* Проданные машины (админ, вкладка «Парк») */
+.sold-open { margin-top: 10px; }
+.sold-form { display: grid; gap: 8px; max-width: 420px; margin-top: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); cursor: auto; }
+.sold-form__buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.sold-box { margin-top: 14px; padding: 12px 16px; }
+.sold-box summary { cursor: pointer; }
+.sold-list { list-style: none; margin: 10px 0; padding: 0; display: grid; gap: 8px; font-size: 14px; }
+.sold-list li { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.sold-actions { display: inline-flex; gap: 12px; margin-left: auto; }
+.sold-bulk { display: grid; gap: 8px; max-width: 520px; }
+.sold-bulk textarea { width: 100%; font: 14px ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+/* «Доступы» на телефоне: одна роль за раз, крупные кнопки уровней */
+.ac-roles-phone { display: none; }
+@media (max-width: 700px) {
+  .ac-roles-desk { display: none; }
+  .ac-roles-phone { display: grid; gap: 10px; }
+}
+.ac-rolechips { flex-wrap: nowrap; }
+.ac-phone-role { display: grid; gap: 8px; }
+.ac-phone-secs { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.ac-phone-secs li { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.ac-seg { display: flex; gap: 6px; margin-top: 8px; }
+.ac-seg__btn { flex: 1 1 0; min-height: 42px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink, inherit); font: inherit; font-size: 14px; cursor: pointer; }
+.ac-seg__btn[aria-pressed="true"] { font-weight: 700; }
+.ac-seg__btn--edit[aria-pressed="true"] { background: var(--free-bg); border-color: var(--free); color: var(--free); }
+.ac-seg__btn--view[aria-pressed="true"] { background: var(--reserve-bg); border-color: var(--warn); color: var(--warn); }
+.ac-seg__btn--none[aria-pressed="true"] { background: var(--surface-2); border-color: var(--muted); color: var(--muted); }

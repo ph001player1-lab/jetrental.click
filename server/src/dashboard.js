@@ -150,7 +150,8 @@ async function websiteProblems(tx, fleet) {
     });
   }
   const { models } = await getCatalog();
-  for (const m of models) {
+  // Проданные модели («нет в наличии») — без напоминаний о цене, фото и переводах
+  for (const m of models.filter((x) => !x.soldOut)) {
     // Описания до подстановки английского вместо перевода
     const own = fleet.catalog.get(m.model)?.descriptions || {};
     const untranslated = DESCRIPTION_LANGS.filter((l) => !own[l]);

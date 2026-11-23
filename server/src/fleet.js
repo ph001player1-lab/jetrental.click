@@ -16,6 +16,7 @@ import { getRows, getValues, sheetsEnabled } from './google/sheets.js';
 import { parsePrice, buildPricing, priceSheetNames, SEASONS_SHEET, quotePlate } from './pricing.js';
 import { listActiveRequests } from './db.js';
 import * as ws from './ws/api.js';
+import { isSold, rememberSoldModels } from './sold.js';
 
 const VEHICLES_SHEET = 'Vehicles';
 const CATALOG_SHEET = 'Catalog';
@@ -85,7 +86,15 @@ async function loadPricing() {
   return buildPricing(seasonRows, new Map(names.map((name, i) => [name, sheets[i]])));
 }
 
+/** Парк без проданных машин; проданные — отдельно (для сайта: «нет в наличии») */
 async function loadFleet() {
+  const all = await loadFleetAll();
+  const sold = all.units.filter((u) => isSold(u.plate));
+  if (sold.length) rememberSoldModels(sold);
+  return { ...all, units: sold.length ? all.units.filter((u) => !isSold(u.plate)) : all.units, soldUnits: sold };
+}
+
+async function loadFleetAll() {
   if (cache && Date.now() - cache.loadedAt < CACHE_MS) return cache;
 
   try {
