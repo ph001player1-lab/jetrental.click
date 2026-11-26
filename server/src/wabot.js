@@ -53,7 +53,9 @@ export function wabotSettings() {
   try { saved = JSON.parse(db.getSetting('wabot_settings') || '{}') || {}; } catch { /* по умолчанию */ }
   return {
     mode: MODES.includes(saved.mode) ? saved.mode : 'off',
-    testNumbers: Array.isArray(saved.testNumbers) ? saved.testNumbers : []
+    testNumbers: Array.isArray(saved.testNumbers) ? saved.testNumbers : [],
+    // Заявки и в Telegram-группу (по умолчанию — только в WhatsApp-группу)
+    telegramCopy: saved.telegramCopy === true
   };
 }
 
@@ -62,10 +64,11 @@ export function saveWabotSettings(input) {
   const mode = MODES.includes(input.mode) ? input.mode : cur.mode;
   const testNumbers = input.testNumbers === undefined ? cur.testNumbers
     : [...new Set(String(input.testNumbers).split(/[,;\n]+/).map(digits).filter((n) => n.length >= 8 && n.length <= 15))].slice(0, 20);
-  db.setSetting('wabot_settings', JSON.stringify({ mode, testNumbers }));
+  const telegramCopy = typeof input.telegramCopy === 'boolean' ? input.telegramCopy : cur.telegramCopy;
+  db.setSetting('wabot_settings', JSON.stringify({ mode, testNumbers, telegramCopy }));
   // «Маркетинг»: отвечает ли бот в WhatsApp — по этому режиму
   saveMarketingSettings({ bots: { wa: mode === 'on' } });
-  return { mode, testNumbers };
+  return { mode, testNumbers, telegramCopy };
 }
 
 /* ------------------------------------------------------------ Состояние */
@@ -348,7 +351,7 @@ export async function wabotPortalStatus(staff, req, res) {
 export async function wabotPortalSettings(staff, req, res) {
   needEdit(staff);
   const result = saveWabotSettings(await readJson(req));
-  console.log(`WhatsApp bot mode «${result.mode}» set by ${staff.email}`);
+  console.log(`WhatsApp bot mode «${result.mode}», Telegram copy ${result.telegramCopy ? 'on' : 'off'} set by ${staff.email}`);
   sendJson(res, 200, { ok: true, settings: result });
 }
 

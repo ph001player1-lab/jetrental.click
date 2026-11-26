@@ -7,9 +7,9 @@ import { escapeHtml } from '../format.js';
 import { tg, sendMessage, inlineKeyboard, answerCallback } from '../telegram/api.js';
 import { handleClientText, handleClientChoice } from '../client.js';
 
-function contactKeyboard(buttonText) {
+function contactKeyboard(buttonText, backText) {
   return {
-    keyboard: [[{ text: buttonText, request_contact: true }]],
+    keyboard: [[{ text: buttonText, request_contact: true }], ...(backText ? [[{ text: backText }]] : [])],
     resize_keyboard: true,
     one_time_keyboard: true
   };
@@ -25,7 +25,7 @@ function telegramUi(chatId, query = null) {
     choices: (text, options) => sendMessage(chatId, text, {
       reply_markup: inlineKeyboard(options.map((o) => [{ text: o.title, callback_data: o.id }]))
     }),
-    askPhone: (text, buttonText) => sendMessage(chatId, text, { reply_markup: contactKeyboard(buttonText) }),
+    askPhone: (text, buttonText, backText) => sendMessage(chatId, text, { reply_markup: contactKeyboard(buttonText, backText) }),
     ack: (text) => (query ? answerCallback(query, text) : Promise.resolve()),
     // Убираем кнопки у сообщения, на котором нажали, и пишем, что выбрано
     closeChoices: async (note) => {

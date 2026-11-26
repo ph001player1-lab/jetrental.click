@@ -180,11 +180,13 @@ const TEXTS = {
   lang_hint: { en: '🌐 Other language: type “lang”', ru: '🌐 Другой язык: напишите «lang»', th: '🌐 เปลี่ยนภาษา: พิมพ์ “lang”', zh: '🌐 更换语言：输入“lang”' },
   talk_manager: { en: '💬 Talk to a manager', ru: '💬 Связаться с менеджером', th: '💬 คุยกับเจ้าหน้าที่', zh: '💬 联系客服' },
   manager_soon: {
-    en: 'Got it! A manager will reply to you here soon 👌',
-    ru: 'Хорошо! Менеджер скоро ответит вам здесь 👌',
-    th: 'รับทราบค่ะ! เจ้าหน้าที่จะตอบกลับที่นี่เร็วๆ นี้ 👌',
-    zh: '好的！客服会尽快在这里回复您 👌'
+    en: 'Got it! A manager will contact you as soon as they are free 🤝',
+    ru: 'Хорошо! Менеджер свяжется с вами, как только освободится 🤝',
+    th: 'รับทราบค่ะ! เจ้าหน้าที่จะติดต่อคุณทันทีที่ว่าง 🤝',
+    zh: '好的！客服一有空就会联系您 🤝'
   },
+  // «Назад» на любом шаге диалога
+  back: { en: '◀️ Back', ru: '◀️ Назад', th: '◀️ ย้อนกลับ', zh: '◀️ 返回' },
   manager_taken: {
     en: '👋 Manager {name} is handling your request #{id}. We\'ll contact you soon!',
     ru: '👋 Вашей заявкой #{id} занимается менеджер {name}. Скоро свяжемся с вами!',

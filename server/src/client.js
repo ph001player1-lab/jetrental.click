@@ -25,6 +25,8 @@ import { LANGUAGES, LANGUAGE_PROMPT, LANGUAGE_LIST_BUTTON, normalizeLanguage, t 
 const MAX_MODEL_OPTIONS = 9;
 const RESTART_WORDS = ['/start', 'start', 'старт', 'меню', 'menu', 'начать', 'เมนู', '菜单'];
 const LANGUAGE_WORDS = ['/lang', 'lang', 'language', 'язык', 'ภาษา', '语言'];
+// «Назад» словом или «0» (в WhatsApp компании так подписан этот вариант)
+const BACK_WORDS = ['0', 'назад', 'back', '/back', 'ย้อนกลับ', '返回'];
 const DATE_EXAMPLE = '5.11 - 12.11';
 
 const LANGUAGE_OPTIONS = Object.entries(LANGUAGES).map(([code, l]) => ({ id: `lang:${code}`, title: l.title }));
@@ -43,6 +45,24 @@ function firstWord(text) {
 /** «меню», «start»… — клиент просит начать заново */
 export function isRestartText(text) {
   return RESTART_WORDS.includes(firstWord(text));
+}
+
+function isBackText(text) {
+  return BACK_WORDS.includes(String(text || '').toLowerCase().replace(/[^\p{L}\p{N}/]+/gu, ' ').trim());
+}
+
+/** Вариант «◀️ Назад» — есть на каждом шаге, кроме выбора языка */
+const backOption = (lang) => ({ id: 'back:1', title: t(lang, 'back'), back: true });
+const withBack = (lang, options) => [...options, backOption(lang)];
+
+/** Вопрос, на который клиент отвечает текстом (даты, название отеля…), — с «Назад» */
+function askText(chat, lang, text) {
+  return chat.ui.choices(text, [backOption(lang)]);
+}
+
+function askDates(chat, lang, session) {
+  db.saveSession(chat.key, { step: 'dates', vehicleType: session.vehicleType });
+  return askText(chat, lang, t(lang, 'ask_dates', { example: chat.ui.b(DATE_EXAMPLE) }));
 }
 
 function chatLanguage(chat) {
@@ -72,11 +92,27 @@ async function startFlow(chat) {
   const lang = chatLanguage(chat);
   if (!lang) return askLanguage(chat);
   db.saveSession(chat.key, { step: 'type' });
-  await chat.ui.choices(t(lang, 'greeting'), typeOptions(lang, chat));
+  await chat.ui.choices(t(lang, 'greeting'), withBack(lang, typeOptions(lang, chat)));
 }
 
 function askPhone(chat, lang) {
-  return chat.ui.askPhone(t(lang, 'ask_phone'), t(lang, 'phone_button'));
+  return chat.ui.askPhone(t(lang, 'ask_phone'), t(lang, 'phone_button'), t(lang, 'back'));
+}
+
+/** Шаг назад: тип → язык, даты → тип, модели → даты, «откуда узнали» → модели или даты… */
+async function goBack(chat, lang, session) {
+  switch (session?.step) {
+    case 'type': return askLanguage(chat);
+    case 'dates': return startFlow(chat);
+    case 'model': return askDates(chat, lang, session);
+    case 'heard': return session.modelShown ? offerModels(chat, lang, session) : askDates(chat, lang, session);
+    case 'heard_agent':
+    case 'heard_other': return askHeard(chat, lang, session);
+    case 'contact':
+      if (session.heardAsked) return askHeard(chat, lang, session);
+      return session.modelShown ? offerModels(chat, lang, session) : askDates(chat, lang, session);
+    default: return startFlow(chat);
+  }
 }
 
 function priceText(lang, option) {
@@ -92,7 +128,7 @@ function priceText(lang, option) {
 async function askHeard(chat, lang, session) {
   db.saveSession(chat.key, { ...session, step: 'heard' });
   const options = heardOptions().map((o) => ({ id: `heard:${o.key}`, title: typeof o.label === 'string' ? o.label : t(lang, o.label.text) }));
-  await chat.ui.choices(t(lang, 'ask_heard'), options, { listButton: t(lang, 'heard_list_button'), sectionTitle: t(lang, 'heard_list_button') });
+  await chat.ui.choices(t(lang, 'ask_heard'), withBack(lang, options), { listButton: t(lang, 'heard_list_button'), sectionTitle: t(lang, 'heard_list_button') });
 }
 
 /** Ответ записан — дальше телефон или сразу заявка */
@@ -111,7 +147,7 @@ async function chooseHeard(chat, lang, key) {
   // Отель или агент — уточняем название; «Другое» — просим написать словами
   if (key === 'agent' || key === 'other') {
     db.saveSession(chat.key, { ...session, step: key === 'agent' ? 'heard_agent' : 'heard_other' });
-    return chat.ui.send(t(lang, key === 'agent' ? 'ask_heard_agent' : 'ask_heard_other'));
+    return askText(chat, lang, t(lang, key === 'agent' ? 'ask_heard_agent' : 'ask_heard_other'));
   }
   return afterHeard(chat, lang, session, resolveHeard(key));
 }
@@ -151,6 +187,8 @@ async function offerModels(chat, lang, session) {
   db.saveSession(chat.key, {
     ...session,
     step: 'model',
+    // Модели показывали — «Назад» с вопроса «откуда узнали» вернёт к ним
+    modelShown: true,
     options: options.map((o) => ({ model: o.model, total: o.price?.total || null, plates: o.freePlates }))
   });
 
@@ -162,7 +200,7 @@ async function offerModels(chat, lang, session) {
   await ui.choices(
     `${t(lang, 'available', { period, days: daysBetween(session.dateFrom, session.dateTo) })}\n\n` +
       `${ui.textChoices ? '' : `${lines.join('\n')}\n\n`}${t(lang, 'choose_model')}`,
-    choices,
+    withBack(lang, choices),
     { listButton: t(lang, 'model_list_button') }
   );
 }
@@ -224,11 +262,12 @@ export async function handleClientText(chat, text, contact = null) {
   if (RESTART_WORDS.includes(word) || !session || !chatLanguage(chat)) return startFlow(chat);
 
   const lang = normalizeLanguage(chatLanguage(chat));
+  if (isBackText(text)) return goBack(chat, lang, session);
 
   switch (session.step) {
 
     case 'type':
-      return chat.ui.choices(t(lang, 'choose_please'), typeOptions(lang, chat));
+      return chat.ui.choices(t(lang, 'choose_please'), withBack(lang, typeOptions(lang, chat)));
 
     case 'dates': {
       const result = parseDateRange(text);
@@ -246,7 +285,7 @@ export async function handleClientText(chat, text, contact = null) {
 
     case 'heard_agent':
     case 'heard_other':
-      if (!String(text || '').trim()) return chat.ui.send(t(lang, session.step === 'heard_agent' ? 'ask_heard_agent' : 'ask_heard_other'));
+      if (!String(text || '').trim()) return askText(chat, lang, t(lang, session.step === 'heard_agent' ? 'ask_heard_agent' : 'ask_heard_other'));
       return afterHeard(chat, lang, session, resolveHeard(session.step === 'heard_agent' ? 'agent' : 'other', text));
 
     case 'contact': {
@@ -274,7 +313,7 @@ async function chooseType(chat, lang, vehicleType) {
   db.saveSession(chat.key, { step: 'dates', vehicleType });
   await chat.ui.ack();
   await chat.ui.closeChoices(t(lang, 'you_chose', { what: t(lang, `type_${vehicleType}`) }));
-  await chat.ui.send(t(lang, 'ask_dates', { example: chat.ui.b(DATE_EXAMPLE) }));
+  await askText(chat, lang, t(lang, 'ask_dates', { example: chat.ui.b(DATE_EXAMPLE) }));
 }
 
 async function chooseModel(chat, lang, value) {
@@ -299,7 +338,7 @@ async function chooseModel(chat, lang, value) {
   return afterModel(chat, lang, next);
 }
 
-/** Нажатие кнопки или выбор в списке: lang:<код>, type:<тип>, model:<номер|any>, heard:<ответ>, manager:1 */
+/** Нажатие кнопки или выбор в списке: lang:<код>, type:<тип>, model:<номер|any>, heard:<ответ>, manager:1, back:1 */
 export async function handleClientChoice(chat, action, value) {
   if (action === 'lang') return chooseLanguage(chat, value);
 
@@ -309,6 +348,11 @@ export async function handleClientChoice(chat, action, value) {
   if (action === 'type') return chooseType(chat, lang, value);
   if (action === 'model') return chooseModel(chat, lang, value);
   if (action === 'heard') return chooseHeard(chat, lang, value);
+  if (action === 'back') {
+    await chat.ui.ack();
+    await chat.ui.closeChoices();
+    return goBack(chat, lang, db.getSession(chat.key));
+  }
   if (action === 'manager' && chat.onManager) {
     db.clearSession(chat.key);
     return chat.onManager(lang);

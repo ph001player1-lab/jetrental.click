@@ -37,7 +37,7 @@ const TEXTS = {
     // Рабочая группа WhatsApp (пишет WhatsApp-бот компании)
     'wa.takeHint': '👉 Взять заявку — ответьте на это сообщение «+». Не можете — «-».',
     'wa.alreadyTaken': 'Заявку #{id} уже взял(а): {name}',
-    'wa.takenElsewhere': '✅ Заявку #{id} взял(а): {name}',
+    'wa.takenElsewhere': '✅ Заявку #{id} взял(а): {name} (в Telegram)',
     'wa.manager': '💬 Клиент просит менеджера: {who}\nОтветьте ему в WhatsApp компании (с телефона или из WhatsApp Web).',
     'cmd.test': 'Тестовая заявка',
     'cmd.summary': 'Сводка: брони и предупреждения',
@@ -96,7 +96,7 @@ const TEXTS = {
     'cmd.bind': 'Receive requests in this group',
     'wa.takeHint': '👉 To take this request, reply to this message with “+”. Can’t — “-”.',
     'wa.alreadyTaken': 'Request #{id} is already taken by {name}',
-    'wa.takenElsewhere': '✅ Request #{id} taken by {name}',
+    'wa.takenElsewhere': '✅ Request #{id} taken by {name} (in Telegram)',
     'wa.manager': '💬 A client asks for a manager: {who}\nReply in the company WhatsApp (phone or WhatsApp Web).',
     'cmd.test': 'Test request',
     'cmd.summary': 'Summary: bookings and warnings',

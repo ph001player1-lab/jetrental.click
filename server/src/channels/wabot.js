@@ -74,14 +74,18 @@ export function wabotUi(chatKey, send) {
     esc: (text) => String(text ?? ''),
     send: async (text) => { out.push(String(text)); },
     choices: async (text, options) => {
-      q.set.run(chatKey, JSON.stringify(options.map((o) => ({ id: o.id, title: o.title }))), new Date().toISOString());
-      const lines = options.map((o, i) => `${KEYCAPS[i] || `${i + 1}.`} ${o.title}${o.description ? ` — ${o.description}` : ''}`);
+      // «Назад» — всегда «0», остальные варианты по порядку с 1
+      const main = options.filter((o) => !o.back);
+      const back = options.find((o) => o.back);
+      q.set.run(chatKey, JSON.stringify(main.map((o) => ({ id: o.id, title: o.title }))), new Date().toISOString());
+      const lines = main.map((o, i) => `${KEYCAPS[i] || `${i + 1}.`} ${o.title}${o.description ? ` — ${o.description}` : ''}`);
+      if (back) lines.push(`0️⃣ ${back.title}`);
       // До выбора языка подсказка на двух языках
       const hint = lang() ? t(lang(), 'reply_number') : `${t('en', 'reply_number').replace(/\s*👆$/u, '')} · ${t('ru', 'reply_number')}`;
-      out.push(`${text}\n\n${lines.join('\n')}\n\n${hint}`);
+      out.push([text, lines.join('\n'), main.length ? hint : ''].filter(Boolean).join('\n\n'));
     },
     // Номер телефона в WhatsApp обычно известен; если нет — клиент пишет его сообщением
-    askPhone: async (text) => { out.push(String(text)); },
+    askPhone: async (text, buttonText, backText) => { out.push(backText ? `${text}\n\n0️⃣ ${backText}` : String(text)); },
     ack: async () => {},
     // «Вы выбрали: …» — подтверждение в начале следующего ответа
     closeChoices: async (note) => { if (note) out.push(String(note)); },

@@ -338,6 +338,18 @@ async function react(jid, id, participant, emoji) {
 
 /* ---------------------------------------------------------- Группы */
 
+// Список групп WhatsApp отдаёт не чаще раза в несколько секунд («rate-overlimit»):
+// события групп собираем в один запрос, при отказе — повтор через минуту
+let groupsTimer = null;
+let groupsRetryMs = 60000;
+function scheduleGroups(delayMs = 5000) {
+  clearTimeout(groupsTimer);
+  groupsTimer = setTimeout(async () => {
+    if (state.status !== 'connected') return;
+    if (await refreshGroups()) reportStatus();
+  }, delayMs);
+}
+
 async function refreshGroups() {
   try {
     const all = await sock.groupFetchAllParticipating();
@@ -358,8 +370,13 @@ async function refreshGroups() {
       config.groupSubject = current.subject;
       saveConfig();
     }
+    groupsRetryMs = 60000;
+    return true;
   } catch (err) {
-    log('groups fetch failed:', err.message);
+    log(`groups fetch failed: ${err.message} — retry in ${Math.round(groupsRetryMs / 1000)} s`);
+    scheduleGroups(groupsRetryMs);
+    groupsRetryMs = Math.min(groupsRetryMs * 2, 30 * 60000);
+    return false;
   }
 }
 
@@ -400,8 +417,9 @@ async function start() {
       });
       log(`connected as ${state.me.id}`);
       try { await current.sendPresenceUpdate('unavailable'); } catch { /* не важно */ }
-      await refreshGroups();
       reportStatus();
+      // Сразу после входа WhatsApp сам синхронизирует группы — свой запрос чуть позже
+      scheduleGroups(15000);
     }
     if (update.connection === 'close') {
       const code = update.lastDisconnect?.error?.output?.statusCode;
@@ -430,9 +448,9 @@ async function start() {
     }
   });
 
-  current.ev.on('groups.upsert', () => refreshGroups().then(reportStatus));
-  current.ev.on('groups.update', () => refreshGroups().then(reportStatus));
-  current.ev.on('group-participants.update', () => refreshGroups().then(reportStatus));
+  current.ev.on('groups.upsert', () => scheduleGroups());
+  current.ev.on('groups.update', () => scheduleGroups());
+  current.ev.on('group-participants.update', () => scheduleGroups());
 }
 
 /* ----------------------------------------------- HTTP для бота (внутри) */
@@ -489,8 +507,8 @@ http.createServer(async (req, res) => {
       }
       saveConfig();
       log(config.groupId ? `requests go to «${config.groupSubject}»` : 'no work group');
-      if (sock && state.status === 'connected') await refreshGroups();
       reportStatus();
+      scheduleGroups(2000);
       return send(res, 200, { ok: true, groupId: config.groupId, groupSubject: config.groupSubject });
     }
     if (req.method === 'POST' && url.pathname === '/pair') {
@@ -516,6 +534,8 @@ http.createServer(async (req, res) => {
 
 if (!SECRET) log('WARNING: INTERNAL_SECRET is not set — the bot will not accept messages');
 setInterval(reportStatus, HEARTBEAT_MS).unref();
+// Раз в полчаса — свежий список групп и участников
+setInterval(() => scheduleGroups(0), 30 * 60000).unref();
 start().catch((err) => {
   log('start failed:', err.message);
   process.exit(1);

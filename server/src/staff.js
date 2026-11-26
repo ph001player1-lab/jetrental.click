@@ -22,7 +22,8 @@ import { sendText as waSendText } from './whatsapp/api.js';
 import { tg, sendMessage, inlineKeyboard, answerCallback, displayName, parseCommand } from './telegram/api.js';
 import { sendMorningSummary } from './morning.js';
 import { g } from './groupTexts.js';
-import { postRequestToWaGroup, noteTakenInWaGroup, wabotSend } from './wabot.js';
+import { postRequestToWaGroup, noteTakenInWaGroup, wabotSend, wabotSettings } from './wabot.js';
+import { staffNameByTelegram } from './staffUsers.js';
 
 export function getStaffChatId() {
   return config.telegram.staffChatId || db.getSetting('staff_chat_id');
@@ -60,8 +61,10 @@ function staffButtons(request) {
 }
 
 /**
- * Новая заявка уходит в рабочие группы (WhatsApp — через бот компании,
- * Telegram — если подключена) и копией в Google-таблицу.
+ * Новая заявка уходит в рабочую группу и копией в Google-таблицу. Одно место
+ * для заявок: если выбрана группа WhatsApp (бот компании) — туда, а в
+ * Telegram-группу только при включённом «Дублировать заявки в Telegram»;
+ * не ушла в WhatsApp (бот не на связи) — в Telegram, чтобы не потерялась.
  * Возвращает false, если ни одна группа ещё не подключена.
  */
 export async function publishRequest(request) {
@@ -79,6 +82,7 @@ export async function publishRequest(request) {
     if (!inWhatsApp) console.warn(`Request #${request.id}: no staff group yet (choose a WhatsApp group or send /bind in Telegram)`);
     return inWhatsApp;
   }
+  if (inWhatsApp && !wabotSettings().telegramCopy) return true;
   const message = await sendToStaffGroup(formatStaffRequest(request), { reply_markup: staffButtons(request) });
   db.setStaffMessage(request.id, chatId, message.message_id);
   return true;
@@ -140,7 +144,8 @@ export async function handleStaffCallback(query, action, requestId) {
   const request = db.getRequest(requestId);
   if (!request) return answerCallback(query, g('cb.notFound'));
 
-  const name = displayName(query.from);
+  // Имя — из «Доступов» по Telegram ID; нет там — из профиля Telegram
+  const name = (await staffNameByTelegram(query.from.id).catch(() => null)) || displayName(query.from);
 
   if (action === 'take') {
     if (!db.takeRequest(request.id, query.from.id, name)) {

@@ -173,9 +173,15 @@ server.listen(config.port, () => {
   startJournal();
 
   if (telegramEnabled) {
-    setupTelegram()
-      .then(() => console.log(`Telegram webhook set to ${config.publicBaseUrl}/webhooks/telegram`))
-      .catch((err) => console.error('Telegram setup failed:', err.message));
+    // Сразу после запуска контейнера сеть бывает ещё не готова — пробуем ещё 5 раз
+    const trySetup = (attempt = 1) => setupTelegram()
+      .then(() => console.log(`Telegram webhook set to ${config.publicBaseUrl}/webhooks/telegram${attempt > 1 ? ` (attempt ${attempt})` : ''}`))
+      .catch((err) => {
+        if (attempt >= 6) return console.error('Telegram setup failed:', err.message);
+        console.warn(`Telegram setup failed (${err.message}), retry in 30 s`);
+        setTimeout(() => trySetup(attempt + 1), 30000);
+      });
+    trySetup();
   } else {
     console.log('Telegram disabled: TELEGRAM_BOT_TOKEN is not set');
   }

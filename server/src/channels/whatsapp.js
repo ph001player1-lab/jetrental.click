@@ -11,11 +11,13 @@ export function whatsappUi(phone) {
     b: (text) => `*${String(text ?? '')}*`,
     esc: (text) => String(text ?? ''),
     send: (text) => wa.sendText(phone, text),
-    choices: (text, options, { listButton = 'Choose', sectionTitle } = {}) => (
-      options.length <= 3
+    choices: (text, all, { listButton = 'Choose', sectionTitle } = {}) => {
+      const options = all.filter((o) => !o.back);
+      if (!options.length) return wa.sendText(phone, text);
+      return options.length <= 3
         ? wa.sendButtons(phone, text, options)
-        : wa.sendList(phone, text, listButton, options, sectionTitle)
-    ),
+        : wa.sendList(phone, text, listButton, options, sectionTitle);
+    },
     // Номер клиента в WhatsApp известен, отдельно его не спрашиваем
     askPhone: (text) => wa.sendText(phone, text),
     // Выбор клиента WhatsApp сам показывает его ответом в чате

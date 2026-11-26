@@ -1132,7 +1132,8 @@
         <li>Ведёт клиента по шагам, как Telegram-бот: язык → техника → даты → свободные модели с ценами → «откуда узнали» → заявка. Варианты — списком, клиент отвечает цифрой.</li>
         <li>Есть вариант «Связаться с менеджером» — для постоянных клиентов: бот молчит, в группу приходит сообщение.</li>
         <li>Менеджер написал клиенту сам (с телефона или из WhatsApp Web) — бот молчит в этом чате 12 часов. После заявки бот молчит сутки; клиент может написать «меню».</li>
-        <li>Заявка приходит карточкой в рабочую группу WhatsApp. Взять — ответить на карточку «+», не можете — «-». Клиенту придёт, кто им занимается.</li>
+        <li>Заявка приходит карточкой в рабочую группу WhatsApp. Взять — ответить на карточку «+», не можете — «-». Клиенту придёт, кто им занимается. Имя берётся из «Доступов» по номеру WhatsApp.</li>
+        <li>На каждом шаге есть «0️⃣ ◀️ Назад».</li>
       </ul></details>`;
       if (w.reachable === false) {
         return `<p class="warn">Бот не отвечает на сервере. Если сервер только что обновили — подождите минуту и откройте окно снова.</p>${how}`;
@@ -1157,7 +1158,9 @@
             <label class="field"><span>Рабочая группа WhatsApp для заявок</span>
               <select class="search" name="groupId"><option value="">— не присылать —</option>${groups}</select></label>
             <p class="mk-tip">Нет нужной группы — добавьте номер бота ${esc(phoneText(w.me?.id))} в рабочую группу на телефоне, через минуту она появится здесь.</p>
-            <button type="submit" class="btn btn--small">Сохранить группу</button>
+            <label class="mk-check"><input type="checkbox" name="telegramCopy"${set.telegramCopy ? ' checked' : ''}> Дублировать заявки в Telegram-группу</label>
+            <p class="mk-tip">Выключено — заявки только в этой группе WhatsApp, брать их можно в одном месте. Утренняя сводка и оповещения в Telegram остаются. Если бот не на связи, заявка всё равно придёт в Telegram.</p>
+            <button type="submit" class="btn btn--small">Сохранить</button>
           </form>
           ${msg}
           ${how}
@@ -1441,7 +1444,10 @@
         return true;
       }
       if (form.matches('[data-mk-wabot-group]')) {
-        wabotAction('/wabot/config', { groupId: f.get('groupId') }, f.get('groupId') ? 'Заявки будут приходить в эту группу.' : 'Заявки в WhatsApp-группу не приходят.');
+        const telegramCopy = f.get('telegramCopy') === 'on';
+        api('/wabot/settings', { body: { telegramCopy } }).catch(() => null)
+          .then(() => wabotAction('/wabot/config', { groupId: f.get('groupId') },
+            f.get('groupId') ? `Заявки будут приходить в эту группу${telegramCopy ? ' и копией в Telegram' : ''}.` : 'Заявки в WhatsApp-группу не приходят — только в Telegram.'));
         return true;
       }
       if (form.matches('[data-mk-wabot-pair]')) {

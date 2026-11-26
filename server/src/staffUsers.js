@@ -87,6 +87,18 @@ export async function staffPhones() {
   return phones;
 }
 
+/** Имя сотрудника по Telegram ID — из «Доступов» (и админов из таблицы); null — не нашли */
+export async function staffNameByTelegram(telegramId) {
+  const id = String(telegramId || '').replace(/\D/g, '');
+  if (!id) return null;
+  const staff = activeStaff().find((s) => String(s.telegramId) === id && /\p{L}/u.test(s.name));
+  if (staff) return staff.name;
+  try {
+    for (const a of (await loadAdmins()).admins.values()) if (String(a.telegramId) === id && a.name && a.name !== a.email) return a.name;
+  } catch { /* без таблицы — только портал */ }
+  return null;
+}
+
 /** Telegram ID админов (кому слать оповещения о сервере) */
 export async function adminTelegramIds() {
   return (await loadAdmins()).adminChats;
