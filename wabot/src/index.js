@@ -271,7 +271,7 @@ async function handleMessage(msg, type) {
   if (jid.endsWith('@g.us')) {
     if (jid !== config.groupId) return;
     if (msg.key.fromMe) {
-      log(`work group: own message ${msg.key.id} (from the company phone) — ignored`);
+      if (!sentIds.has(msg.key.id)) log(`work group: own message ${msg.key.id} (from the company phone) — ignored`);
       return;
     }
     // «append» — сообщение пришло, пока бот был не на связи (перезапуск): свежие тоже берём
@@ -490,7 +490,7 @@ async function start() {
     if (type !== 'notify' && type !== 'append') return;
     for (const msg of messages) {
       // Диагностика: что пришло из рабочей группы (без текста)
-      if (msg.key?.remoteJid && msg.key.remoteJid === config.groupId) {
+      if (msg.key?.remoteJid && msg.key.remoteJid === config.groupId && !sentIds.has(msg.key.id)) {
         log(`work group upsert ${type}: ${msg.key.id} fromMe=${Boolean(msg.key.fromMe)} stub=${msg.messageStubType || 0} content=${Object.keys(msg.message || {}).join(',') || '-'}`);
       }
       handleMessage(msg, type).catch((err) => log('message failed:', err.message));

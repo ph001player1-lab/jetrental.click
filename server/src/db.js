@@ -185,7 +185,9 @@ for (const [name, type] of [
   // Ответ клиента боту «откуда вы о нас узнали», если источник не определился
   ['heard_from', 'TEXT'],
   // Карточка заявки в рабочей группе WhatsApp (на неё отвечают «+», чтобы взять)
-  ['wa_group_id', 'TEXT'], ['wa_group_message_id', 'TEXT']
+  ['wa_group_id', 'TEXT'], ['wa_group_message_id', 'TEXT'],
+  // В архиве: убрана из работы админом (в статистике остаётся); кто и когда
+  ['archived_at', 'TEXT'], ['archived_by', 'TEXT']
 ]) {
   if (!requestColumns.includes(name)) db.exec(`ALTER TABLE requests ADD COLUMN ${name} ${type}`);
 }
@@ -282,7 +284,7 @@ export function setWaGroupMessage(id, groupId, messageId) {
 
 /** Невзятые заявки в группе WhatsApp, пришедшие после sinceIso (для «+» без ответа на карточку) */
 export function openRequestsInWaGroup(groupId, sinceIso) {
-  return db.prepare("SELECT * FROM requests WHERE status = 'new' AND wa_group_id = ? AND created_at >= ? ORDER BY id")
+  return db.prepare("SELECT * FROM requests WHERE status = 'new' AND archived_at IS NULL AND wa_group_id = ? AND created_at >= ? ORDER BY id")
     .all(String(groupId), String(sinceIso));
 }
 
@@ -320,7 +322,13 @@ export function setSheetRow(id, row) {
 
 /** Заявки, которые ещё «держат» технику: новые и взятые в работу */
 export function listActiveRequests() {
-  return db.prepare("SELECT * FROM requests WHERE status IN ('new', 'taken') AND channel != 'test'").all();
+  return db.prepare("SELECT * FROM requests WHERE status IN ('new', 'taken') AND channel != 'test' AND archived_at IS NULL").all();
+}
+
+/** В архив (убрать из работы) или вернуть из архива */
+export function archiveRequest(id, archived, by) {
+  return Number(db.prepare('UPDATE requests SET archived_at = ?, archived_by = ? WHERE id = ?')
+    .run(archived ? nowIso() : null, archived ? String(by || '') : null, Number(id)).changes) === 1;
 }
 
 /** Отмечает событие обработанным. false — если оно уже было (повтор доставки). */
@@ -401,6 +409,7 @@ export function requestsForStats(sinceIso) {
   return db.prepare(`
     SELECT id, status, channel, created_at, taken_at FROM requests
     WHERE channel != 'test' AND (status = 'new' OR created_at >= ? OR taken_at >= ?)
+      AND NOT (status = 'new' AND archived_at IS NOT NULL)
   `).all(sinceIso, sinceIso);
 }
 

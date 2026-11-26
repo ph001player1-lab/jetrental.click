@@ -36,6 +36,8 @@ export const wabotConfigured = Boolean(config.internal.secret);
 const STALE_MS = 6 * 60 * 1000;
 const MANUAL_PAUSE_MS = (config.whatsapp.pauseHours || 12) * 3600000;
 const AFTER_REQUEST_PAUSE_MS = 24 * 3600000;
+// «Связаться с менеджером»: бот молчит 2 часа (менеджер написал сам — дальше 12 часов)
+const MANAGER_WAIT_MS = 2 * 3600000;
 const MODES = ['off', 'test', 'on'];
 
 const status = {
@@ -154,8 +156,10 @@ function acceptClient(body) {
   if (mode === 'off') return null;
   if (mode === 'test' && !(phone && testNumbers.includes(phone))) return null;
   if (db.isChatPaused(key)) {
-    // Клиент сам попросил меню — бот снова на связи
-    if (!isRestartText(body.text)) return null;
+    // Клиент сам попросил меню или пришёл по ссылке с сайта / от агента ([ref:…]) —
+    // это новое обращение, бот снова на связи
+    if (!isRestartText(body.text) && !/\[ref:/i.test(String(body.text || ''))) return null;
+    console.log(`WhatsApp bot: ${key} was quiet, woke up on a ${isRestartText(body.text) ? '«menu»' : 'link'} message`);
     db.pauseChat(key, new Date(0).toISOString());
   }
   return { key, phone, jid, name: body.name ? String(body.name).slice(0, 80) : '' };
@@ -176,7 +180,7 @@ function inChat(key, task) {
 }
 
 async function askManager(c, lang) {
-  db.pauseChat(c.key, later(MANUAL_PAUSE_MS));
+  db.pauseChat(c.key, later(MANAGER_WAIT_MS));
   if (status.groupId) {
     const who = [c.name, c.phone ? `+${c.phone}` : null].filter(Boolean).join(' · ') || c.jid;
     await wabotSend(status.groupId, g('wa.manager', { who })).catch((err) => console.error('WhatsApp group note failed:', err.message));

@@ -424,6 +424,7 @@
       ]);
       state.fleet = fleet;
       state.requests = requests.requests || [];
+      state.canManageRequests = Boolean(requests.canManage);
       if (dashboard) state.dashboard = dashboard;
       state.dashboardFailed = !dashboard;
       state.offline = false;
@@ -444,7 +445,7 @@
   }
 
   function newRequestsCount() {
-    return state.requests.filter((r) => r.status === 'new').length;
+    return state.requests.filter((r) => r.status === 'new' && !r.archived).length;
   }
 
   /** Имя и роль в строке состояния: «Николай · Админ» */
@@ -983,7 +984,7 @@
     const pickups = all
       .flatMap((c) => c.segments.filter((s) => s.kind === 'reserve' && Date.parse(s.from) > now && Date.parse(s.from) <= soon).map((s) => ({ car: c, seg: s })))
       .sort((a, b) => Date.parse(a.seg.from) - Date.parse(b.seg.from));
-    const fresh = state.requests.filter((r) => r.status === 'new');
+    const fresh = state.requests.filter((r) => r.status === 'new' && !r.archived);
 
     const carRow = (car, side) => `
       <div class="row">
@@ -1246,12 +1247,18 @@
   /* -------------------------------------------------------------- Requests */
 
   function renderRequests() {
-    const filters = ['all', 'new', 'taken'].map((id) =>
-      `<button type="button" class="chip" data-req="${id}" aria-pressed="${state.reqFilter === id}">${esc(t(`req.${id}`))}${id === 'new' && newRequestsCount() ? ` · ${newRequestsCount()}` : ''}</button>`).join('');
-    const list = state.requests.filter((r) => state.reqFilter === 'all' || r.status === state.reqFilter);
+    const archivedCount = state.requests.filter((r) => r.archived).length;
+    const filters = ['all', 'new', 'taken', ...(archivedCount ? ['archive'] : [])].map((id) =>
+      `<button type="button" class="chip" data-req="${id}" aria-pressed="${state.reqFilter === id}">${esc(t(`req.${id}`))}${id === 'new' && newRequestsCount() ? ` · ${newRequestsCount()}` : id === 'archive' ? ` · ${archivedCount}` : ''}</button>`).join('');
+    // Архив — отдельно; в остальных списках заявок из архива нет
+    const list = state.requests.filter((r) => (state.reqFilter === 'archive'
+      ? r.archived
+      : !r.archived && (state.reqFilter === 'all' || r.status === state.reqFilter)));
 
     return `
       <div class="chips" style="margin-bottom:12px">${filters}</div>
+      ${state.reqMsg ? `<p class="md-status is-error" role="status">${esc(state.reqMsg)}</p>` : ''}
+      ${state.reqFilter === 'archive' ? `<p class="muted" style="margin:0 0 10px">${esc(t('req.archiveHint'))}</p>` : ''}
       <div class="list">
         ${list.length ? list.map(renderRequest).join('') : `<div class="empty">${esc(t('req.none'))}</div>`}
       </div>`;
@@ -1266,6 +1273,7 @@
         <div class="req__head">
           <span class="req__id">#${r.id}</span>
           <span class="pill pill--${r.status === 'new' ? 'new' : 'taken'}">${esc(r.status === 'new' ? t('req.newPill') : t('req.takenBy', { name: r.takenBy || '' }))}</span>
+          ${r.archived ? `<span class="pill">${esc(t('req.archivedPill'))}</span>` : ''}
           <span class="muted" style="font-size:13px">${esc(CHANNELS[r.channel] || r.channel)}${r.lang ? ` · ${esc(LANGS[r.lang] || r.lang)}` : ''}</span>
           <span class="req__time">${esc(dateTime(r.createdAt))}</span>
         </div>
@@ -1275,10 +1283,13 @@
         ${r.freeUnits ? `<div class="req__line muted">${esc(t('req.freePlates', { list: r.freeUnits }))}</div>` : ''}
         ${r.comment ? `<div class="req__line">💬 ${esc(r.comment).replace(/\n/g, '<br>')}</div>` : ''}
         ${r.declinedBy.length ? `<div class="req__line muted">${esc(t('req.cant', { names: r.declinedBy.join(', ') }))}</div>` : ''}
-        ${phoneDigits ? `
+        ${phoneDigits || state.canManageRequests ? `
           <div class="req__actions">
-            <a class="btn btn--small" href="tel:+${phoneDigits}">${esc(t('req.call'))}</a>
-            <a class="btn btn--small" href="https://wa.me/${phoneDigits}" target="_blank" rel="noopener">💬 WhatsApp</a>
+            ${phoneDigits ? `<a class="btn btn--small" href="tel:+${phoneDigits}">${esc(t('req.call'))}</a>
+            <a class="btn btn--small" href="https://wa.me/${phoneDigits}" target="_blank" rel="noopener">💬 WhatsApp</a>` : ''}
+            ${state.canManageRequests ? `
+            <button type="button" class="btn btn--small" data-req-archive="${r.id}" data-on="${r.archived ? '0' : '1'}">${esc(r.archived ? t('req.restore') : t('req.toArchive'))}</button>
+            <button type="button" class="btn btn--small btn--danger-text" data-req-delete="${r.id}">${esc(t('req.delete'))}</button>` : ''}
           </div>` : ''}
       </article>`;
   }
@@ -1879,6 +1890,17 @@
       if (range) {
         state.calDays = Number(range.dataset.days);
         return render();
+      }
+      const reqArchive = event.target.closest('[data-req-archive]');
+      const reqDelete = event.target.closest('[data-req-delete]');
+      if (reqArchive || reqDelete) {
+        const id = Number((reqArchive || reqDelete).dataset.reqArchive || (reqArchive || reqDelete).dataset.reqDelete);
+        if (reqDelete && !window.confirm(t('req.deleteConfirm', { id }))) return undefined;
+        const body = reqDelete ? { id } : { id, archived: reqArchive.dataset.on === '1' };
+        api(reqDelete ? '/requests/delete' : '/requests/archive', { body })
+          .then(() => { state.reqMsg = null; return loadData(); })
+          .catch(() => { state.reqMsg = t('req.actionFailed'); render(); });
+        return undefined;
       }
       const req = event.target.closest('[data-req]');
       if (req) {

@@ -259,7 +259,8 @@ function requestProblems(tx, now) {
     if (r.status !== 'new') continue;
     const created = Date.parse(r.created_at);
     const what = `#${r.id}${r.model ? ` · ${r.model}` : ''}${r.client_name ? ` · ${r.client_name}` : ''}`;
-    if (!r.staff_message_id) {
+    // Дошла, если есть в Telegram-группе или в рабочей группе WhatsApp
+    if (!r.staff_message_id && !r.wa_group_message_id) {
       problems.push({
         group: 'requests', level: 'error', target: { tab: 'requests' },
         title: tx.t('notDelivered.title', { what }),

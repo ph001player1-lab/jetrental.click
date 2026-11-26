@@ -28,6 +28,8 @@
  */
 
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import { config } from './config.js';
 import * as db from './db.js';
 import { HttpError, sendJson, readJson, readBody, parseCookies, clientIp, rateLimiter } from './http.js';
@@ -307,9 +309,32 @@ async function requests(req, res) {
     status: r.status,
     takenBy: r.taken_by_name,
     takenAt: r.taken_at,
-    declinedBy: r.declined_by ? r.declined_by.split('\n') : []
+    declinedBy: r.declined_by ? r.declined_by.split('\n') : [],
+    archived: Boolean(r.archived_at)
   }));
-  sendJson(res, 200, { requests: rows });
+  // Убрать в архив или удалить тестовую — только админ
+  sendJson(res, 200, { requests: rows, canManage: can(staff, 'access.admin') });
+}
+
+/** Админ: заявку в архив (убрать из работы, в статистике остаётся) или обратно */
+async function requestArchive(staff, req, res) {
+  if (!can(staff, 'access.admin')) throw new HttpError(403, 'admin_only');
+  const { id, archived } = await readJson(req);
+  if (!db.archiveRequest(Number(id), archived !== false, staff.email)) throw new HttpError(404, 'not_found');
+  console.log(`Request #${Number(id)} ${archived !== false ? 'archived' : 'restored from the archive'} by ${staff.email}`);
+  sendJson(res, 200, { ok: true });
+}
+
+/** Админ: удалить заявку насовсем (тестовую) — копия остаётся в /data/deleted-requests.jsonl */
+async function requestDelete(staff, req, res) {
+  if (!can(staff, 'access.admin')) throw new HttpError(403, 'admin_only');
+  const { id } = await readJson(req);
+  const row = db.getRequest(Number(id));
+  if (!row) throw new HttpError(404, 'not_found');
+  fs.appendFileSync(path.join(config.dataDir, 'deleted-requests.jsonl'), `${JSON.stringify({ deletedAt: new Date().toISOString(), by: staff.email, request: row })}\n`);
+  db.deleteRequests([row.id]);
+  console.log(`Request #${row.id} deleted by ${staff.email}`);
+  sendJson(res, 200, { ok: true });
 }
 
 async function dashboard(req, res, url) {
@@ -511,6 +536,8 @@ const ROUTES = {
   'GET /api/staff/me': me,
   'GET /api/staff/fleet': fleet,
   'GET /api/staff/requests': requests,
+  'POST /api/staff/requests/archive': signedIn(requestArchive),
+  'POST /api/staff/requests/delete': signedIn(requestDelete),
   'GET /api/staff/dashboard': dashboard,
   'GET /api/staff/models': signedIn(listModels),
   'POST /api/staff/models/description': signedIn(saveDescription),
