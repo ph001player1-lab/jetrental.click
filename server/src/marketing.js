@@ -103,14 +103,15 @@ const q = {
   pageViews: db.raw.prepare("SELECT day, host, SUM(requests - bot_requests) n FROM web_traffic WHERE category = 'pages' AND day >= ? AND day <= ? GROUP BY day, host"),
   visitsByDay: db.raw.prepare('SELECT day, code, n FROM marketing_visits WHERE day >= ? AND day <= ?'),
   requestsFull: db.raw.prepare(`SELECT id, created_at, taken_at, channel, status, client_name, model, source_ref, site_host, heard_from
-    FROM requests WHERE created_at >= ? AND created_at <= ? ORDER BY id DESC`),
+    FROM requests WHERE created_at >= ? AND created_at <= ? AND (kind IS NULL OR kind != 'question') ORDER BY id DESC`),
   manual: db.raw.prepare('SELECT * FROM marketing_manual WHERE month = ?'),
   setManual: db.raw.prepare(`INSERT INTO marketing_manual (source_id, month, leads, paid, revenue) VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(source_id, month) DO UPDATE SET leads = excluded.leads, paid = excluded.paid, revenue = excluded.revenue`),
   setChatRef: db.raw.prepare(`INSERT INTO chat_refs (chat_key, code, at) VALUES (?, ?, ?)
     ON CONFLICT(chat_key) DO UPDATE SET code = excluded.code, at = excluded.at`),
   chatRef: db.raw.prepare('SELECT code, at FROM chat_refs WHERE chat_key = ?'),
-  requests: db.raw.prepare('SELECT id, created_at, channel, status, source_ref, site_host, heard_from FROM requests WHERE created_at >= ? ORDER BY id')
+  // Вопросы («Связаться с менеджером») — не заявки: в статистику не идут
+  requests: db.raw.prepare("SELECT id, created_at, channel, status, source_ref, site_host, heard_from FROM requests WHERE created_at >= ? AND (kind IS NULL OR kind != 'question') ORDER BY id")
 };
 
 // Стартовый список (по словам владельца); агентов-частников админ добавляет сам

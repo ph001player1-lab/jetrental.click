@@ -310,7 +310,9 @@ async function requests(req, res) {
     takenBy: r.taken_by_name,
     takenAt: r.taken_at,
     declinedBy: r.declined_by ? r.declined_by.split('\n') : [],
-    archived: Boolean(r.archived_at)
+    archived: Boolean(r.archived_at),
+    // 'question' — клиент просил связаться с менеджером (не заявка на аренду)
+    kind: r.kind || null
   }));
   // Убрать в архив или удалить тестовую — только админ
   sendJson(res, 200, { requests: rows, canManage: can(staff, 'access.admin') });

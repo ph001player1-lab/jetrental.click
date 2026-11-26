@@ -466,7 +466,8 @@ async function buildIndex(now = Date.now()) {
     const names = new Map(db.raw.prepare('SELECT code, name FROM marketing_sources').all().map((x) => [x.code, x.name]));
     sourceName = (code) => names.get(code) || null;
   } catch { /* «Маркетинг» ещё не создан */ }
-  for (const r of db.raw.prepare('SELECT id, created_at, channel, client_name, client_phone, client_chat_id, model, date_from, date_to, status, source_ref, site_host, heard_from FROM requests ORDER BY id').all()) {
+  // Вопросы («Связаться с менеджером») — не заявки: аренды им не приписываем
+  for (const r of db.raw.prepare("SELECT id, created_at, channel, client_name, client_phone, client_chat_id, model, date_from, date_to, status, source_ref, site_host, heard_from FROM requests WHERE kind IS NULL OR kind != 'question' ORDER BY id").all()) {
     const cid = maps.match({ phones: splitPhones(r.client_phone), chat: r.client_chat_id ? `${r.channel}:${r.client_chat_id}` : null });
     const client = cid ? clients.get(maps.finalId(cid)) : null;
     const from = (r.source_ref && sourceName(r.source_ref)) || r.heard_from || (r.site_host ? `сайт ${r.site_host}` : null);

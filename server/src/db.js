@@ -189,7 +189,9 @@ for (const [name, type] of [
   // В архиве: убрана из работы админом (в статистике остаётся); кто и когда
   ['archived_at', 'TEXT'], ['archived_by', 'TEXT'],
   // Не дошла до группы: текст ошибки по каналу (для «Обзора»)
-  ['wa_post_error', 'TEXT'], ['tg_post_error', 'TEXT']
+  ['wa_post_error', 'TEXT'], ['tg_post_error', 'TEXT'],
+  // Вид: null — заявка на аренду; 'question' — клиент просил связаться с менеджером
+  ['kind', 'TEXT']
 ]) {
   if (!requestColumns.includes(name)) db.exec(`ALTER TABLE requests ADD COLUMN ${name} ${type}`);
 }
@@ -244,8 +246,8 @@ export function createRequest(data) {
   const result = db.prepare(`
     INSERT INTO requests
       (created_at, channel, client_chat_id, client_name, client_phone, vehicle_type, date_from, date_to, comment,
-       model, estimate_thb, free_units, lang, source_ref, site_host, heard_from)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       model, estimate_thb, free_units, lang, source_ref, site_host, heard_from, kind)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     nowIso(),
     data.channel,
@@ -262,7 +264,8 @@ export function createRequest(data) {
     data.lang || null,
     data.sourceRef || null,
     data.siteHost || null,
-    data.heardFrom || null
+    data.heardFrom || null,
+    data.kind || null
   );
   return getRequest(Number(result.lastInsertRowid));
 }
@@ -423,7 +426,7 @@ export function listRecentRequests(limit = 100) {
 /** Заявки для дашборда (без тестовых): все новые и всё, что создано или взято с sinceIso */
 export function requestsForStats(sinceIso) {
   return db.prepare(`
-    SELECT id, status, channel, created_at, taken_at FROM requests
+    SELECT id, status, channel, kind, created_at, taken_at FROM requests
     WHERE channel != 'test' AND (status = 'new' OR created_at >= ? OR taken_at >= ?)
       AND NOT (status = 'new' AND archived_at IS NOT NULL)
   `).all(sinceIso, sinceIso);

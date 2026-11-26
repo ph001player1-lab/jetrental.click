@@ -22,7 +22,7 @@ import { sendText as waSendText } from './whatsapp/api.js';
 import { tg, sendMessage, inlineKeyboard, answerCallback, displayName, parseCommand } from './telegram/api.js';
 import { sendMorningSummary } from './morning.js';
 import { g } from './groupTexts.js';
-import { postRequestToWaGroup, noteTakenInWaGroup, wabotSend, wabotSettings, waGroupChosen } from './wabot.js';
+import { postRequestToWaGroup, noteTakenInWaGroup, wabotSend, wabotSettings, waGroupChosen, markStatusKnown } from './wabot.js';
 import { staffNameByTelegram } from './staffUsers.js';
 
 export function getStaffChatId() {
@@ -122,9 +122,12 @@ async function notifyClientTaken(request) {
     await sendMessage(request.client_chat_id, t(request.lang, 'manager_taken', { id: request.id, name }));
   } else if (request.channel === 'whatsapp') {
     const name = `*${request.taken_by_name}*`;
-    const text = t(request.lang, 'manager_taken', { id: request.id, name });
+    const text = t(request.lang, request.kind === 'question' ? 'manager_taken_question' : 'manager_taken', { id: request.id, name });
     // Клиент писал на номер компании (WhatsApp-бот) — у него в чате адрес вида …@s.whatsapp.net
-    if (String(request.client_chat_id).includes('@')) await wabotSend(request.client_chat_id, text);
+    if (String(request.client_chat_id).includes('@')) {
+      await wabotSend(request.client_chat_id, text);
+      markStatusKnown(request);
+    }
     else await waSendText(request.client_chat_id, text);
   }
 }

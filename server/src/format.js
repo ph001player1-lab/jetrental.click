@@ -52,7 +52,7 @@ export function formatStaffRequest(request) {
   const lines = [];
   const isTest = request.channel === 'test';
 
-  lines.push(`${g('card.title', { id: request.id })}${isTest ? g('card.test') : ''}`);
+  lines.push(`${g(request.kind === 'question' ? 'card.question' : 'card.title', { id: request.id })}${isTest ? g('card.test') : ''}`);
   if (request.model) lines.push(`${vehicleTypeLabel(request.vehicle_type)} · <b>${escapeHtml(request.model)}</b>`);
   else if (request.vehicle_type) lines.push(vehicleTypeLabel(request.vehicle_type));
 

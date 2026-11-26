@@ -259,7 +259,7 @@ function requestProblems(tx, now) {
   for (const r of db.listActiveRequests()) {
     if (r.status !== 'new') continue;
     const created = Date.parse(r.created_at);
-    const what = `#${r.id}${r.model ? ` · ${r.model}` : ''}${r.client_name ? ` · ${r.client_name}` : ''}`;
+    const what = `${r.kind === 'question' ? '💬 ' : ''}#${r.id}${r.model ? ` · ${r.model}` : ''}${r.client_name ? ` · ${r.client_name}` : ''}`;
     // Каналы отдельно: WhatsApp-группа и Telegram-группа
     if (!r.staff_message_id && !r.wa_group_message_id) {
       const why = r.wa_post_error || r.tg_post_error
@@ -464,7 +464,9 @@ export function requestStats(now = Date.now()) {
   const today = new Date(bangkokDayStart(now)).toISOString();
   const since30 = new Date(now - 30 * DAY_MS).toISOString();
   const rows = db.requestsForStats(since30 < today ? since30 : today);
-  const createdToday = rows.filter((r) => r.created_at >= today);
+  // Вопросы («Связаться с менеджером») ждут ответа, но в счёт заявок по каналам не идут
+  const leads = rows.filter((r) => r.kind !== 'question');
+  const createdToday = leads.filter((r) => r.created_at >= today);
   return {
     waiting: rows.filter((r) => r.status === 'new').length,
     takenToday: rows.filter((r) => r.taken_at && r.taken_at >= today).length,
@@ -474,7 +476,7 @@ export function requestStats(now = Date.now()) {
       connected: s.connected(),
       error: Boolean(s.error?.()),
       today: createdToday.filter((r) => r.channel === s.id).length,
-      days30: rows.filter((r) => r.channel === s.id && r.created_at >= since30).length
+      days30: leads.filter((r) => r.channel === s.id && r.created_at >= since30).length
     }))
   };
 }

@@ -18,7 +18,7 @@
  *
  * Связь с ботом — только внутри Docker-сети, с общим секретом INTERNAL_SECRET:
  *   wabot → бот:  http://bot:3001/internal/wabot/{message,status}
- *   бот → wabot:  http://wabot:3200/{status,send,react,config,pair,logout}
+ *   бот → wabot:  http://wabot:3200/{status,send,forward,react,config,pair,logout}
  * ============================================================================
  */
 
@@ -227,6 +227,13 @@ function rememberSent(id) {
   sentIds.add(id);
   if (sentIds.size > 2000) sentIds.delete(sentIds.values().next().value);
 }
+// Последние сообщения клиентов — чтобы переслать их вложения в рабочую группу
+const recentMsgs = new Map();
+function keepMessage(msg) {
+  recentMsgs.set(msg.key.id, msg);
+  if (recentMsgs.size > 300) recentMsgs.delete(recentMsgs.keys().next().value);
+}
+
 // WhatsApp иногда доставляет одно сообщение дважды — второй раз не передаём
 const seenIds = new Set();
 function firstTime(id) {
@@ -310,6 +317,7 @@ async function handleMessage(msg, type) {
   }
 
   const phone = await phoneOf(jid, msg.key.remoteJidAlt);
+  keepMessage(msg);
   state.lastInboundAt = new Date().toISOString();
   countToday('received');
   const message = {
@@ -367,6 +375,19 @@ async function sendText(to, text, quoted = null) {
   }
   // Не держим номер «в сети», иначе телефон перестанет получать уведомления
   try { await sock.sendPresenceUpdate('unavailable'); } catch { /* не важно */ }
+  countToday('sent');
+  return messageId;
+}
+
+/** Переслать сообщение клиента (фото, видео, голосовое, файл…) — в рабочую группу */
+async function forward(id, to) {
+  if (state.status !== 'connected' || !sock) throw Object.assign(new Error('not connected'), { code: 'not_connected' });
+  const msg = recentMsgs.get(id);
+  if (!msg) throw Object.assign(new Error('message not found'), { code: 'not_found' });
+  await rateLimit();
+  const messageId = generateMessageIDV2(sock.user?.id);
+  rememberSent(messageId);
+  await sock.sendMessage(toJid(to), { forward: msg }, { messageId });
   countToday('sent');
   return messageId;
 }
@@ -546,6 +567,11 @@ http.createServer(async (req, res) => {
       if (!to) return send(res, 400, { error: 'no_recipient' });
       return send(res, 200, { id: await sendText(to, text, quoted) });
     }
+    if (req.method === 'POST' && url.pathname === '/forward') {
+      const { id, to } = await readJson(req);
+      if (!id || !to) return send(res, 400, { error: 'bad_forward' });
+      return send(res, 200, { id: await forward(String(id), String(to)) });
+    }
     if (req.method === 'POST' && url.pathname === '/react') {
       const { jid, id, participant, emoji } = await readJson(req);
       if (!jid || !id) return send(res, 400, { error: 'bad_reaction' });
@@ -583,6 +609,7 @@ http.createServer(async (req, res) => {
     return send(res, 404, { error: 'not_found' });
   } catch (err) {
     if (err.code === 'not_connected' || err.code === 'empty') return send(res, 409, { error: err.code });
+    if (err.code === 'not_found') return send(res, 404, { error: 'not_found' });
     log(`${url.pathname} failed:`, err.message);
     return send(res, 500, { error: 'internal_error' });
   }

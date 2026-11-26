@@ -218,6 +218,18 @@ const TEXTS = {
   },
   // «Назад» на любом шаге диалога
   back: { en: '◀️ Back', ru: '◀️ Назад', th: '◀️ ย้อนกลับ', zh: '◀️ 返回' },
+  manager_taken_question: {
+    en: '👋 Manager {name} is handling your question. They will contact you soon!',
+    ru: '👋 Вашим вопросом занимается менеджер {name}. Скоро свяжется с вами!',
+    th: '👋 เจ้าหน้าที่ {name} กำลังดูแลคำถามของคุณ จะติดต่อกลับเร็วๆ นี้ค่ะ',
+    zh: '👋 客服 {name} 正在处理您的问题，很快会联系您！'
+  },
+  status_question_taken: {
+    en: '📋 Your question is handled by manager {name} — they will contact you on WhatsApp.',
+    ru: '📋 Вашим вопросом занимается менеджер {name} — он свяжется с вами в WhatsApp.',
+    th: '📋 คำถามของคุณดูแลโดยเจ้าหน้าที่ {name} — จะติดต่อคุณทาง WhatsApp ค่ะ',
+    zh: '📋 您的问题由客服 {name} 负责，会通过 WhatsApp 联系您。'
+  },
   manager_taken: {
     en: '👋 Manager {name} is handling your request #{id}. We\'ll contact you soon!',
     ru: '👋 Вашей заявкой #{id} занимается менеджер {name}. Скоро свяжемся с вами!',

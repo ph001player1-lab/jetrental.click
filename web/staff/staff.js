@@ -1266,13 +1266,14 @@
 
   function renderRequest(r) {
     const phoneDigits = String(r.clientPhone || '').replace(/\D/g, '');
-    const what = [TYPE_ONE[r.vehicleType], r.model].filter(Boolean).join(' · ');
+    const what = r.kind === 'question' ? `💬 ${t('req.questionLine')}` : [TYPE_ONE[r.vehicleType], r.model].filter(Boolean).join(' · ');
     const days = r.dateFrom && r.dateTo ? daysBetween(r.dateFrom, r.dateTo) : null;
     return `
       <article class="card req">
         <div class="req__head">
           <span class="req__id">#${r.id}</span>
           <span class="pill pill--${r.status === 'new' ? 'new' : 'taken'}">${esc(r.status === 'new' ? t('req.newPill') : t('req.takenBy', { name: r.takenBy || '' }))}</span>
+          ${r.kind === 'question' ? `<span class="pill">${esc(t('ov.question'))}</span>` : ''}
           ${r.archived ? `<span class="pill">${esc(t('req.archivedPill'))}</span>` : ''}
           <span class="muted" style="font-size:13px">${esc(CHANNELS[r.channel] || r.channel)}${r.lang ? ` · ${esc(LANGS[r.lang] || r.lang)}` : ''}</span>
           <span class="req__time">${esc(dateTime(r.createdAt))}</span>
