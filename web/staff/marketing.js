@@ -1,5 +1,5 @@
 /*
- * Вкладка «Маркетинг» — «Пхукет-тайкун»: источники клиентов на карте острова,
+ * Вкладка «Маркетинг» — игра-стратегия на карте Пхукета: источники клиентов на карте острова,
  * заявки едут (агенты), плывут (соцсети) и летят (реклама) в офис, над каждым
  * источником — табличка как у юнита в стратегии: уровень, «здоровье» (ответили
  * на заявки), «сила» (выручка) и цифры за сегодня и месяц. Только на русском.
@@ -32,17 +32,18 @@
     [423, 136], [416, 78]];
   const ISLETS = [[[622, 478], 11, 8], [[528, 612], 9, 6], [[545, 680], 8, 5], [[860, 190], 46, 70], [[835, 360], 34, 60], [[700, 560], 10, 7], [[300, 690], 16, 9]];
   const NODES = {
-    north: [452, 48], air: [448, 153], thalang: [534, 266], cherng: [484, 309], bangtao: [444, 317], kamala: [428, 382], kathu: [491, 440],
+    north: [452, 48], mai: [490, 98], air: [504, 160], thalang: [534, 266], cherng: [484, 309], bangtao: [444, 317], kamala: [428, 382], kathu: [491, 440],
     patong: [448, 462], town: [571, 476], karon: [446, 534], chalong: [498, 534], kata: [450, 570], naiharn: [455, 628], rawai: [484, 630],
-    panwa: [580, 590], hq: [515, 560],
-    pPatong: [434, 460], pKata: [436, 572], pRawai: [492, 641], pTown: [588, 488], pChalong: [534, 575]
+    panwa: [580, 590], hq: [572, 375],
+    pPatong: [434, 460], pKata: [436, 572], pRawai: [492, 641], pTown: [588, 488], pChalong: [534, 575], pBay: [630, 362]
   };
-  const EDGES = [['north', 'air'], ['air', 'cherng'], ['cherng', 'thalang'], ['cherng', 'bangtao'], ['cherng', 'kathu'], ['thalang', 'town'],
-    ['kathu', 'town'], ['kathu', 'patong'], ['bangtao', 'kamala'], ['kamala', 'patong'], ['patong', 'karon'], ['karon', 'kata'], ['kata', 'naiharn'],
-    ['naiharn', 'rawai'], ['rawai', 'chalong'], ['kata', 'chalong'], ['karon', 'chalong'], ['kathu', 'chalong'], ['chalong', 'hq'], ['town', 'chalong'],
-    ['town', 'panwa'], ['panwa', 'hq'], ['hq', 'pChalong'], ['patong', 'pPatong'], ['kata', 'pKata'], ['rawai', 'pRawai'], ['town', 'pTown']];
-  const ROAD_NODES = Object.keys(NODES).filter((n) => !n.startsWith('p') && n !== 'north');
-  const PIERS = { west: ['pPatong', 'pKata', 'pRawai'], east: ['pTown', 'pChalong'] };
+  // Офис — на востоке острова, на шоссе между Талангом и Пхукет-Тауном, у него свой причал
+  const EDGES = [['north', 'mai'], ['mai', 'air'], ['air', 'cherng'], ['cherng', 'thalang'], ['cherng', 'bangtao'], ['cherng', 'kathu'], ['thalang', 'hq'],
+    ['hq', 'town'], ['kathu', 'town'], ['kathu', 'patong'], ['bangtao', 'kamala'], ['kamala', 'patong'], ['patong', 'karon'], ['karon', 'kata'], ['kata', 'naiharn'],
+    ['naiharn', 'rawai'], ['rawai', 'chalong'], ['kata', 'chalong'], ['karon', 'chalong'], ['kathu', 'chalong'], ['town', 'chalong'],
+    ['town', 'panwa'], ['chalong', 'pChalong'], ['hq', 'pBay'], ['patong', 'pPatong'], ['kata', 'pKata'], ['rawai', 'pRawai'], ['town', 'pTown']];
+  const ROAD_NODES = Object.keys(NODES).filter((n) => !/^p[A-Z]/.test(n) && n !== 'north');
+  const PIERS = { west: ['pPatong', 'pKata', 'pRawai'], east: ['pBay', 'pTown', 'pChalong'] };
   const HEIGHT = { site: 56, social: 36, ads: 46, maps: 52, messenger: 26, agent: 24, partner: 34, agency: 44, word: 22, other: 26 };
 
   const fmt = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 });
@@ -160,7 +161,7 @@
         } else {
           const pier = nearest(p, p[0] < 520 ? PIERS.west : PIERS.east);
           parts.push({ mode: 'sea', pts: [p, NODES[pier]] });
-          const road = { pPatong: 'patong', pKata: 'kata', pRawai: 'rawai', pTown: 'town', pChalong: 'hq' }[pier];
+          const road = { pPatong: 'patong', pKata: 'kata', pRawai: 'rawai', pTown: 'town', pChalong: 'chalong', pBay: 'hq' }[pier];
           parts.push({ mode: 'land', pts: [NODES[pier], ...(road === 'hq' ? [NODES.hq] : roadPath(road))] });
         }
         const segs = [];
@@ -288,14 +289,17 @@
       c.fillStyle = '#a47f50';
       for (const n of [...PIERS.west, ...PIERS.east]) { const [x, y] = NODES[n]; c.fillRect(x - 9, y - 2.5, 18, 5); }
       c.strokeStyle = '#d8cdb8'; c.lineWidth = 4; line(c, [[452, 48], [470, 6]]);
-      c.save(); c.translate(437, 160); c.rotate(-1.25);
-      c.fillStyle = '#4b5560'; c.fillRect(-34, -6, 68, 12);
-      c.setLineDash([6, 6]); c.strokeStyle = '#fff'; c.lineWidth = 1.2; line(c, [[-30, 0], [30, 0]]); c.setLineDash([]);
+      // Взлётная полоса аэропорта — с запада на восток, западный конец у пляжа
+      c.save(); c.translate(462, 150);
+      c.fillStyle = '#4b5560'; c.fillRect(-30, -6, 60, 12);
+      c.fillStyle = '#fff'; for (const ex of [-27, 25]) for (let i = 0; i < 3; i++) c.fillRect(ex, -4.5 + i * 3.5, 2, 2);
+      c.setLineDash([6, 6]); c.strokeStyle = '#fff'; c.lineWidth = 1.2; line(c, [[-20, 0], [20, 0]]); c.setLineDash([]);
       c.restore();
+      c.fillStyle = '#e9e3d6'; c.fillRect(494, 162, 16, 8);
       // Подписи районов и морей
       c.font = '500 10.5px system-ui, sans-serif'; c.textBaseline = 'middle';
       c.fillStyle = 'rgba(25, 55, 20, .7)';
-      for (const [t, x, y] of [['Аэропорт', 462, 170], ['Таланг', 548, 280], ['Банг Тао', 452, 300], ['Патонг', 456, 476], ['Карон', 456, 522], ['Ката', 456, 584],
+      for (const [t, x, y] of [['Аэропорт', 434, 166], ['Таланг', 548, 280], ['Банг Тао', 452, 300], ['Патонг', 456, 476], ['Карон', 456, 522], ['Ката', 456, 584],
         ['Пхукет-Таун', 528, 490], ['Чалонг', 470, 548], ['Раваи', 480, 616], ['Панва', 572, 604]]) { c.textAlign = 'left'; c.fillText(t, x, y); }
       c.font = 'italic 500 13px system-ui, sans-serif'; c.fillStyle = 'rgba(255, 255, 255, .38)'; c.textAlign = 'center';
       c.fillText('Андаманское море', 190, 700); c.fillText('Залив Пханг-Нга', 860, 300);
@@ -344,8 +348,8 @@
     function drawUnit(c, s, x, y, hot) {
       c.save();
       if (hot) {
-        c.strokeStyle = '#ffd54a'; c.lineWidth = 2.5; c.globalAlpha = 0.6 + Math.sin(clock * 5) * 0.3;
-        c.beginPath(); c.ellipse(x + 4, y + 2, 26, 11, 0, 0, Math.PI * 2); c.stroke(); c.globalAlpha = 1;
+        c.strokeStyle = 'rgba(255, 213, 74, .85)'; c.lineWidth = 2;
+        c.beginPath(); c.ellipse(x + 4, y + 2, 26, 11, 0, 0, Math.PI * 2); c.stroke();
       }
       const color = s.color || COLORS[s.id % COLORS.length];
       switch (s.kind) {
@@ -449,10 +453,6 @@
         c.fillStyle = '#46525a'; c.fillRect(x + gx - 8, y - 14, 16, 20);
         c.fillStyle = 'rgba(255, 255, 255, .12)'; for (let i = 0; i < 4; i++) c.fillRect(x + gx - 8, y - 12 + i * 5, 16, 1);
         lights.push(['rect', x + gx - 8, y - 14, 16, 3, '#ffd76a']);
-      }
-      if (st.selected === 'hq') {
-        c.strokeStyle = '#ffd54a'; c.lineWidth = 2.5; c.globalAlpha = 0.6 + Math.sin(clock * 5) * 0.3;
-        c.beginPath(); c.ellipse(x + 8, y + 8, 46, 16, 0, 0, Math.PI * 2); c.stroke(); c.globalAlpha = 1;
       }
     }
 
@@ -591,6 +591,64 @@
       lights.push(['glow', p.x + Math.cos(p.ang) * 9, p.y + Math.sin(p.ang) * 9, 7, '#fff3c0']);
     }
 
+    /* ------------------------------------------- Живое море (видно и днём) */
+
+    // Бегущие барашки волн: только в море, медленно дрейфуют на восток и мерцают
+    const WAVES = (() => {
+      const r = rng(29);
+      const out = [];
+      while (out.length < 80) {
+        const p = [r() * W, 80 + r() * (H - 80)];
+        if (!isLand(p)) out.push({ x: p[0], y: p[1], ph: r() * Math.PI * 2, sp: 3 + r() * 5, sz: 5 + r() * 4 });
+      }
+      return out;
+    })();
+    // Прибой — линия чуть мористее песка
+    const SURF = ISLAND.map(([x, y]) => { const d = Math.hypot(x - 520, y - 340) || 1; return [x + ((x - 520) / d) * 9, y + ((y - 340) / d) * 9]; });
+    // Парусники ходят по кругу в Андаманском море и в заливе
+    const YACHTS = [[300, 560, 62, 22, 0.05, '#ffffff'], [330, 190, 46, 22, -0.06, '#ffe2a8'], [730, 520, 56, 30, 0.045, '#ffffff'], [740, 240, 40, 46, -0.04, '#c9f1ff']];
+    function drawSea(c, day) {
+      c.save();
+      c.lineCap = 'round';
+      for (const w of WAVES) {
+        const x = ((w.x + clock * w.sp) % (W + 40)) - 20;
+        const y = w.y + Math.sin(clock * 0.8 + w.ph) * 2;
+        if (isLand([x, y]) || isLand([x + 8, y])) continue;
+        c.globalAlpha = 0.12 + 0.22 * (0.5 + 0.5 * Math.sin(clock * 1.4 + w.ph));
+        c.strokeStyle = '#ffffff'; c.lineWidth = 1.4;
+        c.beginPath(); c.arc(x, y, w.sz, Math.PI * 1.15, Math.PI * 1.85); c.stroke();
+      }
+      c.globalAlpha = 0.3 + 0.2 * Math.sin(clock * 1.2);
+      c.strokeStyle = '#ffffff'; c.lineWidth = 2; c.setLineDash([12, 16]); c.lineDashOffset = -clock * 7;
+      closed(c, SURF); c.stroke(); c.setLineDash([]);
+      c.globalAlpha = 1;
+      for (const [cx, cy, rx, ry, sp, sail] of YACHTS) {
+        const a = clock * sp * 6;
+        const x = cx + Math.cos(a) * rx; const y = cy + Math.sin(a) * ry;
+        const dir = Math.atan2(Math.cos(a) * ry * Math.sign(sp), -Math.sin(a) * rx * Math.sign(sp));
+        c.save(); c.translate(x, y);
+        c.strokeStyle = 'rgba(255, 255, 255, .45)'; c.lineWidth = 1;
+        line(c, [[-Math.cos(dir) * 8, -Math.sin(dir) * 8], [-Math.cos(dir) * 20, -Math.sin(dir) * 20]]);
+        c.rotate(dir);
+        c.fillStyle = '#7a5a3a'; c.beginPath(); c.moveTo(-7, -2.5); c.lineTo(5, -2.5); c.lineTo(8, 0); c.lineTo(5, 2.5); c.lineTo(-7, 2.5); c.closePath(); c.fill();
+        c.rotate(-dir);
+        const lean = Math.sin(clock * 1.1 + cx) * 1.5;
+        c.fillStyle = sail; c.beginPath(); c.moveTo(0, -1); c.lineTo(lean, -15); c.lineTo(Math.cos(dir) >= 0 ? 7 : -7, -2); c.closePath(); c.fill();
+        c.restore();
+        lights.push(['glow', x, y - 4, 6, '#fff3c0']);
+      }
+      // Днём по острову и морю плывут тени облаков
+      if (day) {
+        for (const [x0, y0, rx, ry, sp] of [[120, 230, 90, 40, 7], [620, 470, 70, 32, 5], [380, 610, 60, 26, 9]]) {
+          const x = ((x0 + clock * sp) % (W + 260)) - 130;
+          const gr = c.createRadialGradient(x, y0, 4, x, y0, rx);
+          gr.addColorStop(0, 'rgba(10, 30, 40, .16)'); gr.addColorStop(1, 'rgba(10, 30, 40, 0)');
+          c.fillStyle = gr; c.beginPath(); c.ellipse(x, y0, rx, ry, 0, 0, Math.PI * 2); c.fill();
+        }
+      }
+      c.restore();
+    }
+
     /* ------------------------------------------------------------- Кадр */
 
     let plateBoxes = [];
@@ -602,6 +660,8 @@
       g.drawImage(bg, 0, 0);
       view(g);
       lights = [];
+      const sky = skyState();
+      drawSea(g, sky.dark < 0.3);
       const list = sources().filter((s) => s.active && posOf(s));
       // Подсветка маршрута выбранного
       const sel = byId(st.selected);
@@ -618,7 +678,6 @@
         else { const [x, y] = posOf(o.s); drawUnit(g, o.s, x, y, String(o.s.id) === String(st.selected)); }
       }
       // Время суток: затемнение и огни
-      const sky = skyState();
       if (sky.dark > 0) {
         g.save(); g.setTransform(1, 0, 0, 1, 0, 0);
         g.globalAlpha = sky.dark; g.fillStyle = sky.tint; g.fillRect(0, 0, canvas.width, canvas.height);
@@ -724,6 +783,26 @@
         const x1 = Math.min(W, Math.max(narrow ? 660 : 740, ...xs.map((x) => x + pad)));
         VB = { x: x0, y: 0, w: x1 - x0, h: 690 };
       }
+      // Вся карта — на первом экране: если по ширине она выше окна, показываем больше моря по бокам,
+      // а если и вся карта целиком не влезает — делаем холст уже
+      const cw = canvas.parentElement.clientWidth;
+      const legend = canvas.parentElement.querySelector('.mk-legend')?.offsetHeight || 0;
+      const head = document.querySelector('.topbar')?.offsetHeight || 0;
+      const top = narrow ? head + 8 : canvas.parentElement.getBoundingClientRect().top + window.scrollY;
+      const avail = Math.max(narrow ? 300 : 360, window.innerHeight - top - legend - 14);
+      let width = cw;
+      if (cw * (VB.h / VB.w) > avail) {
+        const w = (VB.h * cw) / avail;
+        if (w <= W) {
+          const mid = VB.x + VB.w / 2;
+          VB.x = Math.max(0, Math.min(W - w, mid - w / 2));
+          VB.w = w;
+        } else {
+          VB = { x: 0, y: 0, w: W, h: st.placing ? H : 690 };
+          width = Math.round((avail * W) / VB.h);
+        }
+      }
+      canvas.style.width = width < cw ? `${width}px` : '';
       canvas.style.aspectRatio = `${VB.w} / ${VB.h}`;
       const rect = canvas.getBoundingClientRect();
       dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -746,6 +825,12 @@
         canvas.addEventListener('click', onMapClick);
         canvas.addEventListener('mousemove', onMapMove);
         canvas.addEventListener('mouseleave', () => { st.hover = null; });
+      }
+      const dlg = document.getElementById('mk-detail');
+      if (dlg && !dlg.dataset.bound) {
+        dlg.dataset.bound = '1';
+        dlg.addEventListener('close', () => { if (st.detail) { st.detail = null; dlg.innerHTML = ''; } });
+        if (st.detail && !dlg.open) dlg.showModal?.();
       }
       resize();
       if (!running && !reduce) { running = true; last = 0; requestAnimationFrame(frame); }
@@ -803,22 +888,179 @@
 
     /* ============================================================ Интерфейс */
 
-    function totals() { return st.data?.totals || { visits: 0, leads: 0, answered: 0, booked: 0, paid: 0, revenue: 0, cost: 0 }; }
+    function totals() { return st.data?.totals || { visits: 0, refVisits: 0, views: 0, visitors: 0, leads: 0, answered: 0, booked: 0, paid: 0, revenue: 0, cost: 0 }; }
     function hud() {
       const t = totals();
       const roi = t.cost ? t.revenue / t.cost : null;
       const un = st.data?.unattributed?.leads || 0;
       const tiles = [
-        ['Переходы', num(t.visits), 'по ссылкам и на сайтах', ''],
-        ['Заявки', num(t.leads), un ? `ещё ${num(un)} без метки` : 'все с меткой источника', ''],
-        ['Ответили', pct(t.answered, t.leads), `ждут: ${num(t.leads - t.answered)}`, ''],
-        ['Продажи', num(t.paid), `${pct(t.paid, t.leads)} заявок`, 'good'],
-        ['Выручка', short(t.revenue) + ' ฿', 'аренды этих клиентов', 'coin'],
-        ['Расходы', short(t.cost) + ' ฿', 'бюджеты и комиссии', ''],
-        ['Окупаемость', roiText(roi), 'выручка на 1 ฿ расходов', 'good'],
-        ['Цена продажи', t.paid && t.cost ? baht(t.cost / t.paid) : '—', 'расходы на одну оплату', '']
+        ['visits', 'Переходы', num(t.visits), `сайты ${short(t.views || 0)} · ссылки ${num(t.refVisits || 0)}`, ''],
+        ['leads', 'Заявки', num(t.leads), un ? `ещё ${num(un)} без метки` : 'все с меткой источника', ''],
+        ['answered', 'Ответили', pct(t.answered, t.leads), `ждут: ${num(t.leads - t.answered)}`, ''],
+        ['paid', 'Продажи', num(t.paid), `${pct(t.paid, t.leads)} заявок`, 'good'],
+        ['revenue', 'Выручка', short(t.revenue) + ' ฿', 'аренды этих клиентов', 'coin'],
+        ['cost', 'Расходы', short(t.cost) + ' ฿', 'бюджеты и комиссии', ''],
+        ['roi', 'Окупаемость', roiText(roi), 'выручка на 1 ฿ расходов', 'good'],
+        ['cps', 'Цена продажи', t.paid && t.cost ? baht(t.cost / t.paid) : '—', 'расходы на одну оплату', '']
       ];
-      return tiles.map(([l, v, h, tone]) => `<div class="mk-kpi${tone ? ` mk-kpi--${tone}` : ''}"><span class="mk-kpi__l">${l}</span><span class="mk-kpi__v">${esc(v)}</span><span class="mk-kpi__h">${esc(h)}</span></div>`).join('');
+      return tiles.map(([id, l, v, h, tone]) => `<button type="button" class="mk-kpi${tone ? ` mk-kpi--${tone}` : ''}" data-mk-metric="${id}" title="Подробнее: ${l.toLowerCase()}"><span class="mk-kpi__l">${l}<span class="mk-kpi__more" aria-hidden="true">›</span></span><span class="mk-kpi__v">${esc(v)}</span><span class="mk-kpi__h">${esc(h)}</span></button>`).join('');
+    }
+
+    /* ------------------------------------------- Подробности верхних блоков */
+
+    const METRICS = {
+      visits: 'Переходы и посещения сайтов', leads: 'Заявки', answered: 'Ответы на заявки', paid: 'Продажи',
+      revenue: 'Выручка', cost: 'Расходы', roi: 'Окупаемость', cps: 'Цена продажи'
+    };
+    const FROM_SERVER = ['visits', 'leads', 'answered', 'paid'];
+    const whenFmt = new Intl.DateTimeFormat('ru-RU', { timeZone: 'Asia/Bangkok', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    const when = (iso) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? '—' : whenFmt.format(d); };
+    const dayText = (d) => `${d.slice(8, 10)}.${d.slice(5, 7)}`;
+    const minText = (m) => (m === null || m === undefined ? '—' : m < 60 ? `${m} мин` : m < 1440 ? `${Math.floor(m / 60)} ч ${m % 60} мин` : `${Math.round(m / 1440)} дн`);
+    const periodText = () => PERIODS.find(([id]) => id === st.period)?.[1].toLowerCase() || '';
+
+    /** Таблица: cols — подписи, left — сколько первых колонок по левому краю; строка — { c: [...ячейки], pick } */
+    function grid(cols, rows, { left = 1, foot = null, empty = 'Пока пусто.' } = {}) {
+      if (!rows.length) return `<p class="mk-tip">${empty}</p>`;
+      const cell = (tag, v, i) => `<${tag}${i < left ? ' class="l"' : ''}>${v}</${tag}>`;
+      return `<div class="table-wrap mk-dt"><table>
+        <thead><tr>${cols.map((v, i) => cell('th', v, i)).join('')}</tr></thead>
+        <tbody>${rows.map((r) => `<tr${r.pick ? ` data-mk-pick="${r.pick}" class="is-link"` : ''}>${r.c.map((v, i) => cell('td', v, i)).join('')}</tr>`).join('')}</tbody>
+        ${foot ? `<tfoot><tr>${foot.map((v, i) => cell('td', v, i)).join('')}</tr></tfoot>` : ''}</table></div>`;
+    }
+    const sec = (title, body, note = '') => `<section class="mk-dsec"><h4>${title}</h4>${note ? `<p class="mk-tip">${note}</p>` : ''}${body}</section>`;
+    const activeSources = () => sources().filter((s) => s.active);
+    const hostName = (h) => esc(h.replace(/^www\./, ''));
+
+    function detailVisits(d) {
+      const t = totals();
+      const since = d.since ? `${dayText(d.since)}.${d.since.slice(0, 4)}` : null;
+      const kinds = st.data.kinds || {};
+      const src = d.bySource.filter((x) => x.refVisits || x.views || x.visitors);
+      const refName = (v) => (v === 'прямой заход' ? 'прямой заход <span class="mk-dim">(адрес набрали сами, закладка или приложение)</span>' : v === 'google' ? 'Google (поиск, Карты)' : v === 'yandex' ? 'Яндекс' : esc(v));
+      return `
+        <p class="mk-text">За ${periodText()}: на сайтах <b>${num(t.views)}</b> просмотров страниц${t.visitors ? `, <b>${num(t.visitors)}</b> посетителей` : ''}; по ссылкам с кодом источника — <b>${num(t.refVisits)}</b> переходов.</p>
+        <p class="mk-tip">Откуда цифры: просмотры — из журнала нашего сервера, каждая открытая страница jetmobility.org и kokoncar.com (без поисковых роботов, картинок и служебных запросов). Переходы по ссылкам — сколько раз сайт открыли по ссылке с кодом (?ref=…) агента, соцсети или рекламы.
+        ${since ? `Подробности — страницы, откуда пришли, устройства и посетители — собираются с ${since}.` : 'Подробности — страницы, откуда пришли, устройства и посетители — начнут собираться после обновления сервера; до этого видны только общие просмотры.'}</p>
+        ${sec('По источникам', grid(['Источник', 'Тип', 'По ссылке с кодом', 'Просмотры сайта', 'Посетители сайта'],
+          src.map((x) => ({ pick: x.id, c: [esc(x.name), esc(kinds[x.kind] || x.kind), num(x.refVisits), x.kind === 'site' ? num(x.views) : '—', x.kind === 'site' ? num(x.visitors) : '—'] })), { left: 2, empty: 'За этот период переходов нет.' }))}
+        ${sec('По дням', grid(['День', 'Просмотры сайтов', 'Посетители', 'По ссылкам с кодом'],
+          d.byDay.map((x) => ({ c: [dayText(x.day), num(x.views), x.visitors ? num(x.visitors) : '—', num(x.refVisits)] }))))}
+        <div class="mk-dcols">
+          ${sec('Откуда пришли на сайт', grid(['Откуда', 'Сайт', 'Просмотры'], d.refs.map((x) => ({ c: [refName(x.value), hostName(x.host), num(x.n)] })), { left: 2, empty: since ? 'Пока пусто.' : 'Появится после обновления сервера.' }),
+            'Instagram и WhatsApp часто не сообщают, откуда пришёл человек, — такие визиты попадают в «прямой заход». Поэтому для агентов и соцсетей нужны ссылки с кодом.')}
+          ${sec('Популярные страницы', grid(['Страница', 'Сайт', 'Просмотры'], d.pages.map((x) => ({ c: [esc(x.value), hostName(x.host), num(x.n)] })), { left: 2, empty: since ? 'Пока пусто.' : 'Появится после обновления сервера.' }))}
+          ${sec('Метки рекламы (utm_source)', grid(['Метка', 'Сайт', 'Просмотры'], d.utm.map((x) => ({ c: [esc(x.value), hostName(x.host), num(x.n)] })), { left: 2, empty: 'Пока нет. Такую метку ставят в ссылке рекламы: …?utm_source=google.' }))}
+          ${sec('Устройства', grid(['Устройство', 'Сайт', 'Посетители'], d.devices.map((x) => ({ c: [esc(x.value), hostName(x.host), num(x.n)] })), { left: 2, empty: since ? 'Пока пусто.' : 'Появится после обновления сервера.' }))}
+        </div>`;
+    }
+
+    function requestRows(rows) {
+      return rows.map((r) => ({
+        pick: r.sourceId,
+        c: [when(r.at), esc(r.client), esc(CH[r.channel] || r.channel || '—'), esc(r.source), esc(r.model || '—'), esc(r.status), minText(r.answerMin),
+          r.booked ? 'да' : '—', r.paid ? 'да' : '—', r.revenue ? baht(r.revenue) : '—']
+      }));
+    }
+    const REQ_COLS = ['Когда', 'Клиент', 'Канал', 'Источник', 'Модель', 'Статус', 'Ответили через', 'Бронь', 'Оплата', 'Выручка'];
+
+    function detailRequests(d, metric) {
+      const list = activeSources();
+      const t = totals();
+      const un = st.data.unattributed || { leads: 0 };
+      const cut = d.rows.length >= 500 ? '<p class="mk-tip">Показаны последние 500 заявок.</p>' : '';
+      if (metric === 'leads') {
+        const rows = list.filter((s) => s.metrics.leads).sort((a, b) => b.metrics.leads - a.metrics.leads)
+          .map((s) => ({ pick: s.id, c: [esc(s.name), num(s.metrics.leads), num(s.metrics.answered), num(s.metrics.booked), num(s.metrics.paid), pct(s.metrics.paid, s.metrics.leads)] }));
+        if (un.leads) rows.push({ c: ['<span class="mk-dim">Без источника</span>', num(un.leads), '', '', '', ''] });
+        return `${sec('По источникам', grid(['Источник', 'Заявки', 'Ответили', 'Бронь', 'Оплачено', 'Конверсия'], rows,
+            { foot: ['Всего с источником', num(t.leads), num(t.answered), num(t.booked), num(t.paid), pct(t.paid, t.leads)], empty: 'Заявок за этот период нет.' }))}
+          ${sec(`Все заявки за ${periodText()}`, grid(REQ_COLS, requestRows(d.rows), { left: 6, empty: 'Заявок нет.' }), 'Включая заявки без источника. Нажмите строку — откроется источник на карте.')}${cut}`;
+      }
+      if (metric === 'answered') {
+        const speed = new Map(d.speed.map((x) => [x.source, x]));
+        const rows = list.filter((s) => s.metrics.leads).sort((a, b) => (b.metrics.leads - b.metrics.answered) - (a.metrics.leads - a.metrics.answered))
+          .map((s) => ({ pick: s.id, c: [esc(s.name), num(s.metrics.leads), num(s.metrics.answered), num(s.metrics.leads - s.metrics.answered), pct(s.metrics.answered, s.metrics.leads), minText(speed.get(s.name)?.avgMin)] }));
+        const waiting = d.rows.filter((r) => r.answerMin === null);
+        return `${sec('По источникам', grid(['Источник', 'Заявки', 'Ответили', 'Ждут', 'Доля ответов', 'Среднее время ответа'], rows,
+            { foot: ['Всего', num(t.leads), num(t.answered), num(t.leads - t.answered), pct(t.answered, t.leads), ''], empty: 'Заявок за этот период нет.' }))}
+          ${sec('Ждут ответа', grid(REQ_COLS, requestRows(waiting), { left: 6, empty: 'Все заявки разобраны.' }))}
+          ${sec(`Все заявки за ${periodText()}`, grid(REQ_COLS, requestRows(d.rows), { left: 6, empty: 'Заявок нет.' }), '«Ответили через» — от заявки до «Взять в работу» в портале или боте.')}${cut}`;
+      }
+      const rows = list.filter((s) => s.metrics.paid).sort((a, b) => b.metrics.paid - a.metrics.paid)
+        .map((s) => ({ pick: s.id, c: [esc(s.name), num(s.metrics.paid), num(s.metrics.leads), pct(s.metrics.paid, s.metrics.leads), baht(s.metrics.revenue), baht(s.metrics.revenue / s.metrics.paid)] }));
+      return `${sec('По источникам', grid(['Источник', 'Оплачено', 'Из заявок', 'Конверсия', 'Выручка', 'Средний чек'], rows,
+          { foot: ['Всего', num(t.paid), num(t.leads), pct(t.paid, t.leads), baht(t.revenue), t.paid ? baht(t.revenue / t.paid) : '—'], empty: 'Продаж за этот период нет.' }))}
+        ${sec('Оплаченные заявки', grid(REQ_COLS, requestRows(d.rows), { left: 6, empty: 'Продаж нет.' }), 'Продажа — клиент из заявки оплатил аренду (по CRM, за 60 дней после заявки).')}${cut}`;
+    }
+
+    function detailMoney(metric) {
+      const list = activeSources();
+      const t = totals();
+      if (metric === 'revenue') {
+        const rows = list.filter((s) => s.metrics.revenue).sort((a, b) => b.metrics.revenue - a.metrics.revenue)
+          .map((s) => ({ pick: s.id, c: [esc(s.name), baht(s.metrics.revenue), pct(s.metrics.revenue, t.revenue), num(s.metrics.paid), s.metrics.paid ? baht(s.metrics.revenue / s.metrics.paid) : '—'] }));
+        return sec('По источникам', grid(['Источник', 'Выручка', 'Доля', 'Продажи', 'Средний чек'], rows,
+          { foot: ['Всего', baht(t.revenue), '100%', num(t.paid), t.paid ? baht(t.revenue / t.paid) : '—'], empty: 'Выручки за этот период нет.' }),
+        'Выручка — аренды клиентов из заявок по CRM: клиент из заявки и его аренды за 60 дней после неё.');
+      }
+      if (metric === 'cost') {
+        const rows = list.slice().sort((a, b) => b.metrics.cost - a.metrics.cost)
+          .map((s) => ({ pick: s.id, c: [esc(s.name), esc(costLabel(s)), baht(s.metrics.cost), baht(s.metrics.revenue), roiText(roiOf(s.metrics))] }));
+        return sec('По источникам', grid(['Источник', 'Как считаем', 'Расходы', 'Выручка', 'Окупаемость'], rows,
+          { left: 2, foot: ['Всего', '', baht(t.cost), baht(t.revenue), roiText(t.cost ? t.revenue / t.cost : null)] }),
+        'Расходы задаются в карточке источника («Изменить»): бюджет в месяц (за неделю или день — его доля) или комиссия, % от выручки.');
+      }
+      if (metric === 'roi') {
+        const rows = list.filter((s) => s.metrics.cost || s.metrics.revenue).sort((a, b) => (roiOf(b.metrics) ?? 1e9) - (roiOf(a.metrics) ?? 1e9))
+          .map((s) => ({ pick: s.id, c: [esc(s.name), baht(s.metrics.revenue), baht(s.metrics.cost), `<span class="mk-${roiTone(roiOf(s.metrics))}">${roiText(roiOf(s.metrics))}</span>`, baht(s.metrics.revenue - s.metrics.cost)] }));
+        return sec('По источникам', grid(['Источник', 'Выручка', 'Расходы', 'Окупаемость', 'Выручка минус расходы'], rows,
+          { foot: ['Всего', baht(t.revenue), baht(t.cost), roiText(t.cost ? t.revenue / t.cost : null), baht(t.revenue - t.cost)], empty: 'Нет ни выручки, ни расходов за этот период.' }),
+        'Окупаемость — сколько бат выручки на 1 ฿ расходов: ×4 и выше — хорошо, ниже ×1,5 — канал стоит пересмотреть. «—» — у источника нет расходов.');
+      }
+      const rows = list.filter((s) => s.metrics.cost).sort((a, b) => (b.metrics.paid ? b.metrics.cost / b.metrics.paid : 1e12) - (a.metrics.paid ? a.metrics.cost / a.metrics.paid : 1e12))
+        .map((s) => ({ pick: s.id, c: [esc(s.name), baht(s.metrics.cost), num(s.metrics.paid), s.metrics.paid ? baht(s.metrics.cost / s.metrics.paid) : 'нет продаж', s.metrics.paid ? baht(s.metrics.revenue / s.metrics.paid) : '—'] }));
+      return sec('По источникам', grid(['Источник', 'Расходы', 'Продажи', 'Цена продажи', 'Средний чек'], rows,
+        { foot: ['Всего', baht(t.cost), num(t.paid), t.paid && t.cost ? baht(t.cost / t.paid) : '—', t.paid ? baht(t.revenue / t.paid) : '—'], empty: 'У источников нет расходов за этот период.' }),
+      'Цена продажи — расходы на источник, делённые на число оплат. Если она близка к среднему чеку — канал почти не приносит денег.');
+    }
+
+    function detailHtml() {
+      const d = st.detail;
+      if (!d) return '';
+      let body;
+      if (d.failed) body = `<p class="md-status is-error">${esc(d.failed)}</p>`;
+      else if (FROM_SERVER.includes(d.metric) && !d.data) body = '<p class="mk-tip">Загружаем…</p>';
+      else if (d.metric === 'visits') body = detailVisits(d.data);
+      else if (FROM_SERVER.includes(d.metric)) body = detailRequests(d.data, d.metric);
+      else body = detailMoney(d.metric);
+      return `<div class="sheet__body mk-detail">
+        <div class="sheet__head"><div><div class="muted">Маркетинг · ${esc(periodText())}</div><h2>${esc(METRICS[d.metric])}</h2></div>
+          <button type="button" class="icon-btn icon-btn--plain" data-mk-close aria-label="Закрыть">×</button></div>
+        ${body}</div>`;
+    }
+    function refreshDetail() {
+      const dlg = document.getElementById('mk-detail');
+      if (!dlg) return;
+      dlg.innerHTML = detailHtml();
+      if (st.detail && !dlg.open) dlg.showModal?.();
+      if (!st.detail && dlg.open) dlg.close();
+    }
+    async function openDetail(metric) {
+      if (!METRICS[metric]) return;
+      st.detail = { metric, period: st.period, data: null, failed: null };
+      refreshDetail();
+      if (!FROM_SERVER.includes(metric)) return;
+      try {
+        const data = await api(`/marketing/details?metric=${metric}&period=${st.period}`);
+        if (st.detail?.metric === metric) { st.detail.data = data; refreshDetail(); }
+      } catch {
+        if (st.detail?.metric === metric) { st.detail.failed = 'Не удалось загрузить подробности. Попробуйте ещё раз.'; refreshDetail(); }
+      }
+    }
+    function closeDetail() {
+      st.detail = null;
+      refreshDetail();
     }
     function funnel(m) {
       const base = Math.max(1, m.leads);
@@ -1009,7 +1251,6 @@
       return `
         <div class="mk">
           <div class="mk-top">
-            <div><span class="mk-eyebrow">Маркетинг</span><h2 class="mk-title">Пхукет-<span>тайкун</span></h2></div>
             <div class="mk-controls">
               <div class="mk-seg" role="group" aria-label="Период">${chips}</div>
               <div class="mk-seg" role="group" aria-label="Вид">${views}</div>
@@ -1028,7 +1269,8 @@
             <div class="mk-card"><h3>Задания</h3><ul class="mk-quests">${quests()}</ul></div>
             <div class="mk-card"><h3>Таблица лидеров</h3><ol class="mk-leaders">${leaders()}</ol></div>
           </section>
-          <p class="mk-tip">Источник заявки — по коду ссылки (сайт ?ref=, ссылка на Telegram-бота, код в первом сообщении WhatsApp); заявка с сайта без кода — по домену сайта. Продажи и выручка — из CRM: клиент из заявки и его аренды за 60 дней после неё.</p>
+          <p class="mk-tip">Источник заявки — по коду ссылки (сайт ?ref=, ссылка на Telegram-бота, код в первом сообщении WhatsApp); заявка с сайта без кода — по домену сайта. Продажи и выручка — из CRM: клиент из заявки и его аренды за 60 дней после неё. Нажмите на любой блок сверху — откроется подробная таблица.</p>
+          <dialog id="mk-detail" class="sheet mk-sheet" aria-label="Подробности">${detailHtml()}</dialog>
         </div>`;
     }
 
@@ -1037,6 +1279,10 @@
     function onClick(event) {
       const el = event.target;
       if (!el.closest('.mk')) return false;
+      const dlg = el.closest('#mk-detail');
+      if (dlg && (el === dlg || el.closest('[data-mk-close]'))) { closeDetail(); return true; }
+      const metric = el.closest('[data-mk-metric]');
+      if (metric) { openDetail(metric.dataset.mkMetric); return true; }
       const per = el.closest('[data-mk-period]');
       if (per) { st.period = per.dataset.mkPeriod; load(); return true; }
       const v = el.closest('[data-mk-view]');
@@ -1044,6 +1290,7 @@
       const sky = el.closest('[data-mk-sky]');
       if (sky) { st.sky = sky.dataset.mkSky; document.querySelectorAll('[data-mk-sky]').forEach((b) => b.setAttribute('aria-pressed', String(b === sky))); if (reduce) draw(); return true; }
       const pick = el.closest('[data-mk-pick]');
+      if (pick && dlg) closeDetail();
       if (pick) {
         if (st.view !== 'map') { st.view = 'map'; st.selected = pick.dataset.mkPick === 'hq' ? 'hq' : Number(pick.dataset.mkPick); ctx.rerender(); return true; }
         select(pick.dataset.mkPick === 'hq' ? 'hq' : Number(pick.dataset.mkPick));
@@ -1110,7 +1357,7 @@
 
     /** Можно ли перерисовать вкладку при фоновом обновлении портала (не во время правки) */
     function canRefresh() {
-      return !st.editing && !st.placing && !document.activeElement?.closest?.('.mk form');
+      return !st.editing && !st.placing && !st.detail && !document.activeElement?.closest?.('.mk form');
     }
 
     return { load, render, mount, onClick, onSubmit, canRefresh };

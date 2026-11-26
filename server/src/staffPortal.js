@@ -44,7 +44,7 @@ import { roleOf, roleNameOf, permissionsOf, can, canAny } from './roles.js';
 import { accessOverview, saveRole, deleteRole, saveStaff, deleteStaff, importStaffList, AccessError } from './access.js';
 import { financeReport, saveLoans } from './finance.js';
 import { soldList, markSold, unmarkSold, markSoldList, SoldError } from './sold.js';
-import { marketingReport, saveSource, deleteSource, placeSource, saveSettings, MarketingError } from './marketing.js';
+import { marketingReport, marketingDetails, saveSource, deleteSource, placeSource, saveSettings, MarketingError } from './marketing.js';
 import { crmList, crmClient, saveClient, setTags, addNote, mergeClients, importClients, CrmError } from './crm.js';
 import { importCashbook } from './cashbook.js';
 import { serverReport, saveServerSettings, alertAdminsOnce } from './serverStats.js';
@@ -539,6 +539,10 @@ const ROUTES = {
   'POST /api/staff/fleet/sold': signedIn(fleetSold),
   'POST /api/staff/finance/loans': signedIn(financeLoans),
   'GET /api/staff/marketing': signedIn(marketingRoute),
+  'GET /api/staff/marketing/details': signedIn(async (staff, req, res, url) => {
+    needAny(staff, ['marketing.view']);
+    sendJson(res, 200, await marketingDetails(url.searchParams.get('metric') || 'visits', url.searchParams.get('period') || 'month'));
+  }),
   'POST /api/staff/marketing/source': signedIn(marketingEdit((b) => saveSource(b))),
   'POST /api/staff/marketing/source/delete': signedIn(marketingEdit((b) => deleteSource(b.id))),
   'POST /api/staff/marketing/place': signedIn(marketingEdit((b) => placeSource(b.id, b.col, b.row))),

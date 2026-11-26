@@ -465,10 +465,13 @@
     const bar = top?.closest('.topbar');
     if (!bar || getComputedStyle(top).display === 'none') return;
     const right = bar.querySelector('.topbar__right');
+    const brand = bar.querySelector('.brand');
     const fits = () => {
       const last = top.lastElementChild?.getBoundingClientRect();
+      const first = top.firstElementChild?.getBoundingClientRect();
       return bar.scrollWidth <= bar.clientWidth + 1 && top.scrollWidth <= top.clientWidth + 1
-        && (!last || !right || last.right <= right.getBoundingClientRect().left - 6);
+        && (!last || !right || last.right <= right.getBoundingClientRect().left - 6)
+        && (!first || !brand || brand.getBoundingClientRect().right <= first.left - 6);
     };
     top.classList.remove('tabs--compact', 'tabs--icons');
     if (fits()) return;

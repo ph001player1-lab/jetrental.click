@@ -19,6 +19,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import * as db from './db.js';
+import { createAcc, addEntry, saveAcc, pruneSiteStats } from './siteStats.js';
 
 const VNSTAT_DB = process.env.VNSTAT_DB || '/host/vnstat/vnstat.db';
 const CADDY_LOG = process.env.CADDY_ACCESS_LOG || '/caddy-logs/access.log';
@@ -113,7 +114,7 @@ export function categoryOf(uri) {
 }
 
 /** Строки журнала → суммы по ключу «день|домен|вид» */
-export function aggregateLines(lines, into = new Map()) {
+export function aggregateLines(lines, into = new Map(), site = null) {
   for (const line of lines) {
     if (!line) continue;
     let entry;
@@ -125,7 +126,10 @@ export function aggregateLines(lines, into = new Map()) {
     const request = entry.request;
     if (!request || !entry.ts) continue;
     const host = String(request.host || '').toLowerCase().replace(/:\d+$/, '').slice(0, 100) || '—';
-    const key = `${bangkokDate(entry.ts * 1000)}|${host}|${categoryOf(request.uri)}`;
+    const day = bangkokDate(entry.ts * 1000);
+    // Подробности по сайтам (страницы, откуда пришли, посетители) — для «Маркетинга»
+    if (site) addEntry(site, entry, day);
+    const key = `${day}|${host}|${categoryOf(request.uri)}`;
     let sum = into.get(key);
     if (!sum) into.set(key, (sum = { requests: 0, out: 0, in: 0, botRequests: 0, botOut: 0 }));
     const out = Number(entry.size) || 0;
@@ -181,6 +185,7 @@ function readCaddyLog() {
   }
   const pos = readPosition();
   const sums = new Map();
+  const site = createAcc();
 
   // Caddy переименовал файл (ротация) — дочитываем хвост старого, потом новый с начала
   if (pos.ino != null && pos.ino !== stat.ino) {
@@ -189,7 +194,7 @@ function readCaddyLog() {
       for (const name of fs.readdirSync(dir)) {
         const full = path.join(dir, name);
         const s = fs.statSync(full);
-        if (s.ino === pos.ino && s.size > pos.offset) aggregateLines(readFrom(full, pos.offset, s.size).lines, sums);
+        if (s.ino === pos.ino && s.size > pos.offset) aggregateLines(readFrom(full, pos.offset, s.size).lines, sums, site);
       }
     } catch { /* старый файл уже удалён */ }
     pos.offset = 0;
@@ -201,7 +206,7 @@ function readCaddyLog() {
   for (let i = 0; i < 8 && offset < stat.size; i++) {
     const chunk = readFrom(CADDY_LOG, offset, stat.size);
     if (chunk.offset === offset) break;
-    aggregateLines(chunk.lines, sums);
+    aggregateLines(chunk.lines, sums, site);
     offset = chunk.offset;
   }
 
@@ -211,6 +216,7 @@ function readCaddyLog() {
       return { day, host, category, ...s };
     }));
   }
+  try { saveAcc(site); } catch (err) { console.error('Site stats failed:', err.message); }
   db.setSetting('caddy_log_pos', JSON.stringify({ ino: stat.ino, offset }));
   caddy = { available: true, readAt: Date.now() };
 }
@@ -315,5 +321,8 @@ export function startTraffic() {
   db.pruneWebTraffic(bangkokDate(Date.now() - KEEP_DAYS * DAY_MS));
   setInterval(safe(readVnstat, 'vnStat read'), VNSTAT_EVERY_MS).unref();
   setInterval(safe(readCaddyLog, 'Caddy log read'), CADDY_EVERY_MS).unref();
-  setInterval(() => db.pruneWebTraffic(bangkokDate(Date.now() - KEEP_DAYS * DAY_MS)), DAY_MS).unref();
+  setInterval(() => {
+    db.pruneWebTraffic(bangkokDate(Date.now() - KEEP_DAYS * DAY_MS));
+    pruneSiteStats(bangkokDate(Date.now() - KEEP_DAYS * DAY_MS), bangkokDate(Date.now() - 120 * DAY_MS));
+  }, DAY_MS).unref();
 }

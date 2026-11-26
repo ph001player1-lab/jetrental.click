@@ -20,11 +20,13 @@
 import * as db from './db.js';
 import { requestOutcomes } from './crm.js';
 import { tg, telegramEnabled } from './telegram/api.js';
+import { siteStats } from './siteStats.js';
 
 const DAY_MS = 86400000;
 const BANGKOK_MS = 7 * 3600000;
 export const GRID = { cols: 25, rows: 18, cell: 40 };
-export const HQ = { x: 515, y: 560 };
+// Офис на карте — восток острова, между Пхукет-Тауном и Талангом
+export const HQ = { x: 572, y: 375 };
 
 export const KINDS = {
   site: 'Сайт',
@@ -98,7 +100,10 @@ const q = {
   visit: db.raw.prepare(`INSERT INTO marketing_visits (day, code, n) VALUES (?, ?, 1)
     ON CONFLICT(day, code) DO UPDATE SET n = n + 1`),
   visits: db.raw.prepare('SELECT code, SUM(n) n FROM marketing_visits WHERE day >= ? AND day <= ? GROUP BY code'),
-  pageViews: db.raw.prepare("SELECT host, SUM(requests - bot_requests) n FROM web_traffic WHERE category = 'pages' AND day >= ? AND day <= ? GROUP BY host"),
+  pageViews: db.raw.prepare("SELECT day, host, SUM(requests - bot_requests) n FROM web_traffic WHERE category = 'pages' AND day >= ? AND day <= ? GROUP BY day, host"),
+  visitsByDay: db.raw.prepare('SELECT day, code, n FROM marketing_visits WHERE day >= ? AND day <= ?'),
+  requestsFull: db.raw.prepare(`SELECT id, created_at, taken_at, channel, status, client_name, model, source_ref, site_host, heard_from
+    FROM requests WHERE created_at >= ? AND created_at <= ? ORDER BY id DESC`),
   manual: db.raw.prepare('SELECT * FROM marketing_manual WHERE month = ?'),
   setManual: db.raw.prepare(`INSERT INTO marketing_manual (source_id, month, leads, paid, revenue) VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(source_id, month) DO UPDATE SET leads = excluded.leads, paid = excluded.paid, revenue = excluded.revenue`),
@@ -408,7 +413,33 @@ function rangeOf(period, now) {
   return { from: startOf(fromDay), to: now, days: Number(today.slice(8, 10)), fromDay, toDay: today };
 }
 
-const zero = () => ({ visits: 0, leads: 0, answered: 0, booked: 0, paid: 0, revenue: 0, cost: 0 });
+const zero = () => ({ visits: 0, refVisits: 0, views: 0, visitors: 0, leads: 0, answered: 0, booked: 0, paid: 0, revenue: 0, cost: 0 });
+
+/**
+ * Просмотры сайтов по дням: подробная статистика (только открытые страницы, без
+ * перенаправлений) там, где она уже собрана, иначе — прежний подсчёт по журналу.
+ */
+function siteViews(fromDay, toDay) {
+  const stats = siteStats(fromDay, toDay);
+  const fresh = new Map(stats.views.map((v) => [`${v.day}|${v.host}`, v.n]));
+  const days = new Map();
+  for (const r of q.pageViews.all(fromDay, toDay)) days.set(`${r.day}|${r.host}`, fresh.get(`${r.day}|${r.host}`) ?? r.n);
+  for (const [key, n] of fresh) days.set(key, n);
+  const byHost = new Map();
+  const byDay = new Map();
+  for (const [key, n] of days) {
+    const [day, host] = key.split('|');
+    byHost.set(host, (byHost.get(host) || 0) + n);
+    byDay.set(day, (byDay.get(day) || 0) + n);
+  }
+  const visitors = new Map();
+  const visitorsByDay = new Map();
+  for (const v of stats.visitors) {
+    visitors.set(v.host, (visitors.get(v.host) || 0) + v.n);
+    visitorsByDay.set(v.day, (visitorsByDay.get(v.day) || 0) + v.n);
+  }
+  return { byHost, byDay, visitors, visitorsByDay, stats };
+}
 
 /** Источник заявки: по коду, иначе сайт по домену; null — без метки */
 function attribute(req, byCode, byHost) {
@@ -467,14 +498,17 @@ export async function marketingReport(period = 'month', now = Date.now()) {
   }
   // Переходы: по реферальным ссылкам; у сайтов — ещё и просмотры страниц их домена
   const visits = new Map(q.visits.all(range.fromDay, range.toDay).map((r) => [r.code, r.n]));
-  const views = new Map(q.pageViews.all(range.fromDay, range.toDay).map((r) => [r.host, r.n]));
+  const { byHost: views, visitors } = siteViews(range.fromDay, range.toDay);
   // Ручные цифры — только за месяц (их вводят по месяцам)
   const manual = new Map(q.manual.all(monthOf(now)).map((r) => [r.source_id, r]));
 
   const out = sources.map((s) => {
     const x = m.get(s.id);
     const p = x.period;
-    p.visits = (visits.get(s.code) || 0) + (s.kind === 'site' && s.host ? views.get(s.host) || 0 : 0);
+    p.refVisits = visits.get(s.code) || 0;
+    p.views = s.kind === 'site' && s.host ? views.get(s.host) || 0 : 0;
+    p.visitors = s.kind === 'site' && s.host ? visitors.get(s.host) || 0 : 0;
+    p.visits = p.refVisits + p.views;
     const man = manual.get(s.id);
     if (man) {
       x.month.leads += man.leads;
@@ -504,5 +538,74 @@ export async function marketingReport(period = 'month', now = Date.now()) {
   return {
     period, range: { from: new Date(range.from).toISOString(), to: new Date(range.to).toISOString(), days: range.days },
     sources: out, totals, unattributed, settings, kinds: KINDS, grid: GRID, hq: HQ, month: monthOf(now)
+  };
+}
+
+/* ------------------------------------------------- Подробности по блокам */
+
+const STATUS = { new: 'ждёт ответа', taken: 'взята в работу', declined: 'отклонена' };
+
+/**
+ * Подробности для верхних блоков вкладки: visits — переходы и сайты;
+ * leads / answered / paid — заявки за период с источником и итогом.
+ */
+export async function marketingDetails(metric, period = 'month', now = Date.now()) {
+  const range = rangeOf(['today', 'week', 'month'].includes(period) ? period : 'month', now);
+  const sources = q.all.all().map(rowOf);
+  const byCode = new Map(sources.map((s) => [s.code, s]));
+  const byHost = new Map(sources.filter((s) => s.kind === 'site' && s.host).map((s) => [s.host, s]));
+  if (metric === 'visits') {
+    const sv = siteViews(range.fromDay, range.toDay);
+    const refByDay = new Map();
+    const refBySource = new Map();
+    for (const r of q.visitsByDay.all(range.fromDay, range.toDay)) {
+      refByDay.set(r.day, (refByDay.get(r.day) || 0) + r.n);
+      refBySource.set(r.code, (refBySource.get(r.code) || 0) + r.n);
+    }
+    const days = [];
+    for (let t = range.from; t <= range.to; t += DAY_MS) {
+      const day = new Date(t + BANGKOK_MS).toISOString().slice(0, 10);
+      if (!days.some((d) => d.day === day)) days.push({ day, views: sv.byDay.get(day) || 0, visitors: sv.visitorsByDay.get(day) || 0, refVisits: refByDay.get(day) || 0 });
+    }
+    const since = db.raw.prepare('SELECT MIN(day) d FROM web_stats').get()?.d || null;
+    return {
+      metric, range: { from: range.fromDay, to: range.toDay }, since,
+      bySource: sources.map((s) => ({
+        id: s.id, name: s.name, kind: s.kind, refVisits: refBySource.get(s.code) || 0,
+        views: s.kind === 'site' && s.host ? sv.byHost.get(s.host) || 0 : 0,
+        visitors: s.kind === 'site' && s.host ? sv.visitors.get(s.host) || 0 : 0
+      })).sort((a, b) => (b.views + b.refVisits) - (a.views + a.refVisits)),
+      byDay: days.reverse(),
+      pages: sv.stats.pages, refs: sv.stats.refs, utm: sv.stats.utm, devices: sv.stats.devices
+    };
+  }
+  let outcomes = new Map();
+  try {
+    outcomes = await requestOutcomes(now);
+  } catch { /* без CRM — без продаж */ }
+  const rows = q.requestsFull.all(new Date(range.from).toISOString(), new Date(range.to).toISOString()).map((r) => {
+    const s = attribute(r, byCode, byHost);
+    const o = outcomes.get(r.id) || { booked: false, paid: false, revenue: 0 };
+    return {
+      id: r.id, at: r.created_at, client: r.client_name || '—', channel: r.channel, model: r.model || null,
+      source: s ? s.name : r.heard_from ? `без источника: ${r.heard_from}` : 'без источника',
+      sourceId: s ? s.id : null, status: STATUS[r.status] || r.status,
+      answerMin: r.taken_at ? Math.max(0, Math.round((Date.parse(r.taken_at) - Date.parse(r.created_at)) / 60000)) : null,
+      booked: o.booked, paid: o.paid, revenue: Math.round(o.revenue)
+    };
+  });
+  const list = metric === 'paid' ? rows.filter((r) => r.paid) : rows;
+  // Время ответа по источникам (для «Ответили»)
+  const speed = new Map();
+  for (const r of rows) {
+    if (r.answerMin === null) continue;
+    const x = speed.get(r.source) || { source: r.source, n: 0, total: 0 };
+    x.n++; x.total += r.answerMin;
+    speed.set(r.source, x);
+  }
+  return {
+    metric, range: { from: range.fromDay, to: range.toDay },
+    rows: list.slice(0, 500),
+    speed: [...speed.values()].map((x) => ({ source: x.source, n: x.n, avgMin: Math.round(x.total / x.n) })).sort((a, b) => a.avgMin - b.avgMin)
   };
 }

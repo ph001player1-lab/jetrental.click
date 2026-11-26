@@ -199,6 +199,8 @@ a { color: var(--brand); }
   }
 }
 @media (min-width: 860px) and (max-width: 1100px) { .topbar .brand__tag { display: none; } }
+/* Логотип с меткой не сжимается и не залезает под вкладки — ужимаются сами вкладки */
+@media (min-width: 860px) { .topbar .brand { flex: none; } }
 
 /* --- Карточки и списки --- */
 
@@ -1019,23 +1021,24 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
 /* ---------------------------------------------- Маркетинг («Пхукет-тайкун») */
 .mk { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
 .mk-top { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 16px; }
-.mk-eyebrow { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
-.mk-title { margin: 0; font-size: clamp(24px, 3.2vw, 32px); font-weight: 900; letter-spacing: -.01em; line-height: 1; }
-.mk-title span { color: var(--brand); }
-.mk-controls { margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px; }
+.mk-controls { display: flex; flex-wrap: wrap; gap: 8px; }
 .mk-seg { display: inline-flex; padding: 3px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); }
 .mk-seg button { border: 0; background: transparent; padding: 7px 11px; border-radius: 9px; cursor: pointer; font: inherit; font-weight: 600; font-size: 14px; color: var(--muted); }
 .mk-seg button[aria-pressed="true"] { background: var(--brand); color: var(--brand-ink); }
 .mk-hud { display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); gap: 8px; }
-.mk-kpi { display: grid; gap: 1px; padding: 10px 12px; border-radius: 14px; background: #0e1f2b; color: #eef6f6; min-width: 0; }
-.mk-kpi__l { font-size: 12px; color: #9ab6bf; }
+.mk-kpi { display: grid; gap: 1px; padding: 10px 12px; border: 0; border-radius: 14px; background: #0e1f2b; color: #eef6f6; min-width: 0; width: 100%; text-align: left; font: inherit; cursor: pointer; transition: background .15s; }
+.mk-kpi:hover { background: #17344a; }
+.mk-kpi:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
+.mk-kpi__l { display: flex; justify-content: space-between; gap: 6px; font-size: 12px; color: #9ab6bf; }
+.mk-kpi__more { font-size: 15px; line-height: 1; color: #6f8c96; }
+.mk-kpi:hover .mk-kpi__more { color: #fff; }
 .mk-kpi__v { font-size: 21px; font-weight: 900; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mk-kpi__h { font-size: 12px; color: #9ab6bf; }
 .mk-kpi--good .mk-kpi__v { color: #3ddc84; }
 .mk-kpi--coin .mk-kpi__v { color: #ffd54a; }
 .mk-stage { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 12px; align-items: start; }
 .mk-map { border-radius: 18px; overflow: hidden; background: #0c3a52; border: 1px solid var(--line); }
-#mk-map { display: block; width: 100%; height: auto; aspect-ratio: 1000 / 720; cursor: pointer; touch-action: manipulation; }
+#mk-map { display: block; width: 100%; height: auto; aspect-ratio: 1000 / 720; margin: 0 auto; cursor: pointer; touch-action: manipulation; }
 .mk-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 8px 12px; background: #0e1f2b; color: #9ab6bf; font-size: 12px; }
 .mk-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
 .mk-panel { display: grid; gap: 12px; padding: 16px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); min-width: 0; }
@@ -1091,5 +1094,21 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
 .mk-table tbody tr { cursor: pointer; }
 .mk-table tbody tr:hover td { background: var(--surface-2); }
 .mk-table tfoot td { font-weight: 700; border-bottom: 0; }
+/* Подробности верхнего блока — окно с таблицами */
+.mk-sheet { width: min(1000px, calc(100% - 16px)); }
+.mk-detail { gap: 14px; }
+.mk-dsec { display: grid; gap: 6px; min-width: 0; }
+.mk-dsec h4 { margin: 0; font-size: 15px; }
+.mk-dcols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+.mk-dt { border: 1px solid var(--line); border-radius: 12px; max-height: 360px; overflow: auto; overscroll-behavior: contain; }
+.mk-dt table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.mk-dt th, .mk-dt td { padding: 7px 10px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mk-dt th.l, .mk-dt td.l { text-align: left; }
+.mk-dt td.l { white-space: normal; min-width: 70px; overflow-wrap: anywhere; }
+.mk-dt th { position: sticky; top: 0; z-index: 1; background: var(--surface-2); font-size: 12px; color: var(--muted); font-weight: 600; }
+.mk-dt tbody tr:last-child td { border-bottom: 0; }
+.mk-dt tr.is-link { cursor: pointer; }
+.mk-dt tr.is-link:hover td { background: var(--surface-2); }
+.mk-dt tfoot td { font-weight: 700; border-top: 1px solid var(--line); border-bottom: 0; background: var(--surface); position: sticky; bottom: 0; }
 @media (max-width: 980px) { .mk-stage, .mk-lower { grid-template-columns: minmax(0, 1fr); } }
-@media (max-width: 520px) { .mk-controls { margin-left: 0; } .mk-kpi__v { font-size: 18px; } .mk-row--3 { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 520px) { .mk-kpi__v { font-size: 18px; } .mk-row--3 { grid-template-columns: 1fr 1fr; } .mk-dcols { grid-template-columns: minmax(0, 1fr); } }
