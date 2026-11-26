@@ -280,6 +280,18 @@ export function setWaGroupMessage(id, groupId, messageId) {
   db.prepare('UPDATE requests SET wa_group_id = ?, wa_group_message_id = ? WHERE id = ?').run(String(groupId), String(messageId), Number(id));
 }
 
+/** Невзятые заявки в группе WhatsApp, пришедшие после sinceIso (для «+» без ответа на карточку) */
+export function openRequestsInWaGroup(groupId, sinceIso) {
+  return db.prepare("SELECT * FROM requests WHERE status = 'new' AND wa_group_id = ? AND created_at >= ? ORDER BY id")
+    .all(String(groupId), String(sinceIso));
+}
+
+/** Заявки группы, взятые после sinceIso (на «+» отвечаем, кто уже взял) */
+export function recentlyTakenInWaGroup(groupId, sinceIso) {
+  return db.prepare("SELECT * FROM requests WHERE status = 'taken' AND wa_group_id = ? AND taken_at >= ? ORDER BY taken_at DESC")
+    .all(String(groupId), String(sinceIso));
+}
+
 export function requestByWaGroupMessage(messageId) {
   if (!messageId) return null;
   return db.prepare('SELECT * FROM requests WHERE wa_group_message_id = ?').get(String(messageId)) || null;

@@ -11,8 +11,8 @@
  *     написал сам, и карточку заявки в выбранную рабочую группу. Рассылок нет;
  *   - перед ответом «печатает» 1–4 секунды, не чаще 25 сообщений в минуту;
  *   - не ставит «онлайн» (иначе телефон перестанет получать уведомления);
- *   - из групп читает только выбранную рабочую — и только ответы на сообщения
- *     (так сотрудники берут заявку: отвечают на неё «+»);
+ *   - из групп читает только выбранную рабочую и передаёт боту-серверу только
+ *     ответы на сообщения и короткие «+», «+14», «беру», «-» (так берут заявку);
  *   - сообщение, которое менеджер написал клиенту сам, передаёт боту-серверу —
  *     тогда бот в этом чате замолкает.
  *
@@ -107,7 +107,9 @@ const state = {
   error: null,
   connectedAt: null,
   lastInboundAt: null,
-  today: { date: null, received: 0, sent: 0 }
+  today: { date: null, received: 0, sent: 0 },
+  // Сообщения, которые WhatsApp не дал расшифровать (обычно досылает сам через минуту)
+  undecrypted: []
 };
 
 function countToday(field) {
@@ -162,7 +164,8 @@ function reportStatus() {
     groupSubject: config.groupSubject,
     members: state.members,
     lastInboundAt: state.lastInboundAt,
-    today: state.today
+    today: state.today,
+    undecrypted: state.undecrypted
   }));
 }
 
@@ -230,10 +233,31 @@ function firstTime(id) {
   return true;
 }
 
+// Похоже на «взять / не могу»: «+», «+14», «беру», «-», «не могу 14»… — такие сообщения
+// группы передаём боту-серверу и без ответа на карточку
+const TAKE_LIKE = /^\s*(\+|➕|✋|👍|-|—|➖|беру|взял|взяла|возьму|take|taken|mine|รับ|не могу|не смогу|can'?t|cannot)/i;
+const where = (jid) => (jid === config.groupId ? 'work group' : jid.endsWith('@g.us') ? 'other group' : 'client chat');
+
 async function handleMessage(msg, type) {
   const jid = msg.key.remoteJid || '';
   if (!jid || jid === 'status@broadcast' || jid.endsWith('@newsletter') || jid.endsWith('@broadcast')) return;
-  if (msg.messageStubType === WAMessageStubType.CIPHERTEXT && !msg.message) return;
+  // Не расшифровалось: Baileys сам попросит отправителя прислать ещё раз — тогда обработаем
+  if (msg.messageStubType === WAMessageStubType.CIPHERTEXT && !msg.message) {
+    if (jid !== config.groupId && !isPersonal(jid)) return;
+    if (!state.undecrypted.some((u) => u.id === msg.key.id)) {
+      state.undecrypted.push({ id: msg.key.id, ts: new Date().toISOString(), where: where(jid) });
+      if (state.undecrypted.length > 30) state.undecrypted.shift();
+      log(`${where(jid)}: message ${msg.key.id} could not be decrypted (${msg.messageStubParameters?.[0] || 'no reason'}) — waiting for WhatsApp to resend`);
+      reportStatus();
+    }
+    return;
+  }
+  const waiting = state.undecrypted.findIndex((u) => u.id === msg.key.id);
+  if (waiting >= 0 && msg.message) {
+    state.undecrypted.splice(waiting, 1);
+    log(`${where(jid)}: message ${msg.key.id} decrypted after resend`);
+    reportStatus();
+  }
   const content = normalizeMessageContent(msg.message);
   if (!content) return;
   const kind = getContentType(content);
@@ -241,12 +265,16 @@ async function handleMessage(msg, type) {
   const ts = toMs(msg.messageTimestamp) || Date.now();
   const inner = content[kind] || {};
 
-  // Рабочая группа: только ответы сотрудников на сообщения (так берут заявку: «+»)
+  // Рабочая группа: ответы на сообщения и короткие «+», «+14», «беру», «-»
   if (jid.endsWith('@g.us')) {
     if (jid !== config.groupId || msg.key.fromMe || type !== 'notify') return;
-    const quotedId = inner.contextInfo?.stanzaId;
-    if (!quotedId || !firstTime(msg.key.id)) return;
+    if (!firstTime(msg.key.id)) return;
+    const quotedId = inner.contextInfo?.stanzaId || null;
+    const text = textOf(content);
     const author = await phoneOf(msg.key.participantAlt, msg.key.participant, msg.participant);
+    const takeLike = TAKE_LIKE.test(text) && text.length <= 40;
+    log(`work group: message from +${author || '?'} (${msg.pushName || '-'}), ${quotedId ? 'reply' : 'not a reply'}, ${kind}${takeLike ? `, «${text.trim().slice(0, 20)}»` : ''}${quotedId || takeLike ? ' → bot' : ''}`);
+    if (!quotedId && !takeLike) return;
     enqueue(() => botRequest('/internal/wabot/message', {
       kind: 'group', id: msg.key.id, ts: new Date(ts).toISOString(), author, authorJid: msg.key.participant || null,
       authorName: msg.pushName || null, text: textOf(content).slice(0, 500), quotedId

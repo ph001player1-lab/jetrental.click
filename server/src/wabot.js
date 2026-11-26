@@ -40,7 +40,7 @@ const MODES = ['off', 'test', 'on'];
 
 const status = {
   connected: false, status: null, me: null, groupId: null, groupSubject: null,
-  members: new Set(), lastSeenAt: null, lastInboundAt: null, today: null
+  members: new Set(), lastSeenAt: null, lastInboundAt: null, today: null, undecrypted: []
 };
 
 const digits = (v) => String(v || '').replace(/\D/g, '');
@@ -85,6 +85,8 @@ export function wabotStatus(now = Date.now()) {
     groupId: status.groupId,
     groupSubject: status.groupSubject,
     lastInboundAt: status.lastInboundAt,
+    // Не расшифровались (WhatsApp досылает сам) — для диагностики
+    undecrypted: status.undecrypted,
     // Последний раз на связи (для оповещения «бот молчит»); null — ещё не подключали
     lastOkAt: lastOk || null
   };
@@ -97,7 +99,8 @@ function saveStatus(body) {
     groupId: body.groupId ? String(body.groupId) : null, groupSubject: body.groupSubject ? String(body.groupSubject).slice(0, 120) : null,
     members: new Set((Array.isArray(body.members) ? body.members : []).map(digits).filter(Boolean)),
     lastSeenAt: new Date().toISOString(), lastInboundAt: body.lastInboundAt || null,
-    today: body.today?.date ? { date: String(body.today.date).slice(0, 10), received: Number(body.today.received) || 0, sent: Number(body.today.sent) || 0 } : null
+    today: body.today?.date ? { date: String(body.today.date).slice(0, 10), received: Number(body.today.received) || 0, sent: Number(body.today.sent) || 0 } : null,
+    undecrypted: Array.isArray(body.undecrypted) ? body.undecrypted.slice(-30) : []
   });
   if (status.connected) {
     db.setSetting('wabot_last_ok', status.lastSeenAt);
@@ -224,8 +227,18 @@ async function handleClient(c, body) {
 
 /* ---------------------------------------------- Рабочая группа WhatsApp */
 
-const TAKE = /^\s*(\+|➕|✋|👍|беру|взял|взяла|возьму|take|taken|mine|รับ)/i;
-const DECLINE = /^\s*(-|—|➖|не могу|не смогу|can'?t|cannot)/i;
+// «Взять»: «+», «+14», «беру 14», «#14 беру»… Без ответа на карточку сообщение должно быть
+// ТОЛЬКО этим (иначе «+66 81…» с номером телефона приняли бы за заявку #66)
+const TAKE_WORD = '(?:\\+|➕|беру|взял|взяла|возьму|take|taken|mine|รับ)';
+// 👍 и ✋ — «взять» только в ответ на карточку: просто 👍 в группе — обычное «ок»
+const TAKE_REPLY_WORD = '(?:\\+|➕|✋|👍|беру|взял|взяла|возьму|take|taken|mine|รับ)';
+const DECLINE_WORD = '(?:-|—|➖|не могу|не смогу|can\'?t|cannot)';
+const NUM = '\\s*#?\\s*(\\d{1,6})?\\s*[!.)]*\\s*';
+const TAKE_START = new RegExp(`^\\s*${TAKE_REPLY_WORD}`, 'i');
+const DECLINE_START = new RegExp(`^\\s*${DECLINE_WORD}`, 'i');
+const TAKE_ONLY = new RegExp(`^\\s*${TAKE_WORD}${NUM}$`, 'i');
+const DECLINE_ONLY = new RegExp(`^\\s*${DECLINE_WORD}${NUM}$`, 'i');
+const OPEN_HOURS = 3;
 
 /** Карточка заявки из HTML Telegram → разметка WhatsApp */
 function htmlToWa(html) {
@@ -239,7 +252,7 @@ function htmlToWa(html) {
 /** Новая заявка → карточкой в рабочую группу WhatsApp; false — группа не выбрана или бот не на связи */
 export async function postRequestToWaGroup(request) {
   if (!wabotConfigured || !status.groupId || !wabotStatus().connected) return false;
-  const id = await wabotSend(status.groupId, `${htmlToWa(formatStaffRequest(request))}\n\n${g('wa.takeHint')}`);
+  const id = await wabotSend(status.groupId, `${htmlToWa(formatStaffRequest(request))}\n\n${g('wa.takeHint', { id: request.id })}`);
   db.setWaGroupMessage(request.id, status.groupId, id);
   return true;
 }
@@ -251,34 +264,77 @@ export async function noteTakenInWaGroup(request) {
     { id: request.wa_group_message_id, fromMe: true, text: g('card.title', { id: request.id }).replace(/<[^>]+>/g, '') });
 }
 
+/**
+ * Сообщение рабочей группы (wabot передаёт только ответы на сообщения и короткие
+ * «+», «+14», «беру», «-»). Какая заявка: ответ на карточку → её; «+14» → №14;
+ * просто «+» → единственная невзятая за последние 3 часа (несколько — спросим номер).
+ */
 async function handleGroupReply(body) {
-  const request = db.requestByWaGroupMessage(String(body.quotedId || ''));
-  if (!request) return;
-  const text = String(body.text || '');
+  const groupId = status.groupId;
+  const text = String(body.text || '').trim();
   const author = digits(body.author);
   let name = body.authorName ? String(body.authorName).slice(0, 80) : author ? `+${author}` : 'WhatsApp';
   try { name = (await staffPhones()).get(author) || name; } catch { /* имя из WhatsApp */ }
+  const who = `«${name}» (+${author || '?'}, WhatsApp name «${body.authorName || '-'}»)`;
   const reply = { id: body.id, participant: body.authorJid || undefined, text };
-  const react = (emoji) => wabotCall('POST', '/react', { jid: request.wa_group_id, id: body.id, participant: body.authorJid, emoji })
-    .catch((err) => console.error('WhatsApp reaction failed:', err.message));
+  const say = (key, params) => wabotSend(groupId, g(key, params), reply).catch((err) => console.error('WhatsApp group reply failed:', err.message));
 
-  if (TAKE.test(text)) {
-    if (!db.takeRequest(request.id, `wa:${author}`, name)) {
-      const cur = db.getRequest(request.id);
-      console.log(`Request #${request.id}: «+» from «${name}» (+${author || '?'}) — already taken by «${cur?.taken_by_name}» (${cur?.taken_by_id})`);
-      if (cur?.status === 'taken') await wabotSend(request.wa_group_id, g('wa.alreadyTaken', { id: cur.id, name: cur.taken_by_name }), reply);
+  const carded = body.quotedId ? db.requestByWaGroupMessage(String(body.quotedId)) : null;
+  // Ответ на карточку: «+» или «беру…» в начале. Без ответа: сообщение — только «+» / «+14» / «-14»
+  const only = text.match(TAKE_ONLY) || text.match(DECLINE_ONLY);
+  const isTake = carded ? TAKE_START.test(text) : TAKE_ONLY.test(text);
+  const isDecline = !isTake && (carded ? DECLINE_START.test(text) : DECLINE_ONLY.test(text));
+  if (!isTake && !isDecline) {
+    if (body.quotedId) console.log(`WhatsApp group: reply from ${who} is not «+» / «-» — ignored`);
+    return;
+  }
+  const number = only?.[1] ? Number(only[1]) : null;
+  const since = new Date(Date.now() - OPEN_HOURS * 3600000).toISOString();
+  const open = groupId ? db.openRequestsInWaGroup(groupId, since) : [];
+  const list = open.map((r) => `#${r.id}`).join(', ');
+
+  let request = carded;
+  if (!request && number) {
+    request = db.getRequest(number);
+    if (!request || request.channel === 'test') {
+      console.log(`WhatsApp group: ${who} wrote «${text}» — no request #${number}`);
+      if (isTake) await say(open.length ? 'wa.notFound' : 'wa.noneOpen', { id: number, list });
       return;
     }
-    console.log(`Request #${request.id} taken in the WhatsApp group by «${name}» (number +${author || '?'}, WhatsApp name «${body.authorName || '-'}»)`);
-    await react('✅');
+  }
+  if (!request) {
+    if (open.length === 1) [request] = open;
+    else if (open.length > 1) {
+      console.log(`WhatsApp group: ${who} wrote «${text}» — several new requests (${list}), asked which one`);
+      if (isTake) await say('wa.pickOne', { list, first: open[0].id });
+      return;
+    } else {
+      // Невзятых нет: если заявку только что взяли — скажем кто, иначе молчим («+» мог быть о другом)
+      const recent = isTake && groupId ? db.recentlyTakenInWaGroup(groupId, new Date(Date.now() - 15 * 60000).toISOString())[0] : null;
+      console.log(`WhatsApp group: ${who} wrote «${text}» — no new requests${recent ? `, #${recent.id} taken by «${recent.taken_by_name}»` : ''}`);
+      if (recent) await say('wa.alreadyTaken', { id: recent.id, name: recent.taken_by_name });
+      return;
+    }
+  }
+
+  if (isTake) {
+    if (!db.takeRequest(request.id, `wa:${author}`, name)) {
+      const cur = db.getRequest(request.id);
+      console.log(`Request #${request.id}: «${text}» from ${who} — already taken by «${cur?.taken_by_name}» (${cur?.taken_by_id})`);
+      if (cur?.status === 'taken') await say('wa.alreadyTaken', { id: cur.id, name: cur.taken_by_name });
+      return;
+    }
+    console.log(`Request #${request.id} taken in the WhatsApp group by ${who}, ${carded ? 'reply to the card' : number ? `by number «${text}»` : `plain «${text}» (the only new request)`}`);
+    await say('wa.taken', { id: request.id, name });
     await onRequestTaken(db.getRequest(request.id), 'wa');
     return;
   }
-  if (DECLINE.test(text) && request.status === 'new') {
-    const updated = db.addDecline(request.id, name);
-    await react('👌');
-    await refreshStaffMessage(updated).catch((err) => console.error('Telegram card refresh failed:', err.message));
-  }
+  if (request.status !== 'new') return;
+  const updated = db.addDecline(request.id, name);
+  console.log(`Request #${request.id}: ${who} can't take it`);
+  await wabotCall('POST', '/react', { jid: groupId, id: body.id, participant: body.authorJid, emoji: '👌' })
+    .catch((err) => console.error('WhatsApp reaction failed:', err.message));
+  await refreshStaffMessage(updated).catch((err) => console.error('Telegram card refresh failed:', err.message));
 }
 
 /* ---------------------------------------------------- Внутренний API */

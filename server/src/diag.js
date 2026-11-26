@@ -74,7 +74,14 @@ async function containerLog(base, minutes, q, limit) {
   }
 }
 
-const mask = (phone) => (phone ? String(phone).replace(/\d(?=\d{4})/g, '•') : null);
+/** Номер без последних 4 цифр: «+66 81 999 0000» → «+•• •• ••• 0000» */
+function mask(phone) {
+  if (!phone) return null;
+  const text = String(phone);
+  const total = (text.match(/\d/g) || []).length;
+  let i = 0;
+  return text.replace(/\d/g, (d) => (++i <= total - 4 ? '•' : d));
+}
 
 export async function handleDiag(req, res, url) {
   const host = String(req.headers.host || '').toLowerCase().replace(/:\d+$/, '');
