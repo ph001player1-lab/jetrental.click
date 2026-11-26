@@ -30,6 +30,7 @@ export const SECTIONS = [
   { id: 'finance', levels: ['view', 'none'] },
   { id: 'crm', levels: ['edit', 'view', 'none'] },
   { id: 'marketing', levels: ['edit', 'view', 'none'] },
+  { id: 'price', levels: ['edit', 'view', 'none'] },
   { id: 'server', levels: ['view', 'none'] }
 ];
 const SECTION_IDS = SECTIONS.map((s) => s.id);
@@ -41,18 +42,19 @@ export const ADMIN_ROLE = 'admin';
 const V = 'view';
 const E = 'edit';
 const N = 'none';
-const preset = (overview, fleet, calendar, requests, journal, clients, timesheet, reconcile, whatsapp, site, finance, server, crm = N, marketing = N) =>
-  ({ overview, fleet, calendar, requests, journal, clients, timesheet, reconcile, whatsapp, site, finance, server, crm, marketing });
+const preset = (overview, fleet, calendar, requests, journal, clients, timesheet, reconcile, whatsapp, site, finance, server, crm = N, marketing = N, price = N) =>
+  ({ overview, fleet, calendar, requests, journal, clients, timesheet, reconcile, whatsapp, site, finance, server, crm, marketing, price });
 const DEFAULT_ROLES = [
   // CRM по умолчанию — только у владельца (и админа); остальным админ открывает сам
-  ['owner', 'Владелец', preset(V, V, V, V, E, V, V, V, V, E, V, V, E, E)],
-  ['finance', 'Финансист', preset(V, V, V, N, V, V, N, V, N, N, V, N)],
+  // Прайс меняют только владелец и админ, менеджеры смотрят (называть цены клиентам)
+  ['owner', 'Владелец', preset(V, V, V, V, E, V, V, V, V, E, V, V, E, E, E)],
+  ['finance', 'Финансист', preset(V, V, V, N, V, V, N, V, N, N, V, N, N, N, V)],
   // Один «Менеджер» без отдела: разные права — разные роли, их админ создаёт сам
-  ['manager', 'Менеджер', preset(V, V, V, V, E, V, N, V, N, E, N, N)],
+  ['manager', 'Менеджер', preset(V, V, V, V, E, V, N, V, N, E, N, N, N, N, V)],
   ['service', 'Работник сервиса', preset(N, V, V, N, V, N, N, N, N, N, N, N)],
   ['courier', 'Курьер', preset(N, V, V, N, V, V, N, N, N, N, N, N)],
   // «Просмотр» — роль по умолчанию (и для прежней роли Viewer из таблицы)
-  ['viewer', 'Просмотр', preset(V, V, V, V, V, N, N, V, N, V, N, N)]
+  ['viewer', 'Просмотр', preset(V, V, V, V, V, N, N, V, N, V, N, N, N, N, V)]
 ];
 export const DEFAULT_ROLE = 'viewer';
 
@@ -127,6 +129,18 @@ for (const section of ['crm', 'marketing']) {
     if (!perms[section]) q.updateRole.run(owner.name, JSON.stringify({ ...perms, [section]: 'edit' }), now(), owner.id);
   }
   db.setSetting(`access_${section}_section`, '1');
+}
+
+// Раздел «Прайс» появился позже: один раз открываем его в уже созданных ролях —
+// владельцу «меняет», менеджеру, финансисту и «Просмотру» — «смотрит»
+if (db.getSetting('access_price_section') !== '1') {
+  for (const [roleId, level] of [['owner', 'edit'], ['manager', 'view'], ['finance', 'view'], ['viewer', 'view']]) {
+    const role = q.role.get(roleId);
+    if (!role) continue;
+    const perms = JSON.parse(role.perms || '{}');
+    if (!perms.price) q.updateRole.run(role.name, JSON.stringify({ ...perms, price: level }), now(), role.id);
+  }
+  db.setSetting('access_price_section', '1');
 }
 
 /** Уровни роли по всем разделам (неизвестное и недопустимое — «нет доступа») */

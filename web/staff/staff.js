@@ -94,12 +94,13 @@
   ICONS.finance = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg>';
   ICONS.crm = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm-8 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5C15 14.17 10.33 13 8 13zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>';
   ICONS.marketing = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M18 11v2h4v-2h-4zm-2 6.61c.96.71 2.21 1.65 3.2 2.39.4-.53.8-1.07 1.2-1.6-.99-.74-2.24-1.68-3.2-2.4-.4.54-.8 1.08-1.2 1.61zM20.4 5.6c-.4-.53-.8-1.07-1.2-1.6-.99.74-2.24 1.68-3.2 2.4.4.53.8 1.07 1.2 1.6.96-.72 2.21-1.65 3.2-2.4zM4 9c-1.1 0-2 .9-2 2v2c0 1.1.9 2 2 2h1v4h2v-4h1l5 3V6L8 9H4zm11.5 3c0-1.33-.58-2.53-1.5-3.35v6.69c.92-.81 1.5-2.01 1.5-3.34z"/></svg>';
-  const ALL_TABS = ['overview', 'fleet', 'journal', 'calendar', 'requests', 'crm', 'marketing', 'finance', 'site', 'server', 'access'];
+  ICONS.price = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M21.41 11.58l-9-9A2 2 0 0 0 11 2H4a2 2 0 0 0-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58s1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41s-.23-1.06-.59-1.42zM5.5 7A1.5 1.5 0 1 1 7 5.5 1.5 1.5 0 0 1 5.5 7z"/></svg>';
+  const ALL_TABS = ['overview', 'fleet', 'price', 'journal', 'calendar', 'requests', 'crm', 'marketing', 'finance', 'site', 'server', 'access'];
   // Внизу на телефоне помещается 6 кнопок; если вкладок больше — последние уходят в «Ещё»
   const BOTTOM_MAX = 6;
   // Вкладка видна, если у роли есть хотя бы одно из этих прав (настраивает админ на вкладке «Доступы»)
   const TAB_PERMISSION = {
-    overview: ['overview.view'], fleet: ['fleet.view'], calendar: ['calendar.view'], requests: ['requests.view'],
+    overview: ['overview.view'], fleet: ['fleet.view'], price: ['price.view'], calendar: ['calendar.view'], requests: ['requests.view'],
     journal: ['journal.view', 'timesheet.view', 'reconcile.view', 'whatsapp.view'],
     crm: ['crm.view'], marketing: ['marketing.view'], finance: ['finance.view'], site: ['site.view'], server: ['server.view'], access: ['access.admin']
   };
@@ -602,6 +603,7 @@
     if (tab === 'finance') finance.load();
     if (tab === 'crm') crm.load();
     if (tab === 'marketing') marketing.load();
+    if (tab === 'price') price.load();
     if (tab === 'site' && !state.models) loadModels();
     if (tab === 'server') startServerPolling();
     else stopServerPolling();
@@ -632,6 +634,8 @@
     if (state.tab === 'crm') view.innerHTML = crm.render();
     // Во время правки источника фоновое обновление вкладку не трогает (не теряем введённое)
     if (state.tab === 'marketing' && (!view.querySelector('.mk') || marketing.canRefresh())) { view.innerHTML = marketing.render(); marketing.mount(); }
+    // Прайс: пока есть несохранённые правки цен, фоновое обновление вкладку не трогает
+    if (state.tab === 'price' && (!view.querySelector('.pr') || price.canRefresh())) view.innerHTML = price.render();
     // Роли не открыт ни один раздел — подсказка вместо пустого экрана
     if (!tabs().length) view.innerHTML = `<div class="empty">${esc(t('app.noSections'))}</div>`;
   }
@@ -652,6 +656,15 @@
   const marketing = window.STAFF_MARKETING.create({
     api, esc, can,
     rerender: () => { if (state.tab === 'marketing') { $('#view').innerHTML = marketing.render(); marketing.mount(); } }
+  });
+
+  /* -------------------------------------------------------- Вкладка «Прайс» */
+
+  const price = window.STAFF_PRICE.create({
+    api, t, esc, can, money, dateTime,
+    locale: () => LOCALES[lang],
+    seasonName: (name) => (I18N.en[`season.${name}`] ? t(`season.${name}`) : name),
+    rerender: () => { if (state.tab === 'price') $('#view').innerHTML = price.render(); }
   });
 
   /* ---------------------------------------------------------- Вкладка «CRM» */
@@ -774,7 +787,7 @@
   const priceOf = (car) => state.fleet?.prices?.[car.model] || null;
   const tariffOf = (car) => state.fleet?.tariffs?.[car.id] || null;
   const seasonName = (name) => (I18N.en[`season.${name}`] ? t(`season.${name}`) : name);
-  const tierLabels = () => ['1–2', '3–6', '7–13', '14–30', '31+'].map((range) => `${range} ${t('unit.d')}`);
+  const tierLabels = () => ['1–2', '3–6', '7–13', '14–27', '28+'].map((range) => `${range} ${t('unit.d')}`);
 
   function filteredCars() {
     const q = state.filters.q.trim().toLowerCase();
@@ -1841,6 +1854,7 @@
       if (state.tab === 'finance' && finance.onClick(event)) return;
       if (state.tab === 'crm' && crm.onClick(event)) return;
       if (state.tab === 'marketing' && marketing.onClick(event)) return;
+      if (state.tab === 'price' && price.onClick(event)) return;
       if (event.target.closest('[data-more]')) {
         state.moreOpen = !state.moreOpen;
         return renderTabs();
@@ -1860,6 +1874,10 @@
         if (problem.dataset.problem === 'journal') {
           setTab('journal');
           return journal.show({ plate: problem.dataset.q || '' });
+        }
+        if (problem.dataset.problem === 'price') {
+          price.show({ q: problem.dataset.q || '' });
+          return setTab('price');
         }
         state.filters = { q: problem.dataset.q || '', type: 'all', status: 'all' };
         if (problem.dataset.problem === 'requests') state.reqFilter = 'new';
@@ -1937,6 +1955,7 @@
       if (state.tab === 'access') access.onChange(event);
       if (state.tab === 'finance') finance.onChange(event);
       if (state.tab === 'crm') crm.onChange(event);
+      if (state.tab === 'price') price.onChange(event);
     });
     // Ссылка вида …/#journal или кнопки «назад/вперёд» — открыть эту вкладку
     window.addEventListener('hashchange', () => {
@@ -1947,6 +1966,7 @@
     document.addEventListener('input', (event) => {
       if (state.tab === 'journal' && journal.onInput(event)) return;
       if (state.tab === 'crm' && crm.onInput(event)) return;
+      if (state.tab === 'price' && price.onInput(event)) return;
       if (!event.target.matches('[data-search]')) return;
       state.filters.q = event.target.value;
       const caret = event.target.selectionStart;
@@ -1968,6 +1988,7 @@
       if (state.tab === 'finance' && finance.onSubmit(event)) return;
       if (state.tab === 'crm' && crm.onSubmit(event)) return;
       if (state.tab === 'marketing' && marketing.onSubmit(event)) return;
+      if (state.tab === 'price' && price.onSubmit(event)) return;
       const soldForm = event.target.closest('[data-sold-form]');
       if (soldForm) {
         event.preventDefault();

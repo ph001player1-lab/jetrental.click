@@ -14,6 +14,7 @@
 
 import { getRows, getValues, sheetsEnabled } from './google/sheets.js';
 import { parsePrice, buildPricing, priceSheetNames, SEASONS_SHEET, quotePlate } from './pricing.js';
+import { priceActive, importFromSheets, buildPortalPricing, priceFromByModel } from './price.js';
 import { listActiveRequests } from './db.js';
 import * as ws from './ws/api.js';
 import { isSold, rememberSoldModels } from './sold.js';
@@ -98,11 +99,14 @@ async function loadFleetAll() {
   if (cache && Date.now() - cache.loadedAt < CACHE_MS) return cache;
 
   try {
-    const [vehicleRows, catalogRows, pricing] = await Promise.all([
+    // Цены — из вкладки «Прайс» портала; листы цен таблицы читаем, только пока прайс не перенесён
+    const portal = priceActive();
+    const [vehicleRows, catalogRows, sheetPricing] = await Promise.all([
       getRows(VEHICLES_SHEET),
       getRows(CATALOG_SHEET).catch(() => []),
-      loadPricing().catch(() => null)
+      portal ? Promise.resolve(null) : loadPricing().catch(() => null)
     ]);
+    let pricing = sheetPricing;
 
     const catalog = new Map();
     for (const row of catalogRows) {
@@ -139,6 +143,17 @@ async function loadFleetAll() {
         rentTo: parseSheetDate(row[VEHICLE_COL.rentTo])
       };
     });
+
+    // Первый раз — переносим прайс из таблицы в портал (новые сезоны, ступень 28+)
+    if (!portal && sheetPricing) {
+      try { importFromSheets(sheetPricing, units, plateKey); } catch (err) { console.error('Price import failed:', err.message); }
+    }
+    if (priceActive()) {
+      pricing = buildPortalPricing(units, plateKey);
+      // «Цена от» на сайте — из прайса: самая низкая цена 28+ дней
+      const from = priceFromByModel();
+      for (const [model, entry] of catalog) if (from.has(model)) entry.priceFrom = from.get(model);
+    }
 
     cache = { loadedAt: Date.now(), units, catalog, pricing };
     lastError = null;

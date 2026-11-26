@@ -36,8 +36,9 @@ import { HttpError, sendJson, readJson, readBody, parseCookies, clientIp, rateLi
 import { findStaff, normalizeEmail, isValidEmail, adminList, isAdminEmail } from './staffUsers.js';
 import { mailEnabled, sendMail } from './mail.js';
 import { getWsSnapshot, wsSyncStatus } from './ws/sync.js';
-import { getFleet, sheetsEnabled, plateKey } from './fleet.js';
-import { tariffOn } from './pricing.js';
+import { getFleet, sheetsEnabled, plateKey, invalidateFleet } from './fleet.js';
+import { tariffOn, quotePlate } from './pricing.js';
+import { priceActive, priceView, applyChanges, revertChange, PriceError } from './price.js';
 import { todayIso } from './dates.js';
 import { canEdit, listModels, saveDescription, uploadPhoto, uploadThumb, saveGallery } from './staffCatalog.js';
 import { resetCatalog } from './publicApi.js';
@@ -318,6 +319,62 @@ async function requests(req, res) {
   sendJson(res, 200, { requests: rows, canManage: can(staff, 'access.admin') });
 }
 
+/* ------------------------------------------------------------- Прайс */
+
+async function priceRoute(staff, req, res) {
+  needAny(staff, ['price.view']);
+  if (!priceActive()) return sendJson(res, 200, { active: false, canEdit: can(staff, 'price.edit') });
+  const { units, catalog } = await getFleet();
+  sendJson(res, 200, {
+    active: true,
+    canEdit: can(staff, 'price.edit'),
+    ...priceView(units, (model) => catalog.get(model)?.type || null, plateKey)
+  });
+}
+
+/** Сохранить подтверждённые изменения цен и сезонов — только «Прайс: меняет» */
+async function priceSave(staff, req, res) {
+  if (!can(staff, 'price.edit')) throw new HttpError(403, 'read_only');
+  const body = await readJson(req, 512 * 1024);
+  try {
+    const result = applyChanges(body, { email: staff.email, name: staff.name || staff.email });
+    invalidateFleet();
+    console.log(`Price changed by ${staff.email}: ${result.count} change(s) — ${result.summary}`);
+    sendJson(res, 200, { ok: true, ...result });
+  } catch (err) {
+    if (err instanceof PriceError) throw new HttpError(400, err.code);
+    throw err;
+  }
+}
+
+async function priceRevert(staff, req, res) {
+  if (!can(staff, 'price.edit')) throw new HttpError(403, 'read_only');
+  const { id } = await readJson(req);
+  try {
+    const result = revertChange(Number(id), { email: staff.email, name: staff.name || staff.email });
+    invalidateFleet();
+    console.log(`Price change #${id} reverted by ${staff.email}`);
+    sendJson(res, 200, { ok: true, ...result });
+  } catch (err) {
+    if (err instanceof PriceError) throw new HttpError(400, err.code);
+    throw err;
+  }
+}
+
+/** Калькулятор: модель и даты → цена (самая дешёвая машина модели), как считает бот */
+async function priceQuote(staff, req, res, url) {
+  needAny(staff, ['price.view']);
+  const model = String(url.searchParams.get('model') || '');
+  const from = String(url.searchParams.get('from') || '');
+  const to = String(url.searchParams.get('to') || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || to <= from) throw new HttpError(400, 'bad_dates');
+  const { units, pricing } = await getFleet();
+  const quotes = units.filter((u) => u.model === model)
+    .map((u) => quotePlate(pricing, plateKey(u.plate), from, to)).filter(Boolean)
+    .sort((a, b) => a.total - b.total);
+  sendJson(res, 200, { model, from, to, days: Math.round((Date.parse(to) - Date.parse(from)) / 86400000), quote: quotes[0] || null });
+}
+
 /** Админ: заявку в архив (убрать из работы, в статистике остаётся) или обратно */
 async function requestArchive(staff, req, res) {
   if (!can(staff, 'access.admin')) throw new HttpError(403, 'admin_only');
@@ -539,6 +596,10 @@ const ROUTES = {
   'GET /api/staff/fleet': fleet,
   'GET /api/staff/requests': requests,
   'POST /api/staff/requests/archive': signedIn(requestArchive),
+  'GET /api/staff/price': signedIn(priceRoute),
+  'POST /api/staff/price/save': signedIn(priceSave),
+  'POST /api/staff/price/revert': signedIn(priceRevert),
+  'GET /api/staff/price/quote': signedIn(priceQuote),
   'POST /api/staff/requests/delete': signedIn(requestDelete),
   'GET /api/staff/dashboard': dashboard,
   'GET /api/staff/models': signedIn(listModels),

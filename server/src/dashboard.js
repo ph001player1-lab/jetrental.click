@@ -200,10 +200,47 @@ function seasonGaps(seasons) {
 
 const dm = (md) => `${md.slice(3)}.${md.slice(0, 2)}`;
 
+/** Прайс в портале: проблемы по моделям и сезонам — со ссылкой на вкладку «Прайс» */
+function portalPriceProblems(tx, fleet) {
+  const { pricing } = fleet;
+  const problems = [];
+  const seasonNames = (keys) => [...new Set(keys.map((k) => pricing.seasons.find((s) => s.sheet === k)?.name || k))]
+    .map((name) => { const label = tx.t(`season.${name}`); return `“${label === `season.${name}` ? name : label}”`; }).join(tx.t('list.sep'));
+  const sheets = [...new Set(pricing.seasons.map((s) => s.sheet))];
+  const byModel = new Map();
+  for (const unit of fleet.units) {
+    const plate = plateKey(unit.plate);
+    if (!plate || !unit.model) continue;
+    if (!byModel.has(unit.model)) byModel.set(unit.model, []);
+    byModel.get(unit.model).push(plate);
+  }
+  for (const [model, plates] of byModel) {
+    const entries = (sheet) => plates.map((p) => pricing.prices.get(sheet)?.get(p));
+    const missing = sheets.filter((sheet) => entries(sheet).some((e) => !e));
+    const empty = sheets.filter((sheet) => entries(sheet).some((e) => e && e.tiers.some((p) => !p)));
+    const typos = sheets.filter((sheet) => entries(sheet).some((e) => e?.suspicious));
+    const car = `${model} · ${plates.length}`;
+    const target = { tab: 'price', q: model };
+    if (missing.length || empty.length) {
+      problems.push({ group: 'prices', level: 'warning', target, title: tx.t('noPrice.title', { car }), detail: tx.t('noPrice.detailP', { seasons: seasonNames([...missing, ...empty]) }) });
+    }
+    if (typos.length) problems.push({ group: 'prices', level: 'warning', target, title: tx.t('typo.title', { car }), detail: tx.t('typo.detailP', { seasons: seasonNames(typos) }) });
+  }
+  for (const name of [...new Set(pricing.seasons.filter((s) => !s.verified).map((s) => s.name))]) {
+    const label = tx.t(`season.${name}`);
+    problems.push({ group: 'prices', level: 'warning', target: { tab: 'price' }, title: tx.t('unverified.title', { name: label === `season.${name}` ? name : label }), detail: tx.t('unverified.detailP') });
+  }
+  for (const [from, to] of seasonGaps(pricing.seasons)) {
+    problems.push({ group: 'prices', level: 'warning', target: { tab: 'price' }, title: tx.t('seasonGap.title', { range: from === to ? dm(from) : `${dm(from)}–${dm(to)}` }), detail: tx.t('seasonGap.detailP') });
+  }
+  return problems;
+}
+
 function priceProblems(tx, fleet) {
   const problems = [];
   const pricing = fleet?.pricing;
   if (!pricing) return problems;
+  if (pricing.source === 'portal') return portalPriceProblems(tx, fleet);
   const sheets = [...new Set(pricing.seasons.map((s) => s.sheet))];
   const quoted = (list) => list.map((s) => `“${s}”`).join(tx.t('list.sep'));
   for (const unit of fleet.units) {
