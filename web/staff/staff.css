@@ -1094,8 +1094,17 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
 .mk-table tbody tr { cursor: pointer; }
 .mk-table tbody tr:hover td { background: var(--surface-2); }
 .mk-table tfoot td { font-weight: 700; border-bottom: 0; }
+/* WhatsApp-бот компании */
+.mk-wa { display: grid; gap: 6px; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); }
+.mk-wa .btn { justify-self: start; }
+.mk-radio { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; }
+.mk-radio input { margin-top: 3px; }
+.mk-how { font-size: 14px; }
+.mk-how summary { cursor: pointer; font-weight: 600; }
+.mk-how ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 4px; color: var(--muted); }
 /* Подробности верхнего блока — окно с таблицами */
 .mk-sheet { width: min(1000px, calc(100% - 16px)); }
+.mk-sheet--narrow { width: min(600px, calc(100% - 16px)); }
 .mk-detail { gap: 14px; }
 .mk-dsec { display: grid; gap: 6px; min-width: 0; }
 .mk-dsec h4 { margin: 0; font-size: 15px; }

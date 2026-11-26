@@ -34,6 +34,11 @@ const TEXTS = {
     'test.by': 'создал(а) {name}',
     'hello': '👋 Здравствуйте! Я помощник по заявкам на аренду.\nЧтобы заявки приходили в эту группу, администратор отправляет /bind',
     'cmd.bind': 'Получать заявки в эту группу',
+    // Рабочая группа WhatsApp (пишет WhatsApp-бот компании)
+    'wa.takeHint': '👉 Взять заявку — ответьте на это сообщение «+». Не можете — «-».',
+    'wa.alreadyTaken': 'Заявку #{id} уже взял(а): {name}',
+    'wa.takenElsewhere': '✅ Заявку #{id} взял(а): {name}',
+    'wa.manager': '💬 Клиент просит менеджера: {who}\nОтветьте ему в WhatsApp компании (с телефона или из WhatsApp Web).',
     'cmd.test': 'Тестовая заявка',
     'cmd.summary': 'Сводка: брони и предупреждения',
 
@@ -56,6 +61,7 @@ const TEXTS = {
     'alert.loginMail': '🔴 <b>Коды входа на сайт сотрудников не отправляются</b>\nОтвет почтового сервиса: {error}\nПроверьте resend.com → Domains (домен подтверждён?) и API Keys (ключ с правом отправки для jetmobility.org).',
     'alert.waUnreadable': '🟠 <b>Наблюдатель WhatsApp не смог прочитать сообщений из рабочей группы: {n}</b>. WhatsApp их не дослал. Чтобы журнал был полным, загрузите выгрузку чата: «Журнал → WhatsApp → Загрузить историю».',
     'alert.waDown': '🔴 <b>Наблюдатель WhatsApp не на связи</b> больше 15 минут — журнал рабочей группы не пополняется. Проверьте телефон с номером-наблюдателем (интернет, WhatsApp) и вкладку «Журнал → WhatsApp».',
+    'alert.wabotDown': '🔴 <b>WhatsApp-бот для клиентов не на связи</b> больше 15 минут — клиентам в WhatsApp компании бот не отвечает. Проверьте телефон с номером компании (интернет, WhatsApp) и «Маркетинг → Офис → WhatsApp-бот».',
     'alert.first': '✅ <b>Оповещения о сервере включены</b> (версия {version}). Сюда придут сообщения о трафике, месте на диске и перезапусках бота.',
     'alert.updated': '✅ <b>Обновление установлено</b>: версия {version} (была {previous}). Бот работает.',
     'alert.rebooted': '🔄 <b>Сервер перезагрузился</b>, бот снова работает (версия {version}).',
@@ -88,6 +94,10 @@ const TEXTS = {
     'test.by': 'created by {name}',
     'hello': '👋 Hi! I’m the rental requests assistant.\nTo receive new requests in this group, an admin sends /bind',
     'cmd.bind': 'Receive requests in this group',
+    'wa.takeHint': '👉 To take this request, reply to this message with “+”. Can’t — “-”.',
+    'wa.alreadyTaken': 'Request #{id} is already taken by {name}',
+    'wa.takenElsewhere': '✅ Request #{id} taken by {name}',
+    'wa.manager': '💬 A client asks for a manager: {who}\nReply in the company WhatsApp (phone or WhatsApp Web).',
     'cmd.test': 'Test request',
     'cmd.summary': 'Summary: bookings and warnings',
 
@@ -109,6 +119,7 @@ const TEXTS = {
     'alert.loginMail': '🔴 <b>Staff login codes are not being sent</b>\nMail service response: {error}\nCheck resend.com → Domains (is the domain verified?) and API Keys (sending access for jetmobility.org).',
     'alert.waUnreadable': '🟠 <b>The WhatsApp observer could not read {n} message(s) from the work group</b>, and WhatsApp did not re-send them. To keep the journal complete, upload a chat export: Journal → WhatsApp → Upload history.',
     'alert.waDown': '🔴 <b>WhatsApp observer offline</b> for more than 15 minutes — the work group journal is not updating. Check the observer phone (internet, WhatsApp) and Journal → WhatsApp.',
+    'alert.wabotDown': '🔴 <b>The WhatsApp client bot is offline</b> for more than 15 minutes — clients writing to the company WhatsApp get no bot replies. Check the company phone (internet, WhatsApp) and Marketing → Office → WhatsApp bot.',
     'alert.first': '✅ <b>Server alerts are on</b> (version {version}). Messages about traffic, disk space and bot restarts will come here.',
     'alert.updated': '✅ <b>Update installed</b>: version {version} (was {previous}). The bot is running.',
     'alert.rebooted': '🔄 <b>The server rebooted</b>, the bot is running again (version {version}).',

@@ -92,7 +92,9 @@ export const config = {
   internal: {
     secret: process.env.INTERNAL_SECRET || '',
     port: Number(process.env.INTERNAL_PORT) || 3001,
-    observerUrl: (process.env.OBSERVER_URL || 'http://observer:3100').replace(/\/+$/, '')
+    observerUrl: (process.env.OBSERVER_URL || 'http://observer:3100').replace(/\/+$/, ''),
+    // WhatsApp-бот для клиентов (контейнер wabot, номер компании)
+    wabotUrl: (process.env.WABOT_URL || 'http://wabot:3200').replace(/\/+$/, '')
   },
 
   telegram: {

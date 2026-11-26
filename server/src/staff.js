@@ -22,6 +22,7 @@ import { sendText as waSendText } from './whatsapp/api.js';
 import { tg, sendMessage, inlineKeyboard, answerCallback, displayName, parseCommand } from './telegram/api.js';
 import { sendMorningSummary } from './morning.js';
 import { g } from './groupTexts.js';
+import { postRequestToWaGroup, noteTakenInWaGroup, wabotSend } from './wabot.js';
 
 export function getStaffChatId() {
   return config.telegram.staffChatId || db.getSetting('staff_chat_id');
@@ -59,24 +60,32 @@ function staffButtons(request) {
 }
 
 /**
- * Новая заявка уходит в рабочую группу и копией в Google-таблицу.
- * Возвращает false, если группа ещё не подключена.
+ * Новая заявка уходит в рабочие группы (WhatsApp — через бот компании,
+ * Telegram — если подключена) и копией в Google-таблицу.
+ * Возвращает false, если ни одна группа ещё не подключена.
  */
 export async function publishRequest(request) {
   await mirrorNewRequest(request);
 
+  let inWhatsApp = false;
+  try {
+    inWhatsApp = await postRequestToWaGroup(request);
+  } catch (err) {
+    console.error(`Request #${request.id}: WhatsApp group post failed:`, err.message);
+  }
+
   const chatId = getStaffChatId();
   if (!chatId) {
-    console.warn(`Request #${request.id}: staff group is not bound yet (send /bind in the group)`);
-    return false;
+    if (!inWhatsApp) console.warn(`Request #${request.id}: no staff group yet (choose a WhatsApp group or send /bind in Telegram)`);
+    return inWhatsApp;
   }
   const message = await sendToStaffGroup(formatStaffRequest(request), { reply_markup: staffButtons(request) });
   db.setStaffMessage(request.id, chatId, message.message_id);
   return true;
 }
 
-async function refreshStaffMessage(request) {
-  if (!request.staff_chat_id || !request.staff_message_id) return;
+export async function refreshStaffMessage(request) {
+  if (!request?.staff_chat_id || !request.staff_message_id) return;
   try {
     await tg('editMessageText', {
       chat_id: request.staff_chat_id,
@@ -98,7 +107,30 @@ async function notifyClientTaken(request) {
     await sendMessage(request.client_chat_id, t(request.lang, 'manager_taken', { id: request.id, name }));
   } else if (request.channel === 'whatsapp') {
     const name = `*${request.taken_by_name}*`;
-    await waSendText(request.client_chat_id, t(request.lang, 'manager_taken', { id: request.id, name }));
+    const text = t(request.lang, 'manager_taken', { id: request.id, name });
+    // Клиент писал на номер компании (WhatsApp-бот) — у него в чате адрес вида …@s.whatsapp.net
+    if (String(request.client_chat_id).includes('@')) await wabotSend(request.client_chat_id, text);
+    else await waSendText(request.client_chat_id, text);
+  }
+}
+
+/**
+ * Заявку взяли (кнопкой в Telegram или ответом «+» в группе WhatsApp):
+ * обновить карточку, сказать клиенту, отметить в таблице и в другой группе
+ */
+export async function onRequestTaken(request, via) {
+  const steps = [
+    ['Telegram card refresh', () => refreshStaffMessage(request)],
+    ['client notice', () => notifyClientTaken(request)],
+    ['sheet mirror', () => mirrorRequestStatus(request)],
+    ...(via !== 'wa' ? [['WhatsApp group note', () => noteTakenInWaGroup(request)]] : [])
+  ];
+  for (const [what, step] of steps) {
+    try {
+      await step();
+    } catch (err) {
+      console.error(`Request #${request.id}: ${what} failed:`, err.message);
+    }
   }
 }
 
@@ -115,10 +147,8 @@ export async function handleStaffCallback(query, action, requestId) {
       return answerCallback(query, g('cb.alreadyTaken', { name: db.getRequest(request.id).taken_by_name }));
     }
     const taken = db.getRequest(request.id);
-    await refreshStaffMessage(taken);
     await answerCallback(query, g('cb.yours', { id: taken.id }));
-    await notifyClientTaken(taken);
-    await mirrorRequestStatus(taken);
+    await onRequestTaken(taken, 'tg');
     return;
   }
 

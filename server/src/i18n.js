@@ -175,6 +175,16 @@ const TEXTS = {
     th: 'ตอนนี้บอทเข้าใจเฉพาะข้อความและปุ่มค่ะ 🙏 กรุณาพิมพ์ข้อความ หรือพิมพ์ “menu”',
     zh: '目前我只能识别文字和按钮 🙏 请发送文字消息，或输入“menu”。'
   },
+  // WhatsApp компании: варианты списком — клиент отвечает цифрой
+  reply_number: { en: 'Reply with a number 👆', ru: 'Ответьте цифрой 👆', th: 'ตอบเป็นตัวเลขได้เลยค่ะ 👆', zh: '请回复数字 👆' },
+  lang_hint: { en: '🌐 Other language: type “lang”', ru: '🌐 Другой язык: напишите «lang»', th: '🌐 เปลี่ยนภาษา: พิมพ์ “lang”', zh: '🌐 更换语言：输入“lang”' },
+  talk_manager: { en: '💬 Talk to a manager', ru: '💬 Связаться с менеджером', th: '💬 คุยกับเจ้าหน้าที่', zh: '💬 联系客服' },
+  manager_soon: {
+    en: 'Got it! A manager will reply to you here soon 👌',
+    ru: 'Хорошо! Менеджер скоро ответит вам здесь 👌',
+    th: 'รับทราบค่ะ! เจ้าหน้าที่จะตอบกลับที่นี่เร็วๆ นี้ 👌',
+    zh: '好的！客服会尽快在这里回复您 👌'
+  },
   manager_taken: {
     en: '👋 Manager {name} is handling your request #{id}. We\'ll contact you soon!',
     ru: '👋 Вашей заявкой #{id} занимается менеджер {name}. Скоро свяжемся с вами!',

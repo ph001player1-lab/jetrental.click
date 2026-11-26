@@ -183,7 +183,9 @@ for (const [name, type] of [
   // Откуда пришёл клиент: код реферальной ссылки и домен сайта (вкладка «Маркетинг»)
   ['source_ref', 'TEXT'], ['site_host', 'TEXT'],
   // Ответ клиента боту «откуда вы о нас узнали», если источник не определился
-  ['heard_from', 'TEXT']
+  ['heard_from', 'TEXT'],
+  // Карточка заявки в рабочей группе WhatsApp (на неё отвечают «+», чтобы взять)
+  ['wa_group_id', 'TEXT'], ['wa_group_message_id', 'TEXT']
 ]) {
   if (!requestColumns.includes(name)) db.exec(`ALTER TABLE requests ADD COLUMN ${name} ${type}`);
 }
@@ -274,6 +276,15 @@ export function setStaffMessage(id, chatId, messageId) {
  * Атомарно закрепляет заявку за сотрудником. Возвращает true, только если
  * заявка была свободна — два человека не могут взять одну заявку.
  */
+export function setWaGroupMessage(id, groupId, messageId) {
+  db.prepare('UPDATE requests SET wa_group_id = ?, wa_group_message_id = ? WHERE id = ?').run(String(groupId), String(messageId), Number(id));
+}
+
+export function requestByWaGroupMessage(messageId) {
+  if (!messageId) return null;
+  return db.prepare('SELECT * FROM requests WHERE wa_group_message_id = ?').get(String(messageId)) || null;
+}
+
 export function takeRequest(id, userId, userName) {
   const result = db.prepare(`
     UPDATE requests SET status = 'taken', taken_by_id = ?, taken_by_name = ?, taken_at = ?

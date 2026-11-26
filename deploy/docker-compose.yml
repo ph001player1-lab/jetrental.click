@@ -5,6 +5,7 @@
 #           и проксирует страницы, API и вебхуки в bot
 #   bot   — наш Node.js-сервер (папка server/)
 #   observer — наблюдатель рабочей группы WhatsApp (папка observer/)
+#   wabot — WhatsApp-бот для клиентов на номере компании (папка wabot/)
 #
 # Секреты (токены, ключи) — только в /opt/kokon/.env на сервере, НЕ в git.
 # Запуск и обновление: bash /opt/kokon/app/deploy/update.sh
@@ -86,6 +87,21 @@ services:
     depends_on:
       - bot
 
+  # WhatsApp-бот для клиентов (wabot/): номер компании как «связанное
+  # устройство». Пишет только в ответ клиентам и в выбранную рабочую группу.
+  # Как и наблюдатель — без секретов бота и без портов наружу.
+  wabot:
+    build: ../wabot
+    restart: unless-stopped
+    environment:
+      DATA_DIR: /data
+      BOT_INTERNAL_URL: http://bot:3001
+      INTERNAL_SECRET: ${INTERNAL_SECRET:-}
+    volumes:
+      - wabot_data:/data
+    depends_on:
+      - bot
+
 volumes:
   caddy_data:
   caddy_config:
@@ -93,3 +109,4 @@ volumes:
   bot_data:
   site_uploads:
   observer_data:
+  wabot_data:

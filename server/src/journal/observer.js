@@ -23,6 +23,7 @@ import { HttpError, sendJson, readJson, readBody } from '../http.js';
 import { can } from '../roles.js';
 import * as db from '../db.js';
 import * as journal from './journal.js';
+import { handleWabotInternal } from '../wabot.js';
 
 const MAX_MESSAGE_BYTES = 256 * 1024;
 const MAX_MEDIA_BYTES = 25 * 1024 * 1024;
@@ -75,6 +76,8 @@ function authorized(req) {
 async function handleInternal(req, res) {
   const url = new URL(req.url, 'http://bot');
   if (req.method !== 'POST' || !authorized(req)) return sendJson(res, 403, { error: 'forbidden' });
+  // WhatsApp-бот для клиентов (контейнер wabot) — тот же секрет, свой модуль
+  if (url.pathname.startsWith('/internal/wabot/')) return handleWabotInternal(req, res, url);
 
   if (url.pathname === '/internal/wa/message') {
     const body = await readJson(req, MAX_MESSAGE_BYTES);

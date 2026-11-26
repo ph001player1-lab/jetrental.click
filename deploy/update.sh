@@ -47,7 +47,7 @@ main() {
     echo "Старые адреса jetrental.click в /opt/kokon/.env отключены"
   fi
 
-  # Наблюдателю передаём только этот секрет, остальные секреты ему не нужны
+  # Наблюдателю и WhatsApp-боту передаём только этот секрет, остальные им не нужны
   INTERNAL_SECRET="$(grep '^INTERNAL_SECRET=' "$env_file" | tail -1 | cut -d= -f2-)"
   export INTERNAL_SECRET
 

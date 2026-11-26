@@ -52,6 +52,7 @@ import { g } from './groupTexts.js';
 import { escapeHtml } from './format.js';
 import { getJournal, fixEvent, getTimesheet, getReconcile, getMedia, importHistory } from './journal/api.js';
 import { waStatus, waConfig, waPair, waLogout } from './journal/observer.js';
+import { wabotPortalStatus, wabotPortalSettings, wabotPortalConfig, wabotPortalPair, wabotPortalLogout } from './wabot.js';
 import { groupStatusByPlate } from './journal/reconcile.js';
 
 const COOKIE = 'jr_staff';
@@ -528,6 +529,12 @@ const ROUTES = {
   'POST /api/staff/wa/config': signedIn(waConfig),
   'POST /api/staff/wa/pair': signedIn(waPair),
   'POST /api/staff/wa/logout': signedIn(waLogout),
+  // WhatsApp-бот для клиентов (номер компании) — «Маркетинг» → «Офис»
+  'GET /api/staff/wabot': signedIn(wabotPortalStatus),
+  'POST /api/staff/wabot/settings': signedIn(wabotPortalSettings),
+  'POST /api/staff/wabot/config': signedIn(wabotPortalConfig),
+  'POST /api/staff/wabot/pair': signedIn(wabotPortalPair),
+  'POST /api/staff/wabot/logout': signedIn(wabotPortalLogout),
   'GET /api/staff/access': signedIn(accessGet),
   'POST /api/staff/access/role': signedIn(accessRole),
   'POST /api/staff/access/role/delete': signedIn(accessRoleDelete),

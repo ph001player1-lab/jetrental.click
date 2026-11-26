@@ -31,6 +31,7 @@ import { trafficReport, startTraffic, trafficSettings, saveTrafficSettings } fro
 import { g, groupLocale } from './groupTexts.js';
 import { LIMITS } from './dashboard.js';
 import { observerStatus } from './journal/observer.js';
+import { wabotStatus } from './wabot.js';
 
 const SAMPLE_MS = 10 * 1000;
 const HISTORY_MINUTES = 60;
@@ -415,6 +416,14 @@ async function checkAlerts(now = Date.now()) {
   } else if (wa.everLinked && downSince && now - Date.parse(downSince) > 15 * 60000 && db.getSetting('alert_wa_down') !== '1') {
     await notifyAdmins(g('alert.waDown') + link);
     db.setSetting('alert_wa_down', '1');
+  }
+  // WhatsApp-бот для клиентов молчит дольше 15 минут (его подключали и не отвязывали) — один раз
+  const bot = wabotStatus(now);
+  if (bot.connected) {
+    if (db.getSetting('alert_wabot_down') === '1') db.setSetting('alert_wabot_down', '0');
+  } else if (bot.lastOkAt && now - Date.parse(bot.lastOkAt) > 15 * 60000 && db.getSetting('alert_wabot_down') !== '1') {
+    await notifyAdmins(g('alert.wabotDown') + `\n\n👉 ${config.staff.url}/#marketing`);
+    db.setSetting('alert_wabot_down', '1');
   }
   // Сообщения группы не расшифровались, и WhatsApp не дослал их за 15 минут — не чаще раза в 6 часов
   const stuck = (wa.unreadable || []).filter((u) => now - Date.parse(u.ts) > 15 * 60000);
