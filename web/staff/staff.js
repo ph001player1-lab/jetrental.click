@@ -930,7 +930,7 @@
         <div class="sources__row sources__row--head"><span>${esc(t('src.title'))}</span><span>${esc(t('src.today'))}</span><span>${esc(t('src.days30'))}</span></div>
         ${stats.sources.map((s) => `
           <div class="sources__row${s.connected ? '' : ' is-off'}">
-            <span class="sources__name">${SOURCE_ICON[s.id]} ${esc(t(`src.${s.id}`))}<small class="sources__state">${esc(t(s.connected ? 'src.connected' : 'src.off'))}</small></span>
+            <span class="sources__name">${SOURCE_ICON[s.id]} ${esc(t(`src.${s.id}`))}<small class="sources__state${s.error ? ' sources__state--error' : ''}">${s.error ? '🔴 ' : s.connected ? '🟢 ' : ''}${esc(t(s.error ? 'src.error' : s.connected ? 'src.connected' : 'src.off'))}</small></span>
             <span>${s.connected ? s.today : '—'}</span>
             <span>${s.connected ? s.days30 : '—'}</span>
           </div>`).join('')}

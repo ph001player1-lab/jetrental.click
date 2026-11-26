@@ -22,7 +22,7 @@ import { sendText as waSendText } from './whatsapp/api.js';
 import { tg, sendMessage, inlineKeyboard, answerCallback, displayName, parseCommand } from './telegram/api.js';
 import { sendMorningSummary } from './morning.js';
 import { g } from './groupTexts.js';
-import { postRequestToWaGroup, noteTakenInWaGroup, wabotSend, wabotSettings } from './wabot.js';
+import { postRequestToWaGroup, noteTakenInWaGroup, wabotSend, wabotSettings, waGroupChosen } from './wabot.js';
 import { staffNameByTelegram } from './staffUsers.js';
 
 export function getStaffChatId() {
@@ -70,11 +70,16 @@ function staffButtons(request) {
 export async function publishRequest(request) {
   await mirrorNewRequest(request);
 
+  // Каждый канал отдельно: не дошла — запоминаем причину (видно в «Обзоре»)
   let inWhatsApp = false;
-  try {
-    inWhatsApp = await postRequestToWaGroup(request);
-  } catch (err) {
-    console.error(`Request #${request.id}: WhatsApp group post failed:`, err.message);
+  if (waGroupChosen()) {
+    try {
+      inWhatsApp = await postRequestToWaGroup(request);
+      if (!inWhatsApp) db.setPostError(request.id, 'wa', 'WhatsApp-бот не на связи');
+    } catch (err) {
+      console.error(`Request #${request.id}: WhatsApp group post failed:`, err.message);
+      db.setPostError(request.id, 'wa', err.code || err.message);
+    }
   }
 
   const chatId = getStaffChatId();
@@ -83,9 +88,15 @@ export async function publishRequest(request) {
     return inWhatsApp;
   }
   if (inWhatsApp && !wabotSettings().telegramCopy) return true;
-  const message = await sendToStaffGroup(formatStaffRequest(request), { reply_markup: staffButtons(request) });
-  db.setStaffMessage(request.id, chatId, message.message_id);
-  return true;
+  try {
+    const message = await sendToStaffGroup(formatStaffRequest(request), { reply_markup: staffButtons(request) });
+    db.setStaffMessage(request.id, chatId, message.message_id);
+    return true;
+  } catch (err) {
+    console.error(`Request #${request.id}: Telegram group post failed:`, err.message);
+    db.setPostError(request.id, 'tg', err.message);
+    return inWhatsApp;
+  }
 }
 
 export async function refreshStaffMessage(request) {

@@ -1075,6 +1075,7 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
 .mk-check { font-size: 14px; }
 .mk-danger { color: var(--rent); border-color: var(--rent); }
 .btn--danger-text { color: var(--rent); }
+.sources__state--error { color: var(--rent); font-weight: 600; }
 .mk-list { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
 .mk-lower { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
 .mk-card { padding: 14px 16px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line); min-width: 0; }

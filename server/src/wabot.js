@@ -6,8 +6,10 @@
  *   - входящие от клиентов → общий диалог (client.js), ответ — через wabot;
  *   - заявка → карточкой в выбранную рабочую группу WhatsApp; сотрудник
  *     отвечает на неё «+» — заявка его (или «-» — не может);
- *   - менеджер написал клиенту сам → бот молчит в этом чате 12 часов;
- *     после заявки бот молчит сутки (клиент может написать «меню»).
+ *   - бот отвечает всегда: если у клиента открытая заявка (или он просил
+ *     менеджера), бот говорит, кто ей занимается, и пересылает сообщение
+ *     клиента в рабочую группу; новая заявка — «старт» или «0»;
+ *   - молчит только час, если кто-то написал клиенту прямо с телефона бота.
  * Режимы: off — бот молчит; test — отвечает только тестовым номерам;
  * on — всем, кто написал (и сотрудникам тоже — так проще проверять).
  *
@@ -25,19 +27,24 @@ import { can } from './roles.js';
 import * as db from './db.js';
 import { handleClientText, handleClientChoice, isRestartText } from './client.js';
 import { wabotUi, pickChoice } from './channels/wabot.js';
-import { formatStaffRequest } from './format.js';
-import { t } from './i18n.js';
+import { formatStaffRequest, formatShortDate, escapeHtml } from './format.js';
+import { t, normalizeLanguage } from './i18n.js';
 import { g } from './groupTexts.js';
 import { staffPhones } from './staffUsers.js';
 import { marketingSettings, saveSettings as saveMarketingSettings } from './marketing.js';
-import { onRequestTaken, refreshStaffMessage } from './staff.js';
+import { onRequestTaken, refreshStaffMessage, getStaffChatId, sendToStaffGroup } from './staff.js';
 
 export const wabotConfigured = Boolean(config.internal.secret);
 const STALE_MS = 6 * 60 * 1000;
-const MANUAL_PAUSE_MS = (config.whatsapp.pauseHours || 12) * 3600000;
-const AFTER_REQUEST_PAUSE_MS = 24 * 3600000;
-// «Связаться с менеджером»: бот молчит 2 часа (менеджер написал сам — дальше 12 часов)
-const MANAGER_WAIT_MS = 2 * 3600000;
+// Кто-то написал клиенту прямо с телефона бота — бот молчит час, чтобы не перебивать
+const MANUAL_PAUSE_MS = 3600000;
+// Заявка «открыта» (бот говорит её статус и пересылает сообщения клиента): новая или взятая за 3 дня
+const OPEN_DAYS = 3;
+// «Связаться с менеджером» помним сутки
+const MANAGER_ASK_MS = 24 * 3600000;
+// Полный статус — не чаще раза в 30 минут, между ними «передал менеджеру ✅»
+const STATUS_EVERY_MS = 30 * 60000;
+
 const MODES = ['off', 'test', 'on'];
 
 const status = {
@@ -89,6 +96,8 @@ export function wabotStatus(now = Date.now()) {
     lastInboundAt: status.lastInboundAt,
     // Не расшифровались (WhatsApp досылает сам) — для диагностики
     undecrypted: status.undecrypted,
+    // С какого времени WhatsApp отвечает «rate-overlimit» (null — не ограничивает)
+    limitedAt: status.limitedAt || null,
     // Последний раз на связи (для оповещения «бот молчит»); null — ещё не подключали
     lastOkAt: lastOk || null
   };
@@ -102,7 +111,8 @@ function saveStatus(body) {
     members: new Set((Array.isArray(body.members) ? body.members : []).map(digits).filter(Boolean)),
     lastSeenAt: new Date().toISOString(), lastInboundAt: body.lastInboundAt || null,
     today: body.today?.date ? { date: String(body.today.date).slice(0, 10), received: Number(body.today.received) || 0, sent: Number(body.today.sent) || 0 } : null,
-    undecrypted: Array.isArray(body.undecrypted) ? body.undecrypted.slice(-30) : []
+    undecrypted: Array.isArray(body.undecrypted) ? body.undecrypted.slice(-30) : [],
+    limitedAt: body.limitedAt || null
   });
   if (status.connected) {
     db.setSetting('wabot_last_ok', status.lastSeenAt);
@@ -132,7 +142,23 @@ async function wabotCall(method, pathname, body) {
 }
 
 /** Сообщение в WhatsApp от номера компании: клиенту (jid или номер) или в группу */
+// Последняя неудачная отправка в группу (null — после неё всё ушло) — для «Обзора»
+let groupFailure = null;
+export const wabotGroupFailure = () => groupFailure;
+/** Выбрана ли группа WhatsApp для заявок (по последнему отчёту бота) */
+export const waGroupChosen = () => Boolean(status.groupId);
+
 export async function wabotSend(to, text, quoted = null) {
+  if (String(to).endsWith('@g.us')) {
+    try {
+      const id = (await wabotCall('POST', '/send', { to, text, quoted })).id;
+      groupFailure = null;
+      return id;
+    } catch (err) {
+      groupFailure = { at: new Date().toISOString(), message: err.code || err.message };
+      throw err;
+    }
+  }
   return (await wabotCall('POST', '/send', { to, text, quoted })).id;
 }
 
@@ -179,13 +205,71 @@ function inChat(key, task) {
   return next;
 }
 
+const whoOf = (c) => [c.name, c.phone ? `+${c.phone}` : null].filter(Boolean).join(' · ') || c.jid;
+
 async function askManager(c, lang) {
-  db.pauseChat(c.key, later(MANAGER_WAIT_MS));
+  db.setSetting(`wa_manager:${c.key}`, new Date().toISOString());
   if (status.groupId) {
-    const who = [c.name, c.phone ? `+${c.phone}` : null].filter(Boolean).join(' · ') || c.jid;
-    await wabotSend(status.groupId, g('wa.manager', { who })).catch((err) => console.error('WhatsApp group note failed:', err.message));
+    await wabotSend(status.groupId, g('wa.manager', { who: whoOf(c) })).catch((err) => console.error('WhatsApp group note failed:', err.message));
   }
-  return t(lang, 'manager_soon');
+  return `${t(lang, 'manager_soon')}\n\n${t(lang, 'new_request_hint')}`;
+}
+
+/** Открытое обращение клиента: заявка (новая или взятая за 3 дня) или «Связаться с менеджером» за сутки */
+function openThread(c) {
+  const since = new Date(Date.now() - OPEN_DAYS * 86400000).toISOString();
+  const request = db.openRequestForClient(c.jid, c.phone ? `+${c.phone}` : null, since);
+  if (request) return { kind: 'request', request };
+  const asked = db.getSetting(`wa_manager:${c.key}`);
+  if (asked && Date.now() - Date.parse(asked) < MANAGER_ASK_MS) return { kind: 'manager', at: asked };
+  return null;
+}
+
+const MEDIA_KEYS = { photo: 'wa.media.photo', video: 'wa.media.video', voice: 'wa.media.voice', document: 'wa.media.document', sticker: 'wa.media.sticker', location: 'wa.media.location', contact: 'wa.media.contact' };
+
+/** Сообщение клиента — в рабочую группу (ответом на карточку заявки, если она там есть) */
+async function forwardToGroup(c, thread, body) {
+  const text = String(body.text || '').trim();
+  const what = text ? `«${text.slice(0, 1000)}»` : g(MEDIA_KEYS[body.media] || 'wa.media.other');
+  const r = thread.request;
+  const line = r ? g('wa.clientWrote', { id: r.id, who: whoOf(c), text: what }) : g('wa.clientWroteManager', { who: whoOf(c), text: what });
+  if (status.groupId && wabotStatus().connected) {
+    const quoted = r && r.wa_group_id === status.groupId && r.wa_group_message_id
+      ? { id: r.wa_group_message_id, fromMe: true, text: g('card.title', { id: r.id }).replace(/<[^>]+>/g, '') } : null;
+    return wabotSend(status.groupId, line, quoted);
+  }
+  // WhatsApp-группы нет — в Telegram-группу, чтобы сообщение не потерялось
+  if (getStaffChatId()) return sendToStaffGroup(escapeHtml(line));
+  return null;
+}
+
+/** Клиенту: кто занимается заявкой + «передал менеджеру»; полный статус — не чаще раза в 30 минут */
+async function statusReply(c, ui, thread, body) {
+  const lang = normalizeLanguage(db.getChatLanguage(c.key) || thread.request?.lang);
+  let forwarded = true;
+  try {
+    await forwardToGroup(c, thread, body);
+  } catch (err) {
+    forwarded = false;
+    console.error(`WhatsApp bot: forwarding ${c.key} to the group failed:`, err.message);
+  }
+  const lastAt = Number(db.getSetting(`wa_status:${c.key}`) || 0);
+  const parts = [];
+  if (Date.now() - lastAt > STATUS_EVERY_MS) {
+    const r = thread.request;
+    if (!r) parts.push(t(lang, 'status_manager'));
+    else {
+      const what = [t(lang, `type_${r.vehicle_type}`), r.date_from && r.date_to ? `${formatShortDate(r.date_from)} – ${formatShortDate(r.date_to)}` : null].filter(Boolean).join(', ');
+      parts.push(r.status === 'taken'
+        ? t(lang, 'status_taken', { id: r.id, what, name: `*${r.taken_by_name}*` })
+        : t(lang, 'status_new', { id: r.id, what }));
+    }
+    db.setSetting(`wa_status:${c.key}`, String(Date.now()));
+  }
+  if (forwarded) parts.push(t(lang, 'forwarded'));
+  parts.push(t(lang, 'new_request_hint'));
+  console.log(`WhatsApp bot: ${c.key} has an open ${thread.request ? `request #${thread.request.id} (${thread.request.status})` : 'manager ask'} — status sent, message ${forwarded ? 'forwarded' : 'NOT forwarded'}`);
+  await ui.send(parts.join('\n\n'));
 }
 
 async function handleClient(c, body) {
@@ -202,8 +286,8 @@ async function handleClient(c, body) {
   const chat = {
     channel: 'whatsapp', key: c.key, id: c.jid, name: c.name, phone: c.phone ? `+${c.phone}` : null, ui,
     managerOption: true,
-    // После заявки бот молчит сутки — дальше с клиентом говорит менеджер
-    afterRequest: () => db.pauseChat(c.key, later(AFTER_REQUEST_PAUSE_MS)),
+    // Новая заявка — «Связаться с менеджером» больше не висит
+    afterRequest: () => db.setSetting(`wa_manager:${c.key}`, ''),
     onManager: async (lang) => ui.send(await askManager(c, lang))
   };
   const text = String(body.text || '').trim();
@@ -219,9 +303,17 @@ async function handleClient(c, body) {
         ui.setFooter(t(lang, 'lang_hint'));
       }
     }
+    // Открытая заявка и не начат новый диалог: статус + сообщение — менеджеру.
+    // «старт», «0» или ссылка с сайта ([ref:…]) — новая заявка
+    const session = db.getSession(c.key);
+    const fresh = isRestartText(text) || text === '0' || /\[ref:/i.test(text);
+    if (!session && !fresh) {
+      const thread = openThread(c);
+      if (thread) return await statusReply(c, ui, thread, body);
+    }
     if (!text && body.media) {
       const lang = db.getChatLanguage(c.key);
-      if (lang && db.getSession(c.key)) return await ui.send(t(lang, 'media_unsupported'));
+      if (lang && session) return await ui.send(t(lang, 'media_unsupported'));
     }
     return await handleClientText(chat, text);
   } finally {

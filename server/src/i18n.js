@@ -156,7 +156,7 @@ const TEXTS = {
     th: 'เจ้าหน้าที่จะติดต่อกลับเพื่อยืนยันการจองเร็วๆ นี้ค่ะ คำขอใหม่: {restart}',
     zh: '客服会尽快联系您确认预订。新申请：{restart}'
   },
-  restart_whatsapp: { en: 'type “menu”', ru: 'напишите «меню»', th: 'พิมพ์ “menu”', zh: '输入“menu”' },
+  restart_whatsapp: { en: 'type “start” or send 0', ru: 'напишите «старт» или отправьте 0', th: 'พิมพ์ “start” หรือส่ง 0', zh: '输入“start”或发送 0' },
   choose_please: {
     en: 'Please choose an option 👇',
     ru: 'Выберите, пожалуйста, вариант 👇',
@@ -170,10 +170,10 @@ const TEXTS = {
     zh: '请在上方列表中选择车型 👆，或点击“帮我挑选”。'
   },
   media_unsupported: {
-    en: 'For now I understand only text and buttons 🙏 Please type a message or write “menu”.',
-    ru: 'Пока я понимаю только текст и кнопки 🙏 Напишите, пожалуйста, сообщением или напишите «меню».',
-    th: 'ตอนนี้บอทเข้าใจเฉพาะข้อความและปุ่มค่ะ 🙏 กรุณาพิมพ์ข้อความ หรือพิมพ์ “menu”',
-    zh: '目前我只能识别文字和按钮 🙏 请发送文字消息，或输入“menu”。'
+    en: 'For now I understand only text 🙏 Please type your answer as a message.',
+    ru: 'Пока я понимаю только текст 🙏 Напишите, пожалуйста, ответ сообщением.',
+    th: 'ตอนนี้บอทเข้าใจเฉพาะข้อความค่ะ 🙏 กรุณาพิมพ์คำตอบเป็นข้อความ',
+    zh: '目前我只能识别文字 🙏 请用文字回复。'
   },
   // WhatsApp компании: варианты списком — клиент отвечает цифрой
   reply_number: { en: 'Reply with a number 👆', ru: 'Ответьте цифрой 👆', th: 'ตอบเป็นตัวเลขได้เลยค่ะ 👆', zh: '请回复数字 👆' },
@@ -184,6 +184,37 @@ const TEXTS = {
     ru: 'Хорошо! Менеджер свяжется с вами, как только освободится 🤝',
     th: 'รับทราบค่ะ! เจ้าหน้าที่จะติดต่อคุณทันทีที่ว่าง 🤝',
     zh: '好的！客服一有空就会联系您 🤝'
+  },
+  // WhatsApp компании: у клиента уже есть открытая заявка или он просил менеджера
+  status_new: {
+    en: '📋 Your request #{id} ({what}) is waiting for a manager — we will contact you shortly.',
+    ru: '📋 Ваша заявка #{id} ({what}) ждёт менеджера — мы свяжемся с вами в ближайшее время.',
+    th: '📋 คำขอ #{id} ของคุณ ({what}) กำลังรอเจ้าหน้าที่ — เราจะติดต่อกลับโดยเร็วค่ะ',
+    zh: '📋 您的申请 #{id}（{what}）正在等待客服处理，我们会尽快联系您。'
+  },
+  status_taken: {
+    en: '📋 Your request #{id} ({what}) is handled by manager {name} — they will contact you on WhatsApp.',
+    ru: '📋 Вашей заявкой #{id} ({what}) занимается менеджер {name} — он свяжется с вами в WhatsApp.',
+    th: '📋 คำขอ #{id} ของคุณ ({what}) ดูแลโดยเจ้าหน้าที่ {name} — จะติดต่อคุณทาง WhatsApp ค่ะ',
+    zh: '📋 您的申请 #{id}（{what}）由客服 {name} 负责，会通过 WhatsApp 联系您。'
+  },
+  status_manager: {
+    en: '📋 You asked a manager to contact you — we remember, a manager will contact you as soon as they are free.',
+    ru: '📋 Вы просили связаться с менеджером — мы помним, менеджер свяжется с вами, как только освободится.',
+    th: '📋 คุณขอให้เจ้าหน้าที่ติดต่อกลับ — เราจำได้ค่ะ เจ้าหน้าที่จะติดต่อคุณทันทีที่ว่าง',
+    zh: '📋 您已请求客服联系您——我们记着呢，客服一有空就会联系您。'
+  },
+  forwarded: {
+    en: 'I passed your message to the manager ✅',
+    ru: 'Ваше сообщение я передал менеджеру ✅',
+    th: 'ส่งข้อความของคุณให้เจ้าหน้าที่แล้วค่ะ ✅',
+    zh: '您的消息已转交给客服 ✅'
+  },
+  new_request_hint: {
+    en: 'To create a new request, type “start” or send 0.',
+    ru: 'Чтобы создать новую заявку, напишите «старт» или отправьте 0.',
+    th: 'หากต้องการสร้างคำขอใหม่ พิมพ์ “start” หรือส่ง 0',
+    zh: '如需新的申请，请输入“start”或发送 0。'
   },
   // «Назад» на любом шаге диалога
   back: { en: '◀️ Back', ru: '◀️ Назад', th: '◀️ ย้อนกลับ', zh: '◀️ 返回' },

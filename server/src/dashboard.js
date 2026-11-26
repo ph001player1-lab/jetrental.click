@@ -27,6 +27,7 @@ import { getStaffChatId, staffGroupFailure } from './staff.js';
 import { mailEnabled, mailFailure } from './mail.js';
 import { telegramEnabled } from './telegram/api.js';
 import { whatsappEnabled } from './whatsapp/api.js';
+import { wabotStatus, wabotSettings, wabotGroupFailure, waGroupChosen } from './wabot.js';
 import { dashboardTranslator } from './dashboardTexts.js';
 import { reconcile } from './journal/reconcile.js';
 import { observerStatus, observerConfigured } from './journal/observer.js';
@@ -259,14 +260,28 @@ function requestProblems(tx, now) {
     if (r.status !== 'new') continue;
     const created = Date.parse(r.created_at);
     const what = `#${r.id}${r.model ? ` · ${r.model}` : ''}${r.client_name ? ` · ${r.client_name}` : ''}`;
-    // Дошла, если есть в Telegram-группе или в рабочей группе WhatsApp
+    // Каналы отдельно: WhatsApp-группа и Telegram-группа
     if (!r.staff_message_id && !r.wa_group_message_id) {
+      const why = r.wa_post_error || r.tg_post_error
+        ? `${tx.t('notDelivered.why', { wa: r.wa_post_error || tx.t('noGroup'), tg: r.tg_post_error || tx.t('noGroup') })} ` : '';
       problems.push({
         group: 'requests', level: 'error', target: { tab: 'requests' },
         title: tx.t('notDelivered.title', { what }),
-        detail: tx.t('notDelivered.detail', { when: tx.dateTime(created) })
+        detail: `${why}${tx.t('notDelivered.detail', { when: tx.dateTime(created) })}`
       });
       continue;
+    }
+    if (r.wa_post_error && !r.wa_group_message_id) {
+      problems.push({
+        group: 'requests', level: 'warning', target: { tab: 'requests' },
+        title: tx.t('notDeliveredWa.title', { what }), detail: tx.t('notDeliveredWa.detail', { error: r.wa_post_error })
+      });
+    }
+    if (r.tg_post_error && !r.staff_message_id) {
+      problems.push({
+        group: 'requests', level: 'warning', target: { tab: 'requests' },
+        title: tx.t('notDeliveredTg.title', { what }), detail: tx.t('notDeliveredTg.detail', { error: r.tg_post_error })
+      });
     }
     const waited = workingMinutes(created, now);
     if (waited >= LIMITS.requestWaitMinutes) {
@@ -303,11 +318,33 @@ function systemProblems(tx, now) {
   const sheets = fleetStatus();
   if (!sheetsEnabled) add('error', 'sheetsOff');
   else if (sheets.error) add('error', 'sheetsError', { text: tx.t('sheetsError.detail', { error: sheets.error }) });
-  if (!getStaffChatId()) add('error', 'groupOff');
+  // Telegram-группа нужна, если заявки идут не только в WhatsApp (или WhatsApp-бот не на связи)
+  if (!getStaffChatId()) { if (telegramNeeded()) add('error', 'groupOff'); }
   else if (staffGroupFailure()) add('error', 'groupFailed', failure(staffGroupFailure()));
+  problems.push(...wabotProblems(tx, now));
   if (!mailEnabled) add('warning', 'mailOff');
   else if (mailFailure()) add('warning', 'mailFailed', failure(mailFailure()));
   problems.push(...whatsappProblems(tx, now));
+  return problems;
+}
+
+const telegramNeeded = () => !waGroupChosen() || !wabotStatus().connected || wabotSettings().telegramCopy;
+
+/** WhatsApp-бот для клиентов (номер компании): на связи ли, выбрана ли группа, уходит ли в неё */
+function wabotProblems(tx, now) {
+  const bot = wabotStatus(now);
+  // Ни разу не подключали — нечего проверять
+  if (!bot.configured || (!bot.connected && !bot.lastOkAt)) return [];
+  const target = { tab: 'marketing' };
+  const add = (level, key, params = {}, detail = null) => ({ group: 'system', level, target, title: tx.t(`${key}.title`, params), detail: detail ?? tx.t(`${key}.detail`, params) });
+  if (!bot.connected) return [['qr', 'logged_out'].includes(bot.status) ? add('error', 'wabotUnlinked') : add('error', 'wabotDown')];
+  const problems = [];
+  if (!bot.groupId) problems.push(add('warning', 'wabotNoGroup'));
+  const failed = wabotGroupFailure();
+  if (failed) problems.push(add('error', 'wabotGroupFailed', {}, tx.t('failure.detail', { when: tx.dateTime(Date.parse(failed.at)), error: failed.message })));
+  const stuck = (bot.undecrypted || []).filter((u) => now - Date.parse(u.ts) >= 15 * 60000);
+  if (stuck.length) problems.push(add('warning', 'wabotUndecrypted', { n: stuck.length, when: tx.dateTime(Math.max(...stuck.map((u) => Date.parse(u.ts)))) }));
+  if (bot.limitedAt && now - Date.parse(bot.limitedAt) >= 30 * 60000) problems.push(add('warning', 'wabotLimited', { when: tx.dateTime(Date.parse(bot.limitedAt)) }));
   return problems;
 }
 
@@ -409,10 +446,12 @@ export async function collectProblems(now = Date.now(), lang = 'en') {
 
 // Каналы заявок: подключённые считаем, остальные показываем как «не подключён»,
 // чтобы было видно, какие маркетинговые каналы ещё не приходят в дашборд
+// error — есть ошибка канала (подробно — в «Проблемах»)
+const wabotLinked = () => { const b = wabotStatus(); return b.connected || Boolean(b.lastOkAt); };
 const REQUEST_SOURCES = [
-  { id: 'telegram', connected: () => telegramEnabled },
+  { id: 'telegram', connected: () => telegramEnabled, error: () => Boolean(staffGroupFailure()) || (!getStaffChatId() && telegramNeeded()) },
   { id: 'site', connected: () => true },
-  { id: 'whatsapp', connected: () => whatsappEnabled },
+  { id: 'whatsapp', connected: () => whatsappEnabled || wabotLinked(), error: () => wabotLinked() && (!wabotStatus().connected || Boolean(wabotGroupFailure())) },
   { id: 'instagram', connected: () => false },
   { id: 'facebook', connected: () => false }
 ];
@@ -433,6 +472,7 @@ export function requestStats(now = Date.now()) {
     sources: REQUEST_SOURCES.map((s) => ({
       id: s.id,
       connected: s.connected(),
+      error: Boolean(s.error?.()),
       today: createdToday.filter((r) => r.channel === s.id).length,
       days30: rows.filter((r) => r.channel === s.id && r.created_at >= since30).length
     }))

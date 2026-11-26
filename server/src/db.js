@@ -187,7 +187,9 @@ for (const [name, type] of [
   // Карточка заявки в рабочей группе WhatsApp (на неё отвечают «+», чтобы взять)
   ['wa_group_id', 'TEXT'], ['wa_group_message_id', 'TEXT'],
   // В архиве: убрана из работы админом (в статистике остаётся); кто и когда
-  ['archived_at', 'TEXT'], ['archived_by', 'TEXT']
+  ['archived_at', 'TEXT'], ['archived_by', 'TEXT'],
+  // Не дошла до группы: текст ошибки по каналу (для «Обзора»)
+  ['wa_post_error', 'TEXT'], ['tg_post_error', 'TEXT']
 ]) {
   if (!requestColumns.includes(name)) db.exec(`ALTER TABLE requests ADD COLUMN ${name} ${type}`);
 }
@@ -280,6 +282,20 @@ export function setStaffMessage(id, chatId, messageId) {
  */
 export function setWaGroupMessage(id, groupId, messageId) {
   db.prepare('UPDATE requests SET wa_group_id = ?, wa_group_message_id = ? WHERE id = ?').run(String(groupId), String(messageId), Number(id));
+}
+
+/** Ошибка доставки заявки в группу: channel — 'wa' или 'tg'; null — дошла */
+export function setPostError(id, channel, message) {
+  const column = channel === 'wa' ? 'wa_post_error' : 'tg_post_error';
+  db.prepare(`UPDATE requests SET ${column} = ? WHERE id = ?`).run(message ? String(message).slice(0, 300) : null, Number(id));
+}
+
+/** Открытая заявка клиента WhatsApp: новая или взятая после sinceIso (последняя) */
+export function openRequestForClient(chatId, phone, sinceIso) {
+  return db.prepare(`SELECT * FROM requests WHERE channel = 'whatsapp' AND archived_at IS NULL
+      AND (client_chat_id = ? OR (? IS NOT NULL AND client_phone = ?))
+      AND ((status = 'new' AND created_at >= ?) OR (status = 'taken' AND taken_at >= ?))
+    ORDER BY id DESC LIMIT 1`).get(String(chatId), phone, phone, String(sinceIso), String(sinceIso)) || null;
 }
 
 /** Невзятые заявки в группе WhatsApp, пришедшие после sinceIso (для «+» без ответа на карточку) */

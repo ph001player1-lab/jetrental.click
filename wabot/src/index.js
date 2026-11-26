@@ -167,7 +167,8 @@ function reportStatus() {
     members: state.members,
     lastInboundAt: state.lastInboundAt,
     today: state.today,
-    undecrypted: state.undecrypted
+    undecrypted: state.undecrypted,
+    limitedAt: state.limitedAt || null
   }));
 }
 
@@ -415,8 +416,10 @@ async function refreshGroups() {
       saveConfig();
     }
     groupsRetryMs = 60000;
+    if (state.limitedAt) { state.limitedAt = null; log('WhatsApp no longer limits group requests'); }
     return true;
   } catch (err) {
+    if (/rate-overlimit/i.test(err.message) && !state.limitedAt) state.limitedAt = new Date().toISOString();
     log(`groups fetch failed: ${err.message} — retry in ${Math.round(groupsRetryMs / 1000)} s`);
     scheduleGroups(groupsRetryMs);
     groupsRetryMs = Math.min(groupsRetryMs * 2, 30 * 60000);
