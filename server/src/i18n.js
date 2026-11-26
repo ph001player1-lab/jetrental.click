@@ -105,6 +105,33 @@ const TEXTS = {
   },
   phone_button: { en: '📱 Share my number', ru: '📱 Отправить мой номер', th: '📱 ส่งเบอร์ของฉัน', zh: '📱 发送我的号码' },
   you_chose: { en: 'You chose: {what}', ru: 'Вы выбрали: {what}', th: 'คุณเลือก: {what}', zh: '您选择了：{what}' },
+  // Вопрос «откуда узнали» (вкладка «Маркетинг»). Строки списка WhatsApp — до 24 знаков
+  ask_heard: {
+    en: 'One quick question: how did you hear about us?',
+    ru: 'Небольшой вопрос: откуда вы о нас узнали?',
+    th: 'ขอถามสั้นๆ ค่ะ: คุณรู้จักเราจากที่ไหนคะ?',
+    zh: '顺便问一下：您是从哪里了解到我们的？'
+  },
+  heard_list_button: { en: 'Choose', ru: 'Выбрать', th: 'เลือก', zh: '选择' },
+  heard_maps: { en: 'Google Maps', ru: 'Google Карты', th: 'Google Maps', zh: '谷歌地图' },
+  heard_site: { en: 'Our website', ru: 'Наш сайт', th: 'เว็บไซต์ของเรา', zh: '我们的网站' },
+  heard_ads: { en: 'Online ads', ru: 'Реклама в интернете', th: 'โฆษณาออนไลน์', zh: '网络广告' },
+  heard_agent: { en: 'Hotel or agent', ru: 'Отель или агент', th: 'โรงแรมหรือตัวแทน', zh: '酒店或代理' },
+  heard_friends: { en: 'Friends', ru: 'Друзья, знакомые', th: 'เพื่อนหรือคนรู้จัก', zh: '朋友介绍' },
+  heard_repeat: { en: 'Rented with you before', ru: 'Уже брал(а) у вас', th: 'เคยเช่ากับเราแล้ว', zh: '以前租过' },
+  heard_other: { en: 'Other', ru: 'Другое', th: 'อื่นๆ', zh: '其他' },
+  ask_heard_agent: {
+    en: 'Please write the name of the hotel or the agent.',
+    ru: 'Напишите, пожалуйста, название отеля или имя агента.',
+    th: 'กรุณาพิมพ์ชื่อโรงแรมหรือชื่อตัวแทนค่ะ',
+    zh: '请写下酒店名称或代理人的名字。'
+  },
+  ask_heard_other: {
+    en: 'Please write where you heard about us.',
+    ru: 'Напишите, пожалуйста, откуда вы о нас узнали.',
+    th: 'กรุณาพิมพ์ว่าคุณรู้จักเราจากที่ไหนค่ะ',
+    zh: '请写下您是从哪里了解到我们的。'
+  },
   help_ok: {
     en: 'Sure, a manager will help you choose 👌',
     ru: 'Хорошо, менеджер поможет подобрать 👌',

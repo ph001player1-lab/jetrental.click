@@ -40,6 +40,9 @@ export const KINDS = {
 };
 export const CHANNELS = ['site', 'tg', 'wa', 'ig', 'fb'];
 const COST_TYPES = ['none', 'budget', 'commission'];
+export const REF_DAYS = [0, 30, 60, 90, 180, 365];
+// Агент и партнёр важнее рекламы и соцсетей: их клиент остаётся за ними
+const isAgentKind = (kind) => kind === 'agent' || kind === 'partner';
 
 db.raw.exec(`
   CREATE TABLE IF NOT EXISTS marketing_sources (
@@ -102,7 +105,7 @@ const q = {
   setChatRef: db.raw.prepare(`INSERT INTO chat_refs (chat_key, code, at) VALUES (?, ?, ?)
     ON CONFLICT(chat_key) DO UPDATE SET code = excluded.code, at = excluded.at`),
   chatRef: db.raw.prepare('SELECT code, at FROM chat_refs WHERE chat_key = ?'),
-  requests: db.raw.prepare('SELECT id, created_at, channel, status, source_ref, site_host FROM requests WHERE created_at >= ? ORDER BY id')
+  requests: db.raw.prepare('SELECT id, created_at, channel, status, source_ref, site_host, heard_from FROM requests WHERE created_at >= ? ORDER BY id')
 };
 
 // Стартовый список (по словам владельца); агентов-частников админ добавляет сам
@@ -157,6 +160,8 @@ export function marketingSettings() {
   const saved = parseJson(db.getSetting('marketing_settings') || 'null', {}) || {};
   return {
     bots: { tg: true, wa: false, ig: false, fb: false, ...(saved.bots || {}) },
+    // Сколько дней помнить код ссылки; 0 — бессрочно (так решил владелец)
+    refDays: REF_DAYS.includes(saved.refDays) ? saved.refDays : 0,
     waNumber: saved.waNumber || '',
     tgBot: saved.tgBot || db.getSetting('tg_bot_username') || '',
     siteHost: saved.siteHost || 'jetmobility.org'
@@ -167,8 +172,10 @@ export function saveSettings(input) {
   const cur = marketingSettings();
   const bots = { ...cur.bots };
   for (const c of ['tg', 'wa', 'ig', 'fb']) if (typeof input.bots?.[c] === 'boolean') bots[c] = input.bots[c];
+  const days = Number(input.refDays);
   const next = {
     bots,
+    refDays: input.refDays !== undefined && REF_DAYS.includes(days) ? days : cur.refDays,
     waNumber: input.waNumber !== undefined ? String(input.waNumber).replace(/\D/g, '').slice(0, 15) : cur.waNumber,
     tgBot: input.tgBot !== undefined ? String(input.tgBot).replace(/^@/, '').replace(/[^A-Za-z0-9_]/g, '').slice(0, 40) : cur.tgBot,
     siteHost: ['jetmobility.org', 'kokoncar.com'].includes(input.siteHost) ? input.siteHost : cur.siteHost
@@ -281,17 +288,110 @@ export function refFromText(text) {
   return m && sourceByCode(m[1]) ? m[1].toLowerCase() : null;
 }
 
-/** Запомнить код источника для чата бота */
+const fresh = (at) => {
+  const days = marketingSettings().refDays;
+  return !days || Date.now() - Date.parse(at) <= days * DAY_MS;
+};
+
+/** Записать источник чата: код (агент не перебивается рекламой) или ответ «откуда узнали» с «~» */
+function setChatSource(chatKey, value) {
+  const cur = q.chatRef.get(chatKey);
+  if (cur && fresh(cur.at) && !value.startsWith('~')) {
+    const old = sourceByCode(cur.code);
+    const next = sourceByCode(value);
+    if (old && isAgentKind(old.kind) && next && !isAgentKind(next.kind)) return;
+  }
+  q.setChatRef.run(chatKey, value, new Date().toISOString());
+}
+
+/** Запомнить код источника для чата бота (из первого сообщения) */
 export function rememberChatRef(chatKey, text) {
   const code = refFromText(text);
-  if (code) q.setChatRef.run(chatKey, code, new Date().toISOString());
+  if (code) setChatSource(chatKey, code);
   return code;
 }
 
-/** Код источника чата, если он не старше 30 дней */
+/** Код источника чата (с учётом срока из настроек); ответы «откуда узнали» кодом не считаются */
 export function chatRefOf(chatKey) {
   const r = q.chatRef.get(chatKey);
-  return r && Date.now() - Date.parse(r.at) <= 30 * DAY_MS ? r.code : null;
+  return r && fresh(r.at) && !r.code.startsWith('~') && sourceByCode(r.code) ? r.code : null;
+}
+
+/** Спрашивали ли уже этот чат «откуда узнали» (или он пришёл по ссылке) */
+export const chatSourceKnown = (chatKey) => { const r = q.chatRef.get(chatKey); return Boolean(r && fresh(r.at)); };
+
+/**
+ * Коды с сайта: [{ code, at }] — что сайт запомнил. Берём свежие (по сроку из
+ * настроек); если среди них есть агент или партнёр — его, иначе последний переход.
+ */
+export function resolveSiteRefs(refs) {
+  const list = (Array.isArray(refs) ? refs : []).slice(0, 20)
+    .map((r) => ({ code: String(r?.code || '').toLowerCase(), at: Number(r?.at) || 0 }))
+    .map((r) => ({ ...r, s: sourceByCode(r.code) }))
+    .filter((r) => r.s && r.s.active && r.at && fresh(new Date(r.at).toISOString()));
+  if (!list.length) return null;
+  const agents = list.filter((r) => isAgentKind(r.s.kind));
+  return (agents.length ? agents : list).sort((a, b) => b.at - a.at)[0].code;
+}
+
+/* ------------------------------------------ Вопрос бота «Откуда узнали?» */
+
+const PLATFORMS = [['instagram', 'Instagram'], ['facebook', 'Facebook'], ['tiktok', 'TikTok'], ['youtube', 'YouTube'], ['telegram', 'Telegram'], ['vk', 'VK']];
+const platformOf = (s) => PLATFORMS.find(([key]) => `${s.code} ${s.name} ${s.badge}`.toLowerCase().includes(key))?.[1] || null;
+
+/**
+ * Варианты ответа — из источников «Маркетинга» (добавили источник — появилась кнопка).
+ * key: «@код» — конкретный источник; maps / site / ads / agent / friends / repeat / other.
+ * label: строка (название площадки) или ключ перевода бота.
+ */
+export function heardOptions() {
+  const list = q.all.all().map(rowOf).filter((s) => s.active);
+  const out = [];
+  const has = (kind) => list.some((s) => s.kind === kind);
+  if (has('maps')) out.push({ key: 'maps', label: { text: 'heard_maps' } });
+  const seen = new Set();
+  for (const s of list.filter((x) => x.kind === 'social')) {
+    const name = platformOf(s);
+    if (!name || seen.has(name) || seen.size >= 3) continue;
+    seen.add(name);
+    out.push({ key: `@${s.code}`, label: name });
+  }
+  if (has('site')) out.push({ key: 'site', label: { text: 'heard_site' } });
+  if (has('ads')) out.push({ key: 'ads', label: { text: 'heard_ads' } });
+  out.push({ key: 'agent', label: { text: 'heard_agent' } });
+  out.push({ key: 'friends', label: { text: 'heard_friends' } });
+  out.push({ key: 'repeat', label: { text: 'heard_repeat' } });
+  out.push({ key: 'other', label: { text: 'heard_other' } });
+  return out;
+}
+
+const normName = (v) => String(v || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+
+/**
+ * Ответ клиента → { code, text }: code — источник (если нашёлся), text — ответ
+ * словами для «без источника» (друзья, уже брали, другое, агент не из списка).
+ */
+export function resolveHeard(key, typed = '') {
+  const list = q.all.all().map(rowOf).filter((s) => s.active);
+  const first = (pred) => list.find(pred)?.code || null;
+  const settings = marketingSettings();
+  if (key.startsWith('@') && sourceByCode(key.slice(1))) return { code: key.slice(1), text: null };
+  if (key === 'maps') return { code: first((s) => s.kind === 'maps'), text: 'Google Карты' };
+  if (key === 'site') return { code: first((s) => s.kind === 'site' && s.host === settings.siteHost) || first((s) => s.kind === 'site'), text: 'сайт' };
+  if (key === 'ads') return { code: first((s) => s.kind === 'ads'), text: 'реклама' };
+  if (key === 'friends') return { code: first((s) => s.kind === 'word'), text: 'друзья, знакомые' };
+  if (key === 'repeat') return { code: null, text: 'уже брал(а) у нас' };
+  if (key === 'agent') {
+    const name = normName(typed);
+    const hit = name.length >= 3 && list.find((s) => isAgentKind(s.kind) && (normName(s.name).includes(name) || name.includes(normName(s.name).replace(/^агент /, ''))));
+    return { code: hit ? hit.code : null, text: `отель или агент: ${String(typed).trim().slice(0, 80)}` };
+  }
+  return { code: null, text: `другое: ${String(typed).trim().slice(0, 120)}` };
+}
+
+/** Запомнить ответ «откуда узнали» для чата, чтобы не спрашивать снова */
+export function rememberHeard(chatKey, { code, text }) {
+  setChatSource(chatKey, code || `~${String(text || '').slice(0, 60)}`);
 }
 
 /* ---------------------------------------------------------------- Отчёт */
@@ -338,13 +438,18 @@ export async function marketingReport(period = 'month', now = Date.now()) {
   const m = new Map(sources.map((s) => [s.id, {
     period: zero(), today: { leads: 0 }, month: { leads: 0, revenue: 0, paid: 0 }, week: { leads: 0, answered: 0 }, sales90: 0
   }]));
-  const unattributed = { leads: 0 };
+  const unattributed = { leads: 0, answers: {} };
   for (const r of requests) {
     const at = Date.parse(r.created_at);
     const s = attribute(r, byCode, byHost);
     const o = outcomes.get(r.id) || { booked: false, paid: false, revenue: 0 };
     if (!s) {
-      if (at >= range.from && at <= range.to) unattributed.leads++;
+      if (at >= range.from && at <= range.to) {
+        unattributed.leads++;
+        // Что ответил клиент на «откуда узнали» (без «: подробности»)
+        const answer = r.heard_from ? r.heard_from.split(':')[0] : 'не спрашивали';
+        unattributed.answers[answer] = (unattributed.answers[answer] || 0) + 1;
+      }
       continue;
     }
     const x = m.get(s.id);

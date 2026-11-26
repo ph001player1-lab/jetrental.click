@@ -306,7 +306,7 @@
           </section>
           <section class="card fin-sec"><h3>История аренд</h3>${rentalsBlock(card)}</section>
           ${card.requests.length ? `<section class="card fin-sec"><h3>Заявки</h3><ul class="crm-rentals">${card.requests.map((r) => `
-            <li><b>${esc(when(r.at))}</b> · ${esc(CHANNEL[r.channel] || r.channel)}${r.model ? ` · ${esc(r.model)}` : ''}${r.from ? ` · ${esc(short(r.from))} — ${esc(short(r.to))}` : ''} <span class="muted jr-small">${r.status === 'new' ? 'не взята' : 'взята в работу'}</span></li>`).join('')}</ul></section>` : ''}
+            <li><b>${esc(when(r.at))}</b> · ${esc(CHANNEL[r.channel] || r.channel)}${r.model ? ` · ${esc(r.model)}` : ''}${r.from ? ` · ${esc(short(r.from))} — ${esc(short(r.to))}` : ''} <span class="muted jr-small">${r.status === 'new' ? 'не взята' : 'взята в работу'}${r.source ? ` · откуда: ${esc(r.source)}` : ''}</span></li>`).join('')}</ul></section>` : ''}
           <section class="card fin-sec"><h3>Заметки</h3>${notesBlock(card)}</section>
           ${dupesBlock(card)}
         </div>`;

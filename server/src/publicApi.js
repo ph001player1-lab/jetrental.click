@@ -15,7 +15,7 @@ import * as db from './db.js';
 import { HttpError, sendJson, readJson, clientIp, rateLimiter } from './http.js';
 import { findAvailableModels, getFleet, sheetsEnabled } from './fleet.js';
 import { soldList } from './sold.js';
-import { sourceByCode, countVisit } from './marketing.js';
+import { sourceByCode, countVisit, resolveSiteRefs } from './marketing.js';
 import { getWsSnapshot } from './ws/sync.js';
 import { publishRequest } from './staff.js';
 import { todayIso } from './dates.js';
@@ -221,7 +221,8 @@ async function createSiteRequest(req, res) {
     comment: [email && `email: ${email}`, message].filter(Boolean).join('\n') || null,
     lang: LANGUAGES[body.lang] ? body.lang : null,
     // Реферальный код (ссылка ?ref=… агента, рекламы, соцсети) и домен сайта
-    sourceRef: body.ref && sourceByCode(body.ref)?.active ? String(body.ref).toLowerCase() : null,
+    // (сайт присылает все запомненные коды; агент важнее рекламы, срок — из настроек «Маркетинга»)
+    sourceRef: resolveSiteRefs(body.refs) || (body.ref && sourceByCode(body.ref)?.active ? String(body.ref).toLowerCase() : null),
     siteHost: siteHostOf(req)
   });
   await publishRequest(request);

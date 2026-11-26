@@ -846,6 +846,14 @@
         ${!s.links.tg || !s.links.wa ? '<p class="mk-tip">Ссылки на ботов появятся, когда в настройках (кнопка «Офис» на карте) будут номер WhatsApp и имя Telegram-бота.</p>' : ''}</div>`;
     }
 
+    /** Заявки без источника: что ответили боту на «откуда узнали» */
+    function unattributedBlock() {
+      const un = st.data.unattributed || { leads: 0, answers: {} };
+      if (!un.leads) return '';
+      const parts = Object.entries(un.answers || {}).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${esc(k)} — ${num(n)}`);
+      return `<div><div class="mk-label">Без источника: ${num(un.leads)} заявок</div><p class="mk-tip">${parts.join(' · ')}</p></div>`;
+    }
+
     function panelHq() {
       const t = totals();
       const set = st.data.settings;
@@ -856,6 +864,7 @@
         <p class="mk-tip">Сюда съезжаются заявки. Нажмите на здание или табличку — откроется источник.</p>
         ${funnel(t)}
         ${moneyBlock(t)}
+        ${unattributedBlock()}
         ${canEdit() ? '<button type="button" class="btn btn--primary btn--small" data-mk-new>＋ Новый источник</button>' : ''}
         ${unplaced.length ? `<div><div class="mk-label">Не на карте</div><ul class="mk-list">${unplaced.map((s) => `<li><button type="button" class="link" data-mk-pick="${s.id}">${esc(s.name)}</button>${canEdit() ? ` <button type="button" class="link" data-mk-place="${s.id}">поставить</button>` : ''}</li>`).join('')}</ul></div>` : ''}
         ${canEdit() ? `
@@ -865,6 +874,8 @@
           <label class="field"><span>Номер WhatsApp для ссылок</span><input class="search" name="waNumber" inputmode="tel" value="${esc(set.waNumber ? `+${set.waNumber}` : '')}" placeholder="+66 80 000 0000"></label>
           <label class="field"><span>Telegram-бот (имя без @)</span><input class="search" name="tgBot" value="${esc(set.tgBot)}" placeholder="jetmobility_bot"></label>
           <label class="field"><span>Сайт для ссылок</span><select class="search" name="siteHost">${['jetmobility.org', 'kokoncar.com'].map((h) => `<option${set.siteHost === h ? ' selected' : ''}>${h}</option>`).join('')}</select></label>
+          <label class="field"><span>Сколько помнить код ссылки</span><select class="search" name="refDays">${[[0, 'бессрочно'], [30, '30 дней'], [60, '60 дней'], [90, '90 дней'], [180, 'полгода'], [365, 'год']].map(([d, l]) => `<option value="${d}"${set.refDays === d ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+          <p class="mk-tip">Если клиент приходил по нескольким ссылкам, засчитывается агент или партнёр, иначе — последняя ссылка. Клиента без кода бот спрашивает «Откуда вы о нас узнали?».</p>
           <button type="submit" class="btn btn--small">Сохранить настройки</button>
         </form>` : ''}
         ${status()}`;
@@ -1068,7 +1079,7 @@
       if (form.matches('[data-mk-settings]')) {
         call('/marketing/settings', {
           bots: Object.fromEntries(BOT_CH.map((c) => [c, f.get(`bot_${c}`) === 'on'])),
-          waNumber: f.get('waNumber'), tgBot: f.get('tgBot'), siteHost: f.get('siteHost')
+          waNumber: f.get('waNumber'), tgBot: f.get('tgBot'), siteHost: f.get('siteHost'), refDays: Number(f.get('refDays'))
         }, 'Настройки сохранены.');
         return true;
       }

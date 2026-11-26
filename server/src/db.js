@@ -181,7 +181,9 @@ const requestColumns = db.prepare('PRAGMA table_info(requests)').all().map((c) =
 for (const [name, type] of [
   ['model', 'TEXT'], ['estimate_thb', 'INTEGER'], ['free_units', 'TEXT'], ['sheet_row', 'INTEGER'], ['lang', 'TEXT'],
   // Откуда пришёл клиент: код реферальной ссылки и домен сайта (вкладка «Маркетинг»)
-  ['source_ref', 'TEXT'], ['site_host', 'TEXT']
+  ['source_ref', 'TEXT'], ['site_host', 'TEXT'],
+  // Ответ клиента боту «откуда вы о нас узнали», если источник не определился
+  ['heard_from', 'TEXT']
 ]) {
   if (!requestColumns.includes(name)) db.exec(`ALTER TABLE requests ADD COLUMN ${name} ${type}`);
 }
@@ -236,8 +238,8 @@ export function createRequest(data) {
   const result = db.prepare(`
     INSERT INTO requests
       (created_at, channel, client_chat_id, client_name, client_phone, vehicle_type, date_from, date_to, comment,
-       model, estimate_thb, free_units, lang, source_ref, site_host)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       model, estimate_thb, free_units, lang, source_ref, site_host, heard_from)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     nowIso(),
     data.channel,
@@ -253,7 +255,8 @@ export function createRequest(data) {
     data.freeUnits || null,
     data.lang || null,
     data.sourceRef || null,
-    data.siteHost || null
+    data.siteHost || null,
+    data.heardFrom || null
   );
   return getRequest(Number(result.lastInsertRowid));
 }

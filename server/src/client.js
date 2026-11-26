@@ -18,7 +18,7 @@ import { VEHICLE_TYPES, formatShortDate, formatThb, daysBetween } from './format
 import { parseDateRange } from './dates.js';
 import { findAvailableModels, sheetsEnabled } from './fleet.js';
 import { publishRequest } from './staff.js';
-import { rememberChatRef, chatRefOf } from './marketing.js';
+import { rememberChatRef, chatRefOf, chatSourceKnown, heardOptions, resolveHeard, rememberHeard } from './marketing.js';
 import { LANGUAGES, LANGUAGE_PROMPT, LANGUAGE_LIST_BUTTON, normalizeLanguage, t } from './i18n.js';
 
 // В списке WhatsApp максимум 10 строк: 9 моделей + «Помогите выбрать»
@@ -80,7 +80,36 @@ function priceText(lang, option) {
 }
 
 /** После выбора модели: в WhatsApp телефон уже есть — сразу заявка, в Telegram спрашиваем номер */
+/** «Откуда вы о нас узнали?» — один раз, если клиент пришёл не по ссылке с кодом */
+async function askHeard(chat, lang, session) {
+  db.saveSession(chat.key, { ...session, step: 'heard' });
+  const options = heardOptions().map((o) => ({ id: `heard:${o.key}`, title: typeof o.label === 'string' ? o.label : t(lang, o.label.text) }));
+  await chat.ui.choices(t(lang, 'ask_heard'), options, { listButton: t(lang, 'heard_list_button'), sectionTitle: t(lang, 'heard_list_button') });
+}
+
+/** Ответ записан — дальше телефон или сразу заявка */
+async function afterHeard(chat, lang, session, answer) {
+  rememberHeard(chat.key, answer);
+  return afterModel(chat, lang, { ...session, heardCode: answer.code, heardText: answer.code ? null : answer.text, heardAsked: true });
+}
+
+async function chooseHeard(chat, lang, key) {
+  const session = db.getSession(chat.key);
+  if (!session || session.step !== 'heard') { await chat.ui.ack(); return startFlow(chat); }
+  const option = heardOptions().find((o) => o.key === key);
+  if (!option) return chat.ui.ack();
+  await chat.ui.ack();
+  await chat.ui.closeChoices(t(lang, 'you_chose', { what: typeof option.label === 'string' ? option.label : t(lang, option.label.text) }));
+  // Отель или агент — уточняем название; «Другое» — просим написать словами
+  if (key === 'agent' || key === 'other') {
+    db.saveSession(chat.key, { ...session, step: key === 'agent' ? 'heard_agent' : 'heard_other' });
+    return chat.ui.send(t(lang, key === 'agent' ? 'ask_heard_agent' : 'ask_heard_other'));
+  }
+  return afterHeard(chat, lang, session, resolveHeard(key));
+}
+
 function afterModel(chat, lang, session) {
+  if (!session.heardAsked && !chatSourceKnown(chat.key)) return askHeard(chat, lang, session);
   if (chat.phone) return finishRequest(chat, lang, session, chat.phone);
   db.saveSession(chat.key, { ...session, step: 'contact' });
   return askPhone(chat, lang);
@@ -148,7 +177,8 @@ async function finishRequest(chat, lang, session, phone, name = chat.name) {
     estimateThb: session.estimateThb,
     freeUnits: session.freeUnits,
     lang,
-    sourceRef: chatRefOf(chat.key)
+    sourceRef: chatRefOf(chat.key) || session.heardCode || null,
+    heardFrom: session.heardText || null
   });
   db.clearSession(chat.key);
 
@@ -201,6 +231,14 @@ export async function handleClientText(chat, text, contact = null) {
     case 'model':
       return chat.ui.send(t(lang, 'choose_model_above'));
 
+    case 'heard':
+      return chat.ui.send(t(lang, 'choose_please'));
+
+    case 'heard_agent':
+    case 'heard_other':
+      if (!String(text || '').trim()) return chat.ui.send(t(lang, session.step === 'heard_agent' ? 'ask_heard_agent' : 'ask_heard_other'));
+      return afterHeard(chat, lang, session, resolveHeard(session.step === 'heard_agent' ? 'agent' : 'other', text));
+
     case 'contact': {
       const phone = contact?.phone || extractPhone(text);
       if (!phone) return askPhone(chat, lang);
@@ -251,7 +289,7 @@ async function chooseModel(chat, lang, value) {
   return afterModel(chat, lang, next);
 }
 
-/** Нажатие кнопки или выбор в списке: lang:<код>, type:<тип>, model:<номер|any> */
+/** Нажатие кнопки или выбор в списке: lang:<код>, type:<тип>, model:<номер|any>, heard:<ответ> */
 export async function handleClientChoice(chat, action, value) {
   if (action === 'lang') return chooseLanguage(chat, value);
 
@@ -260,5 +298,6 @@ export async function handleClientChoice(chat, action, value) {
 
   if (action === 'type') return chooseType(chat, lang, value);
   if (action === 'model') return chooseModel(chat, lang, value);
+  if (action === 'heard') return chooseHeard(chat, lang, value);
   return chat.ui.ack();
 }

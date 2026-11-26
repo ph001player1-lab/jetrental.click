@@ -76,16 +76,17 @@
 
   /* ------------------------------------------------ Реферальная ссылка */
 
-  // ?ref=КОД (агент, реклама, соцсеть): помним 30 дней и передаём с заявкой;
-  // переход засчитываем один раз за посещение
-  const REF_DAYS = 30;
-  function referral() {
-    let saved = null;
-    try { saved = JSON.parse(localStorage.getItem('jm_ref') || 'null'); } catch { saved = null; }
+  // ?ref=КОД (агент, реклама, соцсеть): сайт помнит все коды, по которым приходил
+  // человек, и отдаёт их с заявкой. Какой засчитать (срок, «агент важнее рекламы») —
+  // решает сервер по настройкам вкладки «Маркетинг». Переход считаем раз за посещение.
+  function referrals() {
+    let list = [];
+    try { list = JSON.parse(localStorage.getItem('jm_refs') || '[]'); } catch { list = []; }
+    if (!Array.isArray(list)) list = [];
     const fromUrl = (new URLSearchParams(location.search).get('ref') || '').toLowerCase();
     if (/^[a-z0-9_-]{3,24}$/.test(fromUrl)) {
-      saved = { code: fromUrl, at: Date.now() };
-      try { localStorage.setItem('jm_ref', JSON.stringify(saved)); } catch { /* без памяти — только это посещение */ }
+      list = [...list.filter((r) => r && r.code !== fromUrl), { code: fromUrl, at: Date.now() }].slice(-10);
+      try { localStorage.setItem('jm_refs', JSON.stringify(list)); } catch { /* без памяти — только это посещение */ }
       let counted = false;
       try { counted = sessionStorage.getItem('jm_ref_visit') === fromUrl; } catch { counted = false; }
       if (!counted) {
@@ -93,9 +94,9 @@
         try { sessionStorage.setItem('jm_ref_visit', fromUrl); } catch { /* ничего */ }
       }
     }
-    return saved && Date.now() - saved.at < REF_DAYS * DAY_MS ? saved.code : null;
+    return list;
   }
-  const REF = referral();
+  const REFS = referrals();
 
   /* ------------------------------------------------------------------ API */
 
@@ -433,7 +434,7 @@
           from: bookForm.from.value,
           to: bookForm.to.value,
           lang: state.lang,
-          ref: REF,
+          refs: REFS,
           website: bookForm.website.value
         });
         state.booking.requestId = result.id || null;
@@ -467,7 +468,7 @@
           email: form.email.value,
           message: form.message.value,
           lang: state.lang,
-          ref: REF,
+          refs: REFS,
           website: form.website.value
         });
         form.reset();
