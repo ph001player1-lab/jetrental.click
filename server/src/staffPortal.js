@@ -21,6 +21,7 @@
  *   /api/staff/journal…                       — журнал рабочей группы WhatsApp,
  *                                               табель, сверка с WS (journal/api.js)
  *   /api/staff/wa…                            — подключение наблюдателя (Admin)
+ *   /api/staff/tickets…                       — «Ошибки и предложения» (tickets.js)
  * Права ролей — в roles.js.
  *
  * В базе храним только хэши кодов и сессий.
@@ -51,6 +52,7 @@ import { marketingReport, marketingDetails, saveSource, deleteSource, placeSourc
 import { crmList, crmClient, saveClient, setTags, addNote, mergeClients, importClients, CrmError } from './crm.js';
 import { importCashbook } from './cashbook.js';
 import { serverReport, serverStatusRoute, saveServerSettings, alertAdminsOnce } from './serverStats.js';
+import { listTickets, ticketsBadge, createTicket, uploadShot, getShot, setTicketStatus, markSeen, deleteTicket } from './tickets.js';
 import { g } from './groupTexts.js';
 import { escapeHtml } from './format.js';
 import { getJournal, fixEvent, getTimesheet, getReconcile, getMedia, importHistory } from './journal/api.js';
@@ -651,7 +653,15 @@ const ROUTES = {
   'POST /api/staff/crm/tags': signedIn(crmEdit((b, by) => { setTags(b.id, b.tags, by); return b.id; })),
   'POST /api/staff/crm/note': signedIn(crmEdit((b, by) => { addNote(b.id, b.text, by); return b.id; })),
   'POST /api/staff/crm/merge': signedIn(crmEdit((b, by) => mergeClients(b.into, b.from, by))),
-  'POST /api/staff/crm/import': signedIn(crmImport)
+  'POST /api/staff/crm/import': signedIn(crmImport),
+  'GET /api/staff/tickets': signedIn(listTickets),
+  'GET /api/staff/tickets/badge': signedIn(ticketsBadge),
+  'POST /api/staff/tickets': signedIn(createTicket),
+  'GET /api/staff/tickets/shot': signedIn(getShot),
+  'POST /api/staff/tickets/shot': signedIn(uploadShot),
+  'POST /api/staff/tickets/status': signedIn(setTicketStatus),
+  'POST /api/staff/tickets/seen': signedIn(markSeen),
+  'POST /api/staff/tickets/delete': signedIn(deleteTicket)
 };
 
 /** Обработчик для пути /api/staff/*; null — такого маршрута нет */

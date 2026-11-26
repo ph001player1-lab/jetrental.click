@@ -25,6 +25,9 @@
   --chart-rent: #c0362c;
   --chart-reserve: #c98a00;
   --warn: #b45309;
+  /* «Ошибки и предложения»: свой фиолетовый — не путается с оранжевым (открытая вкладка) и тревогами */
+  --tickets: #7c3aed;
+  --tickets-bg: #ede4ff;
 
   --radius: 14px;
   --shadow: 0 1px 2px rgba(15, 27, 42, .06), 0 4px 16px rgba(15, 27, 42, .06);
@@ -53,6 +56,8 @@
     --chart-rent: #c23a2c;
     --chart-reserve: #c08a12;
     --warn: #fbbf24;
+    --tickets: #b794ff;
+    --tickets-bg: #2a1f4a;
     --shadow: none;
     color-scheme: dark;
   }
@@ -1203,3 +1208,71 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
 .tabs--top .tab-alert { border-color: var(--navy); }
 @keyframes tab-alert-blink { to { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .tab-alert--warning { animation: none; } }
+
+/* --- Вкладка «Ошибки и предложения» --- */
+
+/* Значок вкладки — цветной, чтобы был заметнее других (внизу, в «Ещё» и в шапке) */
+.tabs button[data-tab="tickets"] { color: var(--tickets); }
+.tabs--bottom button[data-tab="tickets"][aria-current="page"] { background: var(--tickets-bg); border-radius: 12px; }
+@media (min-width: 860px) {
+  .tabs--top button[data-tab="tickets"] { color: #cdb6ff; background: rgba(167, 139, 250, .16); }
+  .tabs--top button[data-tab="tickets"][aria-current="page"] { color: #fff; background: rgba(167, 139, 250, .38); }
+}
+
+.tk { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+@media (min-width: 980px) { .tk { grid-template-columns: minmax(320px, 420px) minmax(0, 1fr); } .tk-form { position: sticky; top: 76px; } }
+.tk-form { padding: 16px; display: grid; gap: 12px; }
+.tk-form h2 { margin: 0; font-size: 18px; }
+.tk-intro { margin: 0; color: var(--muted); font-size: 14px; }
+.tk-form form { display: grid; gap: 14px; }
+.tk-kinds { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tk-kind {
+  border: 1px solid var(--line); background: var(--surface); color: var(--text); border-radius: 12px;
+  padding: 12px 8px; font-size: 15px; font-weight: 700; cursor: pointer;
+}
+.tk-kind[aria-pressed="true"] { border-color: var(--tickets); background: var(--tickets-bg); color: var(--tickets); box-shadow: inset 0 0 0 1px var(--tickets); }
+.tk-cats { border: 0; margin: 0; padding: 0; min-width: 0; }
+.tk-cats legend { padding: 0; margin-bottom: 8px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.tk-cats__list { display: flex; flex-wrap: wrap; gap: 8px; }
+.tk-cats .chip { white-space: normal; text-align: left; line-height: 1.3; }
+.tk-text textarea, .tk-handle textarea { min-height: 0; padding: 10px 14px; font: inherit; font-size: 16px; resize: vertical; line-height: 1.4; }
+.tk-text textarea { min-height: 104px; }
+.tk-shot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.tk-shot__add { cursor: pointer; }
+.tk-hint { font-size: 13px; color: var(--muted); }
+.tk-shot__preview { margin: 0; display: flex; align-items: flex-start; gap: 10px; }
+.tk-shot__preview img, .tk-item__shot img {
+  display: block; max-width: min(100%, 220px); max-height: 240px; object-fit: contain;
+  border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2);
+}
+.tk-auto { margin: 0; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.tk-auto span { color: var(--text); }
+.tk-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.tk-msg { margin: 0; font-size: 14px; font-weight: 600; }
+.tk-msg--ok { color: var(--free); }
+.tk-msg--error { color: var(--rent); }
+.tk-list { min-width: 0; }
+.tk-list .section-title { margin-top: 4px; }
+.tk-filters { margin-bottom: 10px; }
+.tk-item { padding: 14px 16px; display: grid; gap: 8px; border-left: 4px solid var(--tickets); min-width: 0; }
+.tk-item--work { border-left-color: var(--reserve); }
+.tk-item--done { border-left-color: var(--free); }
+.tk-item--rejected { border-left-color: var(--service); }
+.tk-item--unseen { box-shadow: 0 0 0 2px var(--tickets); }
+.tk-item__head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.tk-item__id { font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tk-item__what { font-size: 15px; }
+.tk-item__text { margin: 0; font-size: 15px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.tk-item__shot { justify-self: start; }
+.tk-item__meta { margin: 0; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.tk-history { list-style: none; margin: 0; padding: 8px 12px; display: grid; gap: 8px; border-radius: 10px; background: var(--surface-2); font-size: 14px; }
+.tk-history li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.tk-history p { margin: 0; flex-basis: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
+.tk-history__at { font-size: 13px; color: var(--muted); }
+.tk-st--new { background: var(--tickets-bg); color: var(--tickets); }
+.tk-st--work { background: var(--reserve-bg); color: var(--reserve); }
+.tk-st--done { background: var(--free-bg); color: var(--free); }
+.tk-st--rejected { background: var(--service-bg); color: var(--service); }
+.tk-handle { display: grid; gap: 8px; padding-top: 10px; border-top: 1px solid var(--line); }
+.tk-handle__btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.tk-del { margin-left: auto; }

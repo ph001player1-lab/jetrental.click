@@ -95,14 +95,17 @@
   ICONS.crm = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm-8 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5C15 14.17 10.33 13 8 13zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>';
   ICONS.marketing = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M18 11v2h4v-2h-4zm-2 6.61c.96.71 2.21 1.65 3.2 2.39.4-.53.8-1.07 1.2-1.6-.99-.74-2.24-1.68-3.2-2.4-.4.54-.8 1.08-1.2 1.61zM20.4 5.6c-.4-.53-.8-1.07-1.2-1.6-.99.74-2.24 1.68-3.2 2.4.4.53.8 1.07 1.2 1.6.96-.72 2.21-1.65 3.2-2.4zM4 9c-1.1 0-2 .9-2 2v2c0 1.1.9 2 2 2h1v4h2v-4h1l5 3V6L8 9H4zm11.5 3c0-1.33-.58-2.53-1.5-3.35v6.69c.92-.81 1.5-2.01 1.5-3.34z"/></svg>';
   ICONS.price = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M21.41 11.58l-9-9A2 2 0 0 0 11 2H4a2 2 0 0 0-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58s1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41s-.23-1.06-.59-1.42zM5.5 7A1.5 1.5 0 1 1 7 5.5 1.5 1.5 0 0 1 5.5 7z"/></svg>';
-  const ALL_TABS = ['overview', 'fleet', 'price', 'journal', 'calendar', 'requests', 'crm', 'marketing', 'finance', 'site', 'server', 'access'];
+  // «Ошибки и предложения» — жук; значок вкладки цветной, чтобы был заметнее других (staff.css)
+  ICONS.tickets = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M20 8h-2.81a5.98 5.98 0 0 0-1.82-1.96L17 4.41 15.59 3l-2.17 2.17a6.02 6.02 0 0 0-2.83 0L8.41 3 7 4.41l1.62 1.63A5.98 5.98 0 0 0 6.81 8H4v2h2.09A6.3 6.3 0 0 0 6 11v1H4v2h2v1c0 .34.04.67.09 1H4v2h2.81A5.99 5.99 0 0 0 12 21a5.99 5.99 0 0 0 5.19-3H20v-2h-2.09c.05-.33.09-.66.09-1v-1h2v-2h-2v-1c0-.34-.04-.67-.09-1H20V8zm-6 8h-4v-2h4v2zm0-4h-4v-2h4v2z"/></svg>';
+  const ALL_TABS = ['overview', 'fleet', 'price', 'journal', 'calendar', 'requests', 'crm', 'marketing', 'finance', 'site', 'server', 'access', 'tickets'];
   // Внизу на телефоне помещается 6 кнопок; если вкладок больше — последние уходят в «Ещё»
   const BOTTOM_MAX = 6;
   // Вкладка видна, если у роли есть хотя бы одно из этих прав (настраивает админ на вкладке «Доступы»)
   const TAB_PERMISSION = {
     overview: ['overview.view'], fleet: ['fleet.view'], price: ['price.view'], calendar: ['calendar.view'], requests: ['requests.view'],
     journal: ['journal.view', 'timesheet.view', 'reconcile.view', 'whatsapp.view'],
-    crm: ['crm.view'], marketing: ['marketing.view'], finance: ['finance.view'], site: ['site.view'], server: ['server.view'], access: ['access.admin']
+    crm: ['crm.view'], marketing: ['marketing.view'], finance: ['finance.view'], site: ['site.view'], server: ['server.view'], access: ['access.admin'],
+    tickets: ['tickets.view']
   };
   const can = (perm) => Boolean(state.user?.permissions?.includes(perm));
   /** Вкладки, доступные роли вошедшего сотрудника */
@@ -410,11 +413,13 @@
     if (state.tab === 'crm') crm.load();
     if (state.tab === 'marketing') marketing.load();
     if (state.tab === 'price') price.load();
+    if (state.tab === 'tickets') tickets.load();
     clearInterval(state.timer);
     state.timer = setInterval(() => { if (!document.hidden) loadData(); }, REFRESH_MS);
     loadServerAlert();
+    loadTicketsBadge();
     clearInterval(state.alertTimer);
-    state.alertTimer = setInterval(loadServerAlert, 30 * 1000);
+    state.alertTimer = setInterval(() => { loadServerAlert(); loadTicketsBadge(); }, 30 * 1000);
   }
 
   async function loadData() {
@@ -507,6 +512,32 @@
     } catch { /* нет связи — значок не трогаем */ }
   }
 
+  /** Число на вкладке «Ошибки и предложения»: новые тикеты (разбирающим) или новые ответы (автору) */
+  function ticketsCount() {
+    const n = state.ticketsBadge?.count || 0;
+    if (!n) return '';
+    const label = t(state.ticketsBadge.handler ? 'tk.badgeNew' : 'tk.badgeAnswers');
+    return `<span class="count count--tickets" title="${esc(label)}" aria-label="${esc(`${label}: ${n}`)}">${n}</span>`;
+  }
+
+  /** Счётчик тикетов — раз в 30 секунд вместе с лампами сервера */
+  async function loadTicketsBadge() {
+    if (!can('tickets.view') || document.hidden) return;
+    try {
+      const b = await api('/tickets/badge');
+      setTicketsBadge(b.count, b.handler);
+    } catch { /* нет связи — счётчик не трогаем */ }
+  }
+
+  function setTicketsBadge(count, handler) {
+    const was = state.ticketsBadge?.count;
+    state.ticketsBadge = { count, handler };
+    if (was === count) return;
+    renderTabs();
+    // Разбирающему пришёл новый тикет, пока вкладка открыта — обновляем список
+    if (handler && was !== undefined && state.tab === 'tickets' && tickets.canRefresh()) tickets.load();
+  }
+
   function renderTabs() {
     const count = newRequestsCount();
     const list = tabs();
@@ -517,6 +548,7 @@
         ${ICONS[tab.id]}<span class="tab__label">${esc(tab.title)}</span>
         ${tab.id === 'requests' && count ? `<span class="count">${count}</span>` : ''}
         ${tab.id === 'server' ? serverDot() : ''}
+        ${tab.id === 'tickets' ? ticketsCount() : ''}
       </button>`;
     const html = list.map(button).join('');
     const top = document.querySelector('.tabs--top');
@@ -529,12 +561,16 @@
     if (list.length <= BOTTOM_MAX && !extras.length) {
       bottom.innerHTML = html;
     } else {
-      const main = list.slice(0, Math.min(list.length, BOTTOM_MAX - 1));
-      const rest = list.slice(main.length);
+      // «Ошибки и предложения» всегда внизу (перед «Ещё») — цветной значок на виду
+      const pinned = list.filter((tab) => tab.id === 'tickets');
+      const others = list.filter((tab) => tab.id !== 'tickets');
+      const main = [...others.slice(0, BOTTOM_MAX - 1 - pinned.length), ...pinned];
+      const rest = others.slice(main.length - pinned.length);
       const inRest = rest.some((tab) => tab.id === state.tab);
       const more = t('tab.more');
       // «Сервер» спрятан в «Ещё» — значок тревоги и на кнопке «Ещё»
-      const moreDot = rest.some((tab) => tab.id === 'server') ? serverDot() : '';
+      const moreDot = (rest.some((tab) => tab.id === 'server') ? serverDot() : '')
+        + (rest.some((tab) => tab.id === 'tickets') ? ticketsCount() : '');
       bottom.innerHTML = `${main.map(button).join('')}
         <button type="button" data-more aria-label="${esc(more)}" title="${esc(more)}" aria-expanded="${state.moreOpen}" ${inRest ? 'aria-current="page"' : ''}>${ICONS.more}<span class="tab__label">${esc(more)}</span>${moreDot}</button>
         ${state.moreOpen ? `<div class="tabs-more" role="menu">${rest.map(button).join('')}${extras.join('')}</div>` : ''}`;
@@ -622,6 +658,8 @@
 
   function setTab(tab) {
     if (!tabs().some((x) => x.id === tab)) tab = tabs()[0]?.id || 'overview';
+    // Для тикета запоминаем, на какой вкладке был сотрудник
+    if (tab === 'tickets' && state.tab !== 'tickets') state.prevTab = state.tab;
     state.tab = tab;
     state.moreOpen = false;
     if (tab === 'journal') journal.show();
@@ -630,6 +668,7 @@
     if (tab === 'crm') crm.load();
     if (tab === 'marketing') marketing.load();
     if (tab === 'price') price.load();
+    if (tab === 'tickets') tickets.load();
     if (tab === 'site' && !state.models) loadModels();
     if (tab === 'server') startServerPolling();
     else stopServerPolling();
@@ -662,6 +701,8 @@
     if (state.tab === 'marketing' && (!view.querySelector('.mk') || marketing.canRefresh())) { view.innerHTML = marketing.render(); marketing.mount(); }
     // Прайс: пока есть несохранённые правки цен, фоновое обновление вкладку не трогает
     if (state.tab === 'price' && (!view.querySelector('.pr') || price.canRefresh())) view.innerHTML = price.render();
+    // Тикеты: пока сотрудник пишет, фоновое обновление вкладку не трогает
+    if (state.tab === 'tickets' && (!view.querySelector('.tk') || tickets.canRefresh())) view.innerHTML = tickets.render();
     // Роли не открыт ни один раздел — подсказка вместо пустого экрана
     if (!tabs().length) view.innerHTML = `<div class="empty">${esc(t('app.noSections'))}</div>`;
   }
@@ -691,6 +732,25 @@
     locale: () => LOCALES[lang],
     seasonName: (name) => (I18N.en[`season.${name}`] ? t(`season.${name}`) : name),
     rerender: () => { if (state.tab === 'price') $('#view').innerHTML = price.render(); }
+  });
+
+  /* ------------------------------------------ Вкладка «Ошибки и предложения» */
+
+  const tickets = window.STAFF_TICKETS.create({
+    api, t, esc, dateTime,
+    apiBase: API,
+    lang: () => lang,
+    userName: () => state.user?.name || state.user?.email || '',
+    prevTab: () => state.prevTab || null,
+    tabTitle: (id) => t(`tab.${id}`),
+    uploadImage: (url, blob) => uploadImage(url, blob),
+    // Скриншот уменьшаем в браузере (до 2000 px по большей стороне) и сжимаем в JPEG
+    prepareShot: async (file) => {
+      const canvas = toCanvas(await decodeFile(file), 2000);
+      return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+    },
+    onBadge: (count, handler) => setTicketsBadge(count, handler),
+    rerender: () => { if (state.tab === 'tickets') $('#view').innerHTML = tickets.render(); }
   });
 
   /* ---------------------------------------------------------- Вкладка «CRM» */
@@ -1883,6 +1943,7 @@
       if (state.tab === 'crm' && crm.onClick(event)) return;
       if (state.tab === 'marketing' && marketing.onClick(event)) return;
       if (state.tab === 'price' && price.onClick(event)) return;
+      if (state.tab === 'tickets' && tickets.onClick(event)) return;
       if (event.target.closest('[data-more]')) {
         state.moreOpen = !state.moreOpen;
         return renderTabs();
@@ -1984,6 +2045,11 @@
       if (state.tab === 'finance') finance.onChange(event);
       if (state.tab === 'crm') crm.onChange(event);
       if (state.tab === 'price') price.onChange(event);
+      if (state.tab === 'tickets') tickets.onChange(event);
+    });
+    // Ctrl+V скриншота на вкладке «Ошибки и предложения»
+    document.addEventListener('paste', (event) => {
+      if (state.tab === 'tickets') tickets.onPaste(event);
     });
     // Ссылка вида …/#journal или кнопки «назад/вперёд» — открыть эту вкладку
     window.addEventListener('hashchange', () => {
@@ -1995,6 +2061,7 @@
       if (state.tab === 'journal' && journal.onInput(event)) return;
       if (state.tab === 'crm' && crm.onInput(event)) return;
       if (state.tab === 'price' && price.onInput(event)) return;
+      if (state.tab === 'tickets' && tickets.onInput(event)) return;
       if (!event.target.matches('[data-search]')) return;
       state.filters.q = event.target.value;
       const caret = event.target.selectionStart;
@@ -2017,6 +2084,7 @@
       if (state.tab === 'crm' && crm.onSubmit(event)) return;
       if (state.tab === 'marketing' && marketing.onSubmit(event)) return;
       if (state.tab === 'price' && price.onSubmit(event)) return;
+      if (state.tab === 'tickets' && tickets.onSubmit(event)) return;
       const soldForm = event.target.closest('[data-sold-form]');
       if (soldForm) {
         event.preventDefault();

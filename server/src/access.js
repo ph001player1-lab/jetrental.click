@@ -31,7 +31,9 @@ export const SECTIONS = [
   { id: 'crm', levels: ['edit', 'view', 'none'] },
   { id: 'marketing', levels: ['edit', 'view', 'none'] },
   { id: 'price', levels: ['edit', 'view', 'none'] },
-  { id: 'server', levels: ['view', 'none'] }
+  { id: 'server', levels: ['view', 'none'] },
+  // «Ошибки и предложения»: присылать могут все (смотрит — свои тикеты), разбирает — «меняет»
+  { id: 'tickets', levels: ['edit', 'view'] }
 ];
 const SECTION_IDS = SECTIONS.map((s) => s.id);
 const LEVELS = Object.fromEntries(SECTIONS.map((s) => [s.id, s.levels]));
@@ -42,12 +44,12 @@ export const ADMIN_ROLE = 'admin';
 const V = 'view';
 const E = 'edit';
 const N = 'none';
-const preset = (overview, fleet, calendar, requests, journal, clients, timesheet, reconcile, whatsapp, site, finance, server, crm = N, marketing = N, price = N) =>
-  ({ overview, fleet, calendar, requests, journal, clients, timesheet, reconcile, whatsapp, site, finance, server, crm, marketing, price });
+const preset = (overview, fleet, calendar, requests, journal, clients, timesheet, reconcile, whatsapp, site, finance, server, crm = N, marketing = N, price = N, tickets = V) =>
+  ({ overview, fleet, calendar, requests, journal, clients, timesheet, reconcile, whatsapp, site, finance, server, crm, marketing, price, tickets });
 const DEFAULT_ROLES = [
   // CRM по умолчанию — только у владельца (и админа); остальным админ открывает сам
   // Прайс меняют только владелец и админ, менеджеры смотрят (называть цены клиентам)
-  ['owner', 'Владелец', preset(V, V, V, V, E, V, V, V, V, E, V, V, E, E, E)],
+  ['owner', 'Владелец', preset(V, V, V, V, E, V, V, V, V, E, V, V, E, E, E, E)],
   ['finance', 'Финансист', preset(V, V, V, N, V, V, N, V, N, N, V, N, N, N, V)],
   // Один «Менеджер» без отдела: разные права — разные роли, их админ создаёт сам
   ['manager', 'Менеджер', preset(V, V, V, V, E, V, N, V, N, E, N, N, N, N, V)],
@@ -143,12 +145,25 @@ if (db.getSetting('access_price_section') !== '1') {
   db.setSetting('access_price_section', '1');
 }
 
-/** Уровни роли по всем разделам (неизвестное и недопустимое — «нет доступа») */
+// Раздел «Ошибки и предложения» появился позже: разбирать тикеты один раз открываем владельцу
+// (остальным он и так открыт как «смотрит» — присылать тикеты могут все)
+if (db.getSetting('access_tickets_section') !== '1') {
+  const owner = q.role.get('owner');
+  if (owner) {
+    const perms = JSON.parse(owner.perms || '{}');
+    if (!perms.tickets) q.updateRole.run(owner.name, JSON.stringify({ ...perms, tickets: 'edit' }), now(), owner.id);
+  }
+  db.setSetting('access_tickets_section', '1');
+}
+
+/** Уровни роли по всем разделам (неизвестное и недопустимое — «нет доступа»,
+ *  а где «нет доступа» не бывает — самый низкий уровень) */
 function cleanPerms(input) {
   const perms = {};
   for (const id of SECTION_IDS) {
     const level = input?.[id];
-    perms[id] = LEVELS[id].includes(level) ? level : 'none';
+    const levels = LEVELS[id];
+    perms[id] = levels.includes(level) ? level : levels.includes('none') ? 'none' : levels[levels.length - 1];
   }
   return perms;
 }
