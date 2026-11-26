@@ -1357,3 +1357,26 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
   .cab-pctcol { display: none; }
   .cab-table th, .cab-table td { padding: 6px 5px; }
 }
+
+/* --- «Парк»: карточки техники в портале (vehicles.js) --- */
+
+.vh-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 10px; }
+.vh-msg { font-size: 14px; font-weight: 600; }
+.vh-msg--ok { color: var(--free); }
+.vh-msg--error { color: var(--rent); }
+.vh-block { display: grid; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.vh-block--missing .warn { margin: 0; }
+.vh-repair { margin: 0; font-weight: 700; color: var(--warn); }
+.vh-dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; margin: 0; font-size: 14px; }
+.vh-dl dt { color: var(--muted); }
+.vh-dl dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.vh-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.vh-nows { margin-top: 18px; }
+.vh-card .vh-block { margin-top: 6px; }
+.vh-sheet { width: min(720px, calc(100% - 16px)); }
+.vh-grid { display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+@media (max-width: 520px) { .vh-grid { grid-template-columns: minmax(0, 1fr); } .vh-dl { grid-template-columns: minmax(0, 1fr); } .vh-dl dd { margin-bottom: 4px; } }
+.vh-grid .vh-wide { grid-column: 1 / -1; }
+.vh-grid textarea { min-height: 0; padding: 10px 14px; font: inherit; font-size: 16px; resize: vertical; }
+.vh-grid input[type="date"] { min-width: 0; }
+.vh-del { margin-left: auto; }

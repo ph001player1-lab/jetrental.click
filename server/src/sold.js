@@ -1,8 +1,9 @@
 /**
  * ============================================================================
- * Проданные машины
+ * Архив техники: проданная, списанная или убранная по другой причине
  * ============================================================================
- * Админ отмечает машину «Продана» (дата и цена — по желанию). Такая машина
+ * Владелец или админ переносит технику в архив: «Продана» (дата и цена — по
+ * желанию), «Списана» или «Другое» (с заметкой). Такая техника
  * больше не считается частью парка: её нет в «Парке», календаре, свободных
  * машинах на сайте и в ботах, в предупреждениях и сверке с WS. История
  * (журнал, CRM, касса, выручка) остаётся. Google-таблицу и WS портал не
@@ -26,8 +27,15 @@ db.raw.exec(`
   );
 `);
 
+// Причина и заметка появились позже (раньше в архиве были только проданные)
+for (const [col, type] of [['reason', "TEXT NOT NULL DEFAULT 'sold'"], ['note', 'TEXT']]) {
+  if (!db.raw.prepare('PRAGMA table_info(fleet_sold)').all().some((c) => c.name === col)) db.raw.exec(`ALTER TABLE fleet_sold ADD COLUMN ${col} ${type}`);
+}
+export const REASONS = ['sold', 'written_off', 'other'];
+
 const q = {
   all: db.raw.prepare('SELECT * FROM fleet_sold ORDER BY at DESC'),
+  setReason: db.raw.prepare('UPDATE fleet_sold SET reason = ?, note = ? WHERE plate = ?'),
   upsert: db.raw.prepare(`INSERT INTO fleet_sold (plate, model, ws_model, sold_on, price, by, at) VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(plate) DO UPDATE SET sold_on = excluded.sold_on, price = excluded.price, by = excluded.by, at = excluded.at,
       model = COALESCE(excluded.model, fleet_sold.model), ws_model = COALESCE(excluded.ws_model, fleet_sold.ws_model)`),
@@ -57,7 +65,7 @@ export const isSold = (plate) => rows().has(soldPlate(plate));
 /** Проданные: [{ plate, model, wsModel, soldOn, price, by, at }] */
 export const soldList = () => [...rows().values()].map((r) => ({
   plate: r.plate, model: r.model || null, wsModel: r.ws_model || null, soldOn: r.sold_on || null,
-  price: r.price ?? null, by: r.by, at: r.at
+  price: r.price ?? null, by: r.by, at: r.at, reason: REASONS.includes(r.reason) ? r.reason : 'sold', note: r.note || ''
 }));
 
 export class SoldError extends Error {
@@ -78,9 +86,11 @@ export function markSold(input, by) {
   const raw = String(input.price ?? '').replace(/[\s,]/g, '');
   const price = raw === '' ? null : Number(raw);
   if (price !== null && (!Number.isFinite(price) || price < 0 || price > 1e9)) throw new SoldError('invalid_price');
-  q.upsert.run(plate, input.model || null, input.wsModel || null, date, price, by, new Date().toISOString());
+  const reason = REASONS.includes(input.reason) ? input.reason : 'sold';
+  q.upsert.run(plate, input.model || null, input.wsModel || null, date, reason === 'sold' ? price : null, by, new Date().toISOString());
+  q.setReason.run(reason, String(input.note ?? '').trim().slice(0, 300) || null, plate);
   cache = null;
-  console.log(`Vehicle #${plate} marked sold by ${by}`);
+  console.log(`Vehicle #${plate} archived (${reason}) by ${by}`);
 }
 
 /** Вернуть в парк (отметили по ошибке) */

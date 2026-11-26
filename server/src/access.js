@@ -14,11 +14,16 @@
  */
 
 import * as db from './db.js';
+import { config } from './config.js';
+
+/** Главные админы — из настроек сервера (STAFF_EMAILS): их нельзя снять в портале */
+const hasMainAdmins = () => config.staff.extraEmails.length > 0;
 
 /** Разделы и какие уровни у них бывают (edit — только там, где есть что менять) */
 export const SECTIONS = [
   { id: 'overview', levels: ['view', 'none'] },
-  { id: 'fleet', levels: ['view', 'none'] },
+  // «Парк: меняет» — правка карточек техники, архив, удаление (владелец и админ)
+  { id: 'fleet', levels: ['edit', 'view', 'none'] },
   { id: 'calendar', levels: ['view', 'none'] },
   { id: 'requests', levels: ['view', 'none'] },
   { id: 'journal', levels: ['edit', 'view', 'none'] },
@@ -53,7 +58,7 @@ const AGENT_ROLE = ['agent', 'Агент', preset(N, N, N, N, N, N, N, N, N, N, 
 const DEFAULT_ROLES = [
   // CRM по умолчанию — только у владельца (и админа); остальным админ открывает сам
   // Прайс меняют только владелец и админ, менеджеры смотрят (называть цены клиентам)
-  ['owner', 'Владелец', preset(V, V, V, V, E, V, V, V, V, E, V, V, E, E, E, E)],
+  ['owner', 'Владелец', preset(V, E, V, V, E, V, V, V, V, E, V, V, E, E, E, E)],
   ['finance', 'Финансист', preset(V, V, V, N, V, V, N, V, N, N, V, N, N, N, V)],
   // Один «Менеджер» без отдела: разные права — разные роли, их админ создаёт сам
   ['manager', 'Менеджер', preset(V, V, V, V, E, V, N, V, N, E, N, N, N, N, V)],
@@ -156,6 +161,16 @@ if (db.getSetting('access_price_section') !== '1') {
   db.setSetting('access_price_section', '1');
 }
 
+// Правка парка в портале появилась позже: один раз открываем её владельцу
+if (db.getSetting('access_fleet_edit') !== '1') {
+  const owner = q.role.get('owner');
+  if (owner) {
+    const perms = JSON.parse(owner.perms || '{}');
+    if (perms.fleet !== 'edit') q.updateRole.run(owner.name, JSON.stringify({ ...perms, fleet: 'edit' }), now(), owner.id);
+  }
+  db.setSetting('access_fleet_edit', '1');
+}
+
 // Роль «Агент» появилась позже — добавляем один раз
 if (db.getSetting('access_agent_role') !== '1') {
   if (!q.role.get(AGENT_ROLE[0])) q.addRole.run(AGENT_ROLE[0], AGENT_ROLE[1], JSON.stringify(AGENT_ROLE[2]), 50, now(), now());
@@ -238,14 +253,14 @@ export function staffByEmail(email) {
 
 // Роль из таблицы при переезде: код, русское название или прежнее Editor
 const ROLE_ALIASES = {
-  editor: 'manager', 'менеджер': 'manager', 'владелец': 'owner', 'агент': 'agent', 'партнёр': 'agent', 'партнер': 'agent', 'финансист': 'finance', 'курьер': 'courier',
+  editor: 'manager', admin: 'admin', 'админ': 'admin', 'менеджер': 'manager', 'владелец': 'owner', 'агент': 'agent', 'партнёр': 'agent', 'партнер': 'agent', 'финансист': 'finance', 'курьер': 'courier',
   'сервис': 'service', 'работник сервиса': 'service', 'просмотр': 'viewer'
 };
 
 function roleFromText(value) {
   const text = String(value || '').trim().toLowerCase();
   const id = ROLE_ALIASES[text] || text;
-  if (getRole(id)) return id;
+  if (id === ADMIN_ROLE || getRole(id)) return id;
   return q.roles.all().find((r) => r.name.toLowerCase() === text)?.id || DEFAULT_ROLE;
 }
 
@@ -276,6 +291,35 @@ export function importLegacyStaff(rows) {
   if (n) q.log.run(now(), 'system', 'staff.import', JSON.stringify({ count: n }));
   return n;
 }
+
+/**
+ * Один раз при уходе от Google-таблицы: админы из листа Users → портал (роль «Админ»).
+ * rows: [{ name, emails: [...], telegramId, whatsapp }]. Почта уже есть у сотрудника — он становится админом.
+ */
+export function importLegacyAdmins(rows) {
+  if (db.getSetting('access_admins_imported') === '1') return 0;
+  let n = 0;
+  for (const row of rows) {
+    for (const email of row.emails) {
+      const old = q.staffByEmail.get(email);
+      const name = String(row.name || '').trim() || email;
+      if (old) {
+        q.updateStaff.run(old.name || name, email, old.telegram_id || digitsOnly(row.telegramId) || null, old.whatsapp || digitsOnly(row.whatsapp) || null,
+          ADMIN_ROLE, 1, now(), old.id);
+      } else {
+        q.addStaff.run(name, email, digitsOnly(row.telegramId) || null, digitsOnly(row.whatsapp) || null, ADMIN_ROLE, 1, now(), now());
+      }
+      n++;
+    }
+  }
+  db.setSetting('access_admins_imported', '1');
+  q.log.run(now(), 'system', 'admins.import', JSON.stringify({ count: n }));
+  console.log(`Access: ${n} admin(s) moved from the Users sheet to the portal`);
+  return n;
+}
+
+/** Сколько активных админов в портале (кроме главных из настроек сервера) */
+const portalAdmins = () => q.staff.all().filter((r) => r.active && r.role_id === ADMIN_ROLE && r.email).length;
 
 /* ---------------------------------------------------------- Изменения */
 
@@ -324,8 +368,10 @@ export function saveStaff(input, by, { isAdminEmail }) {
   const email = String(input.email || '').trim().toLowerCase() || null;
   if (!name) throw new AccessError('name_required');
   if (email && (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 200)) throw new AccessError('invalid_email');
+  // Главного админа (из настроек сервера) сотрудником не сделать — он всегда админ
   if (email && isAdminEmail(email)) throw new AccessError('is_admin');
-  const role = getRole(input.roleId);
+  // «Админ» — не роль из списка, у него все права; назначает его только админ (вкладка «Доступы»)
+  const role = input.roleId === ADMIN_ROLE ? { id: ADMIN_ROLE, name: 'Админ' } : getRole(input.roleId);
   if (!role) throw new AccessError('unknown_role');
   const other = email ? q.staffByEmail.get(email) : null;
   if (other && other.id !== Number(input.id)) throw new AccessError('email_taken');
@@ -339,6 +385,9 @@ export function saveStaff(input, by, { isAdminEmail }) {
   if (input.id) {
     const old = q.staffById.get(Number(input.id));
     if (!old) throw new AccessError('unknown_staff');
+    // Нельзя снять последнего админа (иначе в «Доступы» никто не войдёт)
+    const losesAdmin = old.role_id === ADMIN_ROLE && old.active && old.email && (role.id !== ADMIN_ROLE || !active || !email);
+    if (losesAdmin && portalAdmins() <= 1 && !hasMainAdmins()) throw new AccessError('last_admin');
     q.updateStaff.run(name, email, telegramId, whatsapp, role.id, active, now(), old.id);
     if (rate !== undefined) q.setRate.run(rate || null, old.id);
     if (sourceId !== undefined) q.setSource.run(sourceId, old.id);
@@ -347,7 +396,7 @@ export function saveStaff(input, by, { isAdminEmail }) {
     if (rate !== undefined && (old.rate || 0) !== rate) changes.rate = `${old.rate || 0} → ${rate}`;
     if (old.name !== name) changes.name = `${old.name} → ${name}`;
     if ((old.email || null) !== email) changes.email = `${old.email || '—'} → ${email || '—'}`;
-    if (old.role_id !== role.id) changes.role = `${getRole(old.role_id)?.name || old.role_id} → ${role.name}`;
+    if (old.role_id !== role.id) changes.role = `${old.role_id === ADMIN_ROLE ? 'Админ' : getRole(old.role_id)?.name || old.role_id} → ${role.name}`;
     if (Boolean(old.active) !== Boolean(active)) changes.active = active ? 'on' : 'off';
     if ((old.telegram_id || null) !== telegramId) changes.telegram = true;
     if ((old.whatsapp || null) !== whatsapp) changes.whatsapp = true;
@@ -404,6 +453,7 @@ export function importStaffList(text, by, { isAdminEmail }) {
 export function deleteStaff(id, by) {
   const row = q.staffById.get(Number(id));
   if (!row) throw new AccessError('unknown_staff');
+  if (row.role_id === ADMIN_ROLE && row.active && row.email && portalAdmins() <= 1 && !hasMainAdmins()) throw new AccessError('last_admin');
   q.deleteStaff.run(row.id);
   logChange(by, 'staff.delete', { staff: row.name });
 }
@@ -425,7 +475,7 @@ export function accessOverview(admins, sources = []) {
   const order = new Map(roleRows.map((r, i) => [r.id, i]));
   // Порядок: по ролям (владелец, финансист, менеджер, …), внутри — по имени
   const staff = q.staff.all().map(publicStaff).map((s) => ({ ...s, waName: whatsappName(s.whatsapp) }))
-    .sort((a, b) => (order.get(a.roleId) ?? 99) - (order.get(b.roleId) ?? 99) || a.name.localeCompare(b.name));
+    .sort((a, b) => (a.roleId === ADMIN_ROLE ? -1 : order.get(a.roleId) ?? 99) - (b.roleId === ADMIN_ROLE ? -1 : order.get(b.roleId) ?? 99) || a.name.localeCompare(b.name));
   const roles = roleRows.map(parseRole).map((r) => ({ ...r, staffCount: staff.filter((s) => s.roleId === r.id).length }));
   const log = q.lastLog.all(40).map((r) => ({ at: r.at, by: r.by, action: r.action, details: JSON.parse(r.details || '{}') }));
   return { sections: SECTIONS, roles, staff, admins, log, sources };

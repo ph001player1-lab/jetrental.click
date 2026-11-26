@@ -115,14 +115,33 @@ function vehicleProblems(tx, snapshot, now) {
   return problems;
 }
 
-function matchProblems(tx, snapshot, fleet) {
+/** Модель для сравнения: буквы и цифры без пробелов, без «(1019)» в конце названия из WS */
+const modelKey = (value) => String(value || '').replace(/\s*\(\d+\)\s*$/, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+
+export function matchProblems(tx, snapshot, fleet) {
   const problems = [];
-  for (const car of snapshot.cars.filter((c) => !c.model)) {
-    problems.push({
-      group: 'data', level: 'warning', target: { tab: 'fleet', q: car.plate },
-      title: tx.t('notInSheet.title', { car: `${car.wsModel || 'Vehicle'} · ${car.plate}` }),
-      detail: tx.t('notInSheet.detail')
-    });
+  // Модель — из парка портала прямо сейчас (снимок WS обновляется раз в 10 минут)
+  const unitByPlate = new Map((fleet?.units || []).map((u) => [plateKey(u.plate), u]));
+  for (const car of snapshot.cars) {
+    const unit = unitByPlate.get(plateKey(car.plate));
+    if (!unit) {
+      problems.push({
+        group: 'data', level: 'warning', target: { tab: 'fleet', q: car.plate },
+        title: tx.t('notInSheet.title', { car: `${car.wsModel || 'Vehicle'} · ${car.plate}` }),
+        detail: tx.t('notInSheet.detail')
+      });
+      continue;
+    }
+    // Разная модель в WS и в парке: ни одно название не входит в другое (Haval H6 ≠ Haval Jolion)
+    const ws = modelKey(car.wsModel);
+    const names = [modelKey(unit.wsName), modelKey(unit.model)].filter(Boolean);
+    if (ws && names.length && !names.some((n) => n.includes(ws) || ws.includes(n))) {
+      problems.push({
+        group: 'data', level: 'warning', target: { tab: 'fleet', q: car.plate },
+        title: tx.t('modelDiff.title', { car: `${unit.model || unit.wsName} · ${car.plate}` }),
+        detail: tx.t('modelDiff.detail', { ws: car.wsModel, portal: unit.wsName || unit.model })
+      });
+    }
   }
   if (!fleet) return problems;
   const wsPlates = new Set(snapshot.cars.map((c) => plateKey(c.plate)));
@@ -131,6 +150,7 @@ function matchProblems(tx, snapshot, fleet) {
     if (!key || wsPlates.has(key)) continue;
     problems.push({
       group: 'data', level: 'warning',
+      target: { tab: 'fleet', q: unit.plate },
       title: tx.t('notInWs.title', { car: `${unit.model || 'Vehicle'} · ${unit.plate}` }),
       detail: tx.t('notInWs.detail')
     });
@@ -352,9 +372,9 @@ function systemProblems(tx, now) {
       add('warning', 'wsLastFailed', { text: sync.error });
     }
   }
+  // Google-таблица нужна, только пока парк не перенесён в портал
   const sheets = fleetStatus();
-  if (!sheetsEnabled) add('error', 'sheetsOff');
-  else if (sheets.error) add('error', 'sheetsError', { text: tx.t('sheetsError.detail', { error: sheets.error }) });
+  if (sheets.source === 'sheet' && sheets.error) add('error', 'sheetsError', { text: tx.t('sheetsError.detail', { error: sheets.error }) });
   // Telegram-группа нужна, если заявки идут не только в WhatsApp (или WhatsApp-бот не на связи)
   if (!getStaffChatId()) { if (telegramNeeded()) add('error', 'groupOff'); }
   else if (staffGroupFailure()) add('error', 'groupFailed', failure(staffGroupFailure()));

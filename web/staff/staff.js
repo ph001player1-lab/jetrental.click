@@ -1167,74 +1167,27 @@
     if (!state.fleet) return loadingBox();
     const list = filteredCars();
     return `
+      ${vehicles.toolbar()}
       ${renderFilters({ withStatus: true })}
       <div class="result-count">${esc(t('fleet.count', { n: list.length, total: cars().length }))}</div>
       <div class="list" style="margin-top:10px">
         ${list.length ? list.map(renderCar).join('') : nothingFound()}
       </div>
-      ${can('access.admin') ? renderSold() : ''}`;
+      ${vehicles.renderNotInWs(state.filters.q)}
+      ${vehicles.renderArchive()}`;
   }
 
-  /* ------------------------------------------ Проданные машины (только админ) */
+  /* ------------------------- Карточки техники в портале: правка и архив (vehicles.js) */
 
   const bkkToday = () => new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
-
-  function soldForm(plate, { model = '', wsModel = '', date = bkkToday(), price = '' } = {}) {
-    return `
-      <form class="sold-form" data-sold-form="${esc(plate)}" data-model="${esc(model)}" data-ws-model="${esc(wsModel)}">
-        <label class="field"><span>${esc(t('fl.sold.date'))}</span><input type="date" name="date" class="search" value="${esc(date || '')}"></label>
-        <label class="field"><span>${esc(t('fl.sold.price'))}</span><input name="price" class="search" inputmode="numeric" value="${esc(price ?? '')}" placeholder="350000"></label>
-        <div class="sold-form__buttons">
-          <button type="submit" class="btn btn--primary btn--small">${esc(t('fl.sold.save'))}</button>
-          <button type="button" class="btn btn--small" data-sold-cancel>${esc(t('fl.sold.cancel'))}</button>
-        </div>
-        <p class="muted jr-small">${esc(t('fl.sold.hint'))}</p>
-      </form>`;
-  }
-
-  function soldControl(car) {
-    const plate = String(car.plate).replace(/\D/g, '');
-    if (state.soldEdit === plate) return soldForm(plate, { model: car.model || '', wsModel: car.wsModel || '' });
-    return `<button type="button" class="btn btn--small sold-open" data-sold-open="${esc(plate)}">🏷️ ${esc(t('fl.sold.mark'))}</button>`;
-  }
-
-  function renderSold() {
-    const sold = state.fleet?.sold || [];
-    const rows = sold.map((r) => {
-      const name = `${r.model || r.wsModel || ''} #${r.plate}`.trim();
-      if (state.soldEdit === `edit:${r.plate}`) return `<li><b>${esc(name)}</b>${soldForm(r.plate, { date: r.soldOn || '', price: r.price ?? '' })}</li>`;
-      return `<li>
-        <b>${esc(name)}</b>
-        <span class="muted">${esc(r.soldOn ? shortDate(r.soldOn) : t('fl.sold.noDate'))} · ${esc(r.price ? money(r.price) : t('fl.sold.noPrice'))}</span>
-        <span class="sold-actions">
-          <button type="button" class="link" data-sold-edit="${esc(r.plate)}">${esc(t('fl.sold.edit'))}</button>
-          <button type="button" class="link" data-sold-restore="${esc(r.plate)}">${esc(t('fl.sold.restore'))}</button>
-        </span>
-      </li>`;
-    }).join('');
-    return `
-      <details class="card sold-box"${state.soldOpen ? ' open' : ''} data-sold-box>
-        <summary><b>${esc(t('fl.sold.title', { n: sold.length }))}</b></summary>
-        ${state.soldMsg ? `<p class="md-status is-${state.soldMsg.kind}" role="status">${esc(state.soldMsg.text)}</p>` : ''}
-        ${sold.length ? `<ul class="sold-list">${rows}</ul>` : ''}
-        <form class="sold-bulk" data-sold-bulk>
-          <label class="field"><span>${esc(t('fl.sold.bulk'))}</span><textarea name="text" class="search" rows="3" placeholder="7086&#10;800 2026-11-20 350000"></textarea></label>
-          <button type="submit" class="btn btn--small">${esc(t('fl.sold.bulkBtn'))}</button>
-        </form>
-      </details>`;
-  }
-
-  async function soldCall(body) {
-    try {
-      const r = await api('/fleet/sold', { body });
-      state.soldMsg = r.errors?.length ? { kind: 'error', text: `${t('fl.sold.done', { n: r.marked })} · ${t('fl.sold.failed')}` } : { kind: 'ok', text: t('fl.sold.done', { n: r.marked ?? 1 }) };
-      state.soldEdit = null;
-      await loadData();
-    } catch (err) {
-      state.soldMsg = { kind: 'error', text: t('fl.sold.failed') };
-    }
-    render();
-  }
+  const vehicles = window.STAFF_VEHICLES.create({
+    api, t, esc, money, dateTime,
+    shortDate: (iso) => shortDate(iso),
+    today: bkkToday,
+    fleet: () => state.fleet,
+    catalogModels: () => Object.keys(state.fleet?.prices || {}),
+    reload: async () => { await loadData(); render(); }
+  });
 
   /** Статус по рабочей группе WhatsApp: «По группе: выдана 12 Nov, 12:44» и ⚠, если в WS иначе */
   function groupLine(car) {
@@ -1300,7 +1253,7 @@
                 <li><span class="dot dot--${s.kind}"></span>${esc(STATUS[s.kind])}: ${esc(dateTime(s.from))} → ${esc(dateTime(s.to))}</li>`).join('')}</ul>`
                 : `<div class="muted">${esc(t('fleet.nothing30'))}</div>`}
             </div>
-            ${can('access.admin') ? soldControl(car) : ''}
+            ${vehicles.cardBlock(car)}
           </div>` : ''}
       </article>`;
   }
@@ -2045,19 +1998,9 @@
       }
       const edit = event.target.closest('[data-edit-model]');
       if (edit) return openModel(edit.dataset.editModel);
-      const soldOpen = event.target.closest('[data-sold-open]');
-      if (soldOpen) { state.soldEdit = soldOpen.dataset.soldOpen; state.soldMsg = null; return render(); }
-      if (event.target.closest('[data-sold-cancel]')) { state.soldEdit = null; return render(); }
-      const soldEdit = event.target.closest('[data-sold-edit]');
-      if (soldEdit) { state.soldEdit = `edit:${soldEdit.dataset.soldEdit}`; state.soldOpen = true; return render(); }
-      const soldRestore = event.target.closest('[data-sold-restore]');
-      if (soldRestore) {
-        if (window.confirm(t('fl.sold.confirmRestore', { plate: soldRestore.dataset.soldRestore }))) soldCall({ plate: soldRestore.dataset.soldRestore, restore: true });
-        return;
-      }
-      if (event.target.closest('[data-sold-box] summary')) { state.soldOpen = !event.target.closest('[data-sold-box]').open; return; }
+      if (state.tab === 'fleet' && vehicles.onClick(event)) return;
       // Формы внутри карточки машины не сворачивают её
-      if (event.target.closest('.sold-form')) return;
+      if (event.target.closest('.vh-actions')) return;
       const car = event.target.closest('[data-car]');
       if (car && !event.target.closest('a')) {
         const id = Number(car.dataset.car);
@@ -2075,6 +2018,7 @@
       if (state.tab === 'price') price.onChange(event);
       if (state.tab === 'tickets') tickets.onChange(event);
       if (state.tab === 'cabinet') cabinet.onChange(event);
+      vehicles.onChange(event);
     });
     // Ctrl+V скриншота на вкладке «Ошибки и предложения»
     document.addEventListener('paste', (event) => {
@@ -2116,19 +2060,8 @@
       if (state.tab === 'price' && price.onSubmit(event)) return;
       if (state.tab === 'tickets' && tickets.onSubmit(event)) return;
       if (state.tab === 'cabinet' && cabinet.onSubmit(event)) return;
-      const soldForm = event.target.closest('[data-sold-form]');
-      if (soldForm) {
-        event.preventDefault();
-        const data = Object.fromEntries(new FormData(soldForm));
-        soldCall({ plate: soldForm.dataset.soldForm, date: data.date, price: data.price, model: soldForm.dataset.model || undefined, wsModel: soldForm.dataset.wsModel || undefined });
-        return;
-      }
-      const soldBulk = event.target.closest('[data-sold-bulk]');
-      if (soldBulk) {
-        event.preventDefault();
-        soldCall({ text: soldBulk.elements.text.value });
-        return;
-      }
+      // Окно карточки техники («Парк»)
+      if (vehicles.onSubmit(event)) return;
       if (event.target.id !== 'srv-settings') return;
       event.preventDefault();
       saveServerSettings(event.target);

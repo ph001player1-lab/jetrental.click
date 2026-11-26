@@ -52,7 +52,8 @@
     /* ---------------------------------------------------------- Сотрудники */
 
     function staffForm(s) {
-      const roles = st.data.roles.map((r) => `<option value="${esc(r.id)}"${r.id === s.roleId ? ' selected' : ''}>${esc(r.name)}</option>`).join('');
+      const roles = `<option value="admin"${s.roleId === 'admin' ? ' selected' : ''}>👑 ${esc(t('role.admin'))}</option>`
+        + st.data.roles.map((r) => `<option value="${esc(r.id)}"${r.id === s.roleId ? ' selected' : ''}>${esc(r.name)}</option>`).join('');
       const sources = (st.data.sources || []).map((x) => `<option value="${x.id}"${x.id === s.sourceId ? ' selected' : ''}>${esc(x.name)}${x.active ? '' : ` (${esc(t('ac.f.sourceOff'))})`}</option>`).join('');
       return `
         <form class="ac-form card" data-ac-staff="${esc(s.id || '')}">
@@ -87,8 +88,11 @@
 
     function renderStaff() {
       const d = st.data;
-      const roleOptions = (current) => d.roles.map((r) => `<option value="${esc(r.id)}"${r.id === current ? ' selected' : ''}>${esc(r.name)}</option>`).join('');
-      const admins = d.admins.map((a) => `<li>👑 <b>${esc(a.name)}</b> <span class="muted">${esc(a.email)}</span></li>`).join('');
+      // «Админ» — все права; назначает и снимает только админ (последнего админа снять нельзя)
+      const roleOptions = (current) => `<option value="admin"${current === 'admin' ? ' selected' : ''}>👑 ${esc(t('role.admin'))}</option>`
+        + d.roles.map((r) => `<option value="${esc(r.id)}"${r.id === current ? ' selected' : ''}>${esc(r.name)}</option>`).join('');
+      // Главные админы — из настроек сервера (их нельзя снять в портале)
+      const admins = d.admins.map((a) => `<li>👑 <b>${esc(a.email)}</b> <span class="muted">${esc(t('ac.mainAdmin'))}</span></li>`).join('');
       // Без почты — «не подключён»: подсвечиваем, чтобы админ видел, кому ещё нужна почта
       const rows = d.staff.map((s) => `
         <tr class="${s.active ? '' : 'ac-off'}${s.connected ? '' : ' ac-nomail'}">
@@ -177,7 +181,7 @@
         </li>`).join('');
       return `
         <div class="ac-roles-phone">
-          <p class="muted jr-small">👑 ${esc(t('role.admin'))} (${esc(t('ac.adminFromSheet'))}) — ${esc(t('ac.adminFixed'))}</p>
+          <p class="muted jr-small">👑 ${esc(t('role.admin'))} — ${esc(t('ac.adminFixed'))}</p>
           <div class="chips ac-rolechips">${chips}</div>
           <div class="ac-phone-role">
             <label class="field"><span>${esc(t('ac.roleName'))}</span>

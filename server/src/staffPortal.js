@@ -48,7 +48,8 @@ import { collectProblems, bookingOutlook, requestStats, LIMITS } from './dashboa
 import { roleOf, roleNameOf, permissionsOf, can, canAny } from './roles.js';
 import { accessOverview, saveRole, deleteRole, saveStaff, deleteStaff, importStaffList, AccessError } from './access.js';
 import { financeReport, saveLoans } from './finance.js';
-import { soldList, markSold, unmarkSold, markSoldList, SoldError } from './sold.js';
+import { soldList, markSold, unmarkSold, markSoldList, isSold, SoldError } from './sold.js';
+import { listVehicles, saveVehicle, deleteVehicle, fleetLog, FleetError } from './fleetStore.js';
 import { marketingReport, marketingDetails, saveSource, deleteSource, placeSource, saveSettings, allSources, MarketingError } from './marketing.js';
 import { crmList, crmClient, saveClient, setTags, addNote, mergeClients, importClients, CrmError } from './crm.js';
 import { importCashbook } from './cashbook.js';
@@ -279,18 +280,31 @@ async function fleet(req, res) {
   needAny(staff, ['fleet.view', 'calendar.view', 'overview.view']);
   const snapshot = getWsSnapshot();
   const sync = wsSyncStatus();
+  // Модель и тип — из парка портала прямо сейчас (правка карточки видна сразу, не ждём синхронизации WS)
+  let units = [];
+  try { units = (await getFleet()).units; } catch { /* без парка — как в снимке */ }
+  const unitByPlate = new Map(units.map((u) => [plateKey(u.plate), u]));
+  const cars = (snapshot?.cars || []).map((car) => {
+    const unit = unitByPlate.get(plateKey(car.plate));
+    return { ...car, model: unit?.model || '', type: unit?.type || null, vehicleId: unit?.id || null };
+  });
+  const editFleet = can(staff, 'fleet.edit');
+  const fleetView = can(staff, 'fleet.view');
   sendJson(res, 200, {
     enabled: sync.enabled,
     error: sync.error,
     updatedAt: snapshot?.updatedAt || null,
     windowFrom: snapshot?.windowFrom || null,
     windowTo: snapshot?.windowTo || null,
-    cars: snapshot?.cars || [],
-    // Проданные машины (отметка в портале) — админу, чтобы поправить дату, цену или вернуть в парк
-    ...(can(staff, 'access.admin') ? { sold: soldList() } : {}),
+    cars,
+    canEditFleet: editFleet,
+    // Карточки техники из портала (первоисточник) — тем, кому открыт «Парк»
+    ...(fleetView ? { vehicles: listVehicles().filter((v) => !isSold(v.plate)) } : {}),
+    // Архив (продана, списана, другое) — тем, кто правит парк: поправить или вернуть в парк
+    ...(editFleet ? { sold: soldList(), fleetLog: fleetLog(20) } : {}),
     // Статус машин по рабочей группе WhatsApp: госномер → последний отчёт
     group: Object.fromEntries([...groupStatusByPlate()].map(([plate, g]) => [plate, { status: g.status, at: g.at, kind: g.kind }])),
-    ...(await priceData(snapshot?.cars || []))
+    ...(await priceData(cars))
   });
 }
 
@@ -412,7 +426,7 @@ async function dashboard(req, res, url) {
 
 /** POST /api/staff/fleet/sold { plate, date?, price?, model?, wsModel? } | { text } | { plate, restore: true } */
 async function fleetSold(staff, req, res) {
-  if (!can(staff, 'access.admin')) throw new HttpError(403, 'admin_only');
+  if (!can(staff, 'fleet.edit')) throw new HttpError(403, 'read_only');
   const body = await readJson(req);
   let result = {};
   try {
@@ -424,8 +438,39 @@ async function fleetSold(staff, req, res) {
     throw err;
   }
   // Сайт сразу показывает модель без проданной машины
+  invalidateFleet();
   resetCatalog();
   sendJson(res, 200, { ...result, sold: soldList() });
+}
+
+/** Ошибки правки парка — 400 (404 — нет такой карточки) с понятным кодом */
+function fleetCall(fn) {
+  try {
+    return fn();
+  } catch (err) {
+    if (err instanceof FleetError) throw new HttpError(err.code === 'not_found' ? 404 : 400, err.code);
+    throw err;
+  }
+}
+
+/** POST /api/staff/fleet/vehicle { id?, plate, type, brand, model, clientModel, … } — «Парк: меняет» */
+async function fleetVehicle(staff, req, res) {
+  if (!can(staff, 'fleet.edit')) throw new HttpError(403, 'read_only');
+  const body = await readJson(req);
+  const vehicle = fleetCall(() => saveVehicle(body, staff.email));
+  invalidateFleet();
+  resetCatalog();
+  sendJson(res, 200, { vehicle });
+}
+
+/** POST /api/staff/fleet/vehicle/delete { id } — убрать ошибочную карточку */
+async function fleetVehicleDelete(staff, req, res) {
+  if (!can(staff, 'fleet.edit')) throw new HttpError(403, 'read_only');
+  const { id } = await readJson(req);
+  fleetCall(() => deleteVehicle(id, staff.email));
+  invalidateFleet();
+  resetCatalog();
+  sendJson(res, 200, { ok: true });
 }
 
 /* ----------------------------------------------------- Вкладка «Финансы» */
@@ -643,6 +688,8 @@ const ROUTES = {
   'GET /api/staff/finance': signedIn(finance),
   'POST /api/staff/finance/cashbook': signedIn(financeCashbook),
   'POST /api/staff/fleet/sold': signedIn(fleetSold),
+  'POST /api/staff/fleet/vehicle': signedIn(fleetVehicle),
+  'POST /api/staff/fleet/vehicle/delete': signedIn(fleetVehicleDelete),
   'POST /api/staff/finance/loans': signedIn(financeLoans),
   'GET /api/staff/marketing': signedIn(marketingRoute),
   'GET /api/staff/marketing/details': signedIn(async (staff, req, res, url) => {

@@ -1,14 +1,16 @@
 /**
  * Кто может входить на сайт сотрудников.
- * Админы — из Google-таблицы (лист Users, роль Admin; плюс STAFF_EMAILS в .env):
- * лист читается не чаще раза в 2 минуты, без Google — по последней версии.
- * Остальные сотрудники — в портале, вкладка «Доступы» (access.js); при переезде
- * сотрудники из таблицы один раз переносятся в портал с прежней ролью.
+ * Все — в портале, вкладка «Доступы» (access.js): у админа роль «Админ», её
+ * назначает только админ. Главные админы — STAFF_EMAILS в .env сервера: их нельзя
+ * снять в портале, чтобы никто не остался без входа.
+ * Раньше админы были в Google-таблице (лист Users) — при уходе от таблицы они
+ * один раз переносятся в портал (как раньше сотрудники), дальше лист не читаем.
  */
 
 import { config } from './config.js';
+import * as db from './db.js';
 import { getRows, sheetsEnabled } from './google/sheets.js';
-import { ADMIN_ROLE, activeStaff, importLegacyStaff, staffByEmail } from './access.js';
+import { ADMIN_ROLE, activeStaff, importLegacyStaff, importLegacyAdmins, staffByEmail } from './access.js';
 
 const USERS_SHEET = 'Users';
 const CACHE_MS = 2 * 60 * 1000;
@@ -26,43 +28,52 @@ export function isValidEmail(value) {
 
 const phonesOf = (value) => String(value || '').split(/[,;/]+/).map((p) => p.replace(/\D/g, '')).filter((p) => p.length >= 8);
 
-/** Админы из таблицы: почта → { email, name, role: 'admin', telegramId } */
-async function loadAdmins() {
-  if (cache && Date.now() - cache.loadedAt < CACHE_MS) return cache;
+/** Один раз: админы и сотрудники из листа Users → портал. false — таблица сейчас недоступна */
+async function moveUsersSheet() {
+  if (!sheetsEnabled || db.getSetting('access_admins_imported') === '1') return true;
+  try {
+    const legacy = [];
+    const admins = [];
+    for (const row of await getRows(USERS_SHEET)) {
+      const isAdmin = String(row['Роль'] || '').trim().toLowerCase() === ADMIN_ROLE;
+      const name = String(row['Имя'] || row.Username || '').trim();
+      const telegramId = String(row['Telegram ID'] || '').replace(/\D/g, '');
+      // В одной ячейке можно указать несколько почт через запятую или пробел
+      const emails = String(row.Email || '').split(/[\s,;]+/).map(normalizeEmail).filter(isValidEmail);
+      const whatsapp = phonesOf(row.WhatsApp)[0] || '';
+      if (isAdmin) admins.push({ name, emails, telegramId, whatsapp });
+      else for (const email of emails.length ? emails : [null]) legacy.push({ email, name, role: row['Роль'], telegramId, whatsapp });
+    }
+    const moved = importLegacyStaff(legacy);
+    if (moved) console.log(`Access: moved ${moved} staff from the Users sheet to the portal`);
+    importLegacyAdmins(admins);
+    return true;
+  } catch (err) {
+    console.error('Users sheet move failed (will retry):', err.message);
+    return false;
+  }
+}
 
+/** Админы: почта → { email, name, role: 'admin', telegramId, main } — главные (.env) и из портала */
+async function loadAdmins() {
+  // После переезда список собирается из базы при каждом запросе — назначение и снятие админа действуют сразу
+  const movedBefore = !sheetsEnabled || db.getSetting('access_admins_imported') === '1';
+  if (cache && !movedBefore && Date.now() - cache.loadedAt < CACHE_MS) return cache;
+  const moved = await moveUsersSheet();
   const admins = new Map();
   const phones = new Map();
   // Telegram ID админов — для личных оповещений о сервере
   const adminChats = new Set();
-  for (const email of config.staff.extraEmails) admins.set(email, { email, name: email, role: ADMIN_ROLE, telegramId: '' });
-
-  if (sheetsEnabled) {
-    try {
-      const legacy = [];
-      for (const row of await getRows(USERS_SHEET)) {
-        const isAdmin = String(row['Роль'] || '').trim().toLowerCase() === ADMIN_ROLE;
-        const name = String(row['Имя'] || row.Username || '').trim();
-        const telegramId = String(row['Telegram ID'] || '').replace(/\D/g, '');
-        // В одной ячейке можно указать несколько почт через запятую или пробел
-        const emails = String(row.Email || '').split(/[\s,;]+/).map(normalizeEmail).filter(isValidEmail);
-        if (!isAdmin) {
-          const whatsapp = phonesOf(row.WhatsApp)[0] || '';
-          for (const email of emails.length ? emails : [null]) legacy.push({ email, name, role: row['Роль'], telegramId, whatsapp });
-          continue;
-        }
-        if (telegramId) adminChats.add(telegramId);
-        for (const phone of phonesOf(row.WhatsApp)) if (name) phones.set(phone, name);
-        for (const email of emails) admins.set(email, { email, name: name || email, role: ADMIN_ROLE, telegramId });
-      }
-      // Переезд: сотрудники (не админы) из таблицы — один раз в портал
-      const moved = importLegacyStaff(legacy);
-      if (moved) console.log(`Access: moved ${moved} staff from the Users sheet to the portal`);
-    } catch (err) {
-      console.error('Staff list load failed:', err.message);
-      if (cache) return cache;
+  for (const email of config.staff.extraEmails) admins.set(email, { email, name: email, role: ADMIN_ROLE, telegramId: '', main: true });
+  for (const s of activeStaff()) {
+    if (s.roleId !== ADMIN_ROLE) continue;
+    if (s.telegramId) adminChats.add(String(s.telegramId));
+    if (s.email && !admins.has(s.email)) {
+      admins.set(s.email, { email: s.email, name: s.name || s.email, role: ADMIN_ROLE, telegramId: s.telegramId || '', staffId: s.id, sourceId: s.sourceId });
     }
   }
-
+  // Пока перенос не удался, прошлый список не теряем (админы из таблицы ещё могут войти)
+  if (!moved && cache) return cache;
   cache = { loadedAt: Date.now(), admins, phones, adminChats: [...adminChats] };
   return cache;
 }
@@ -81,9 +92,6 @@ export async function staffPhones() {
   const phones = new Map();
   // Имя-заглушка из одних цифр («+66 90 293 5085») не подменяет имя из самого WhatsApp
   for (const s of activeStaff()) if (/\p{L}/u.test(s.name)) for (const phone of phonesOf(s.whatsapp)) phones.set(phone, s.name);
-  try {
-    for (const [phone, name] of (await loadAdmins()).phones) phones.set(phone, name);
-  } catch { /* без таблицы — только сотрудники портала */ }
   return phones;
 }
 
@@ -104,11 +112,12 @@ export async function adminTelegramIds() {
   return (await loadAdmins()).adminChats;
 }
 
-/** Админы из таблицы — для вкладки «Доступы» */
+/** Главные админы (STAFF_EMAILS в .env) — для вкладки «Доступы»: их нельзя снять в портале */
 export async function adminList() {
-  return [...(await loadAdmins()).admins.values()].map((a) => ({ name: a.name, email: a.email }));
+  return config.staff.extraEmails.map((email) => ({ name: email, email, main: true }));
 }
 
+/** Главный админ (из настроек сервера) — его нельзя сделать сотрудником портала */
 export async function isAdminEmail(email) {
-  return (await loadAdmins()).admins.has(normalizeEmail(email));
+  return config.staff.extraEmails.includes(normalizeEmail(email));
 }

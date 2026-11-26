@@ -1,13 +1,12 @@
 /**
  * ============================================================================
- * Снимок данных WS.Автопрокат + копия в Google-таблицу (лист «Автопрокат»)
+ * Снимок данных WS.Автопрокат (копию в Google-таблицу больше не пишем — всё в портале)
  * ============================================================================
  * Каждые N минут (WS_SYNC_MINUTES, по умолчанию 10): все машины, что с ними
  * сейчас (свободна / аренда / бронь / сервис), когда освободится, залог,
  * тарифы и занятость на 30 дней вперёд. Снимок держим в памяти — его
- * показывает сайт для сотрудников; в таблицу пишем краткую версию.
- * Модель для клиента и тип подтягиваются из листа Vehicles по госномеру —
- * так видно машины, которые ещё не сопоставлены (пустые колонки D–E).
+ * показывает сайт для сотрудников. Модель для клиента и тип подтягиваются
+ * из парка портала по госномеру — так видно машины, которых нет в парке.
  * ============================================================================
  */
 
@@ -15,41 +14,19 @@ import { config } from '../config.js';
 import * as ws from './api.js';
 import { carSegments, statusAt, freeFromAt, isFreeBetween, mapLimit } from './timeline.js';
 import { getFleet, plateKey } from '../fleet.js';
-import { sheetsEnabled, ensureSheet, updateRange, clearRange } from '../google/sheets.js';
 import { recordWsSnapshot } from '../journal/wsHistory.js';
 import { isSold, rememberSoldModels } from '../sold.js';
 
-const SHEET = 'Автопрокат';
-const HEADERS = [
-  'ID в Автопрокате', 'Госномер', 'Модель в Автопрокате', 'Модель для клиента', 'Тип',
-  'Сейчас', 'Свободна с', 'Свободна ближайшие 7 дней', 'Залог ฿', 'Тарифы ฿/день', 'Обновлено'
-];
 const DAY_MS = 86400000;
 // 20 дней назад — чтобы видеть, что машина в ремонте дольше 15 дней или давно ждёт выдачи по брони
 const WINDOW_BACK_DAYS = 20;
 const WINDOW_DAYS = 30;
 // Сколько запросов к Автопрокату одновременно (по 3 на машину)
 const CONCURRENCY = 4;
-const TYPE_LABELS = { scooter: 'Скутер', motorcycle: 'Мотоцикл', car: 'Авто' };
-const STATUS_LABELS = { free: 'Свободна', rent: 'Аренда', reserve: 'Бронь', service: 'Сервис' };
 
 const status = { enabled: ws.wsEnabled, lastSyncAt: null, cars: 0, unmatched: 0, error: null };
-let sheetReady = false;
 let snapshot = null;
 let running = null;
-
-/** Дата-время в часовом поясе Бангкока: '27.10.2026 14:05' */
-function bangkokDateTime(date) {
-  const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
-    timeZone: config.timezone, year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
-  }).formatToParts(date).map((x) => [x.type, x.value]));
-  return `${p.day}.${p.month}.${p.year} ${p.hour}:${p.minute}`;
-}
-
-function formatTariffs(tariffs) {
-  return tariffs.map((t) => `${t.min}–${t.max >= 999 ? '∞' : t.max} дн: ${t.cost}`).join('; ');
-}
 
 async function buildSnapshot(now) {
   const windowFrom = now - WINDOW_BACK_DAYS * DAY_MS;
@@ -57,7 +34,7 @@ async function buildSnapshot(now) {
   const [cars, tariffs, fleet] = await Promise.all([
     ws.getCars(),
     ws.getTariffs(),
-    sheetsEnabled ? getFleet().catch(() => null) : null
+    getFleet().catch(() => null)
   ]);
   const unitsByPlate = new Map((fleet?.units || []).map((u) => [plateKey(u.plate), u]));
   // Модель проданной машины запоминаем, пока она есть в WS (саму машину убирает getWsSnapshot)
@@ -94,33 +71,6 @@ async function buildSnapshot(now) {
   };
 }
 
-function sheetRows(snap) {
-  const updated = bangkokDateTime(new Date(snap.updatedAt));
-  return snap.cars.map((car) => [
-    car.id,
-    `'${car.plate}`,
-    car.wsModel,
-    car.model,
-    TYPE_LABELS[car.type] || '',
-    STATUS_LABELS[car.status],
-    car.freeFrom === null ? '' : car.freeFrom === 'later' ? `позже ${WINDOW_DAYS} дней` : bangkokDateTime(new Date(car.freeFrom)),
-    car.freeWeek ? 'Да' : 'Нет',
-    car.deposit || '',
-    formatTariffs(car.tariffs),
-    updated
-  ]);
-}
-
-async function writeSheet(snap) {
-  if (!sheetReady) {
-    await ensureSheet(SHEET, HEADERS);
-    sheetReady = true;
-  }
-  const rows = sheetRows(snap);
-  if (rows.length) await updateRange(`'${SHEET}'!A2`, rows);
-  await clearRange(`'${SHEET}'!A${rows.length + 2}:K`);
-}
-
 async function runSync() {
   try {
     snapshot = await buildSnapshot(Date.now());
@@ -134,7 +84,7 @@ async function runSync() {
       unmatched: snap.cars.filter((c) => !c.model).length,
       error: null
     });
-    if (sheetsEnabled) await writeSheet(snap);
+    // Копию в лист «Автопрокат» больше не пишем — ушли от Google-таблицы (всё в портале)
   } catch (err) {
     status.error = err.message;
     console.error('WS sync failed:', err.message);

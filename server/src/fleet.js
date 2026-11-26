@@ -1,18 +1,16 @@
 /**
  * ============================================================================
- * Автопарк из Google-таблицы: какие модели свободны на даты и сколько стоят
+ * Автопарк: какие модели свободны на даты и сколько стоят
  * ============================================================================
- * Vehicles — единицы техники (госномер, статус, даты текущей аренды) и
- *            колонка «Модель для клиента», которая объединяет одинаковые байки.
- * Catalog  — одна строка на модель: цена «от», описание, фото.
- * Сезоны + «Прайс …» — цены каждой единицы по сезонам (pricing.js): из них
- *            считается точная стоимость на даты.
- *
- * Таблица читается не чаще раза в 2 минуты, чтобы не упираться в лимиты Google.
+ * Техника и каталог моделей — в базе портала (fleetStore.js): их правят на
+ * вкладках «Парк» и «Сайт». Раньше это были листы Vehicles и Catalog
+ * Google-таблицы — при первом запуске они один раз переносятся в портал.
+ * Цены — вкладка «Прайс» (price.js), занятость — WS.Автопрокат.
  * ============================================================================
  */
 
-import { getRows, getValues, sheetsEnabled } from './google/sheets.js';
+import { getRows, getValues, sheetsEnabled as googleEnabled } from './google/sheets.js';
+import { fleetMoved, importFromSheet, markMovedWithoutSheet, vehicleUnits, catalogMap } from './fleetStore.js';
 import { parsePrice, buildPricing, priceSheetNames, SEASONS_SHEET, quotePlate } from './pricing.js';
 import { priceActive, importFromSheets, buildPortalPricing, priceFromByModel } from './price.js';
 import { listActiveRequests } from './db.js';
@@ -21,7 +19,12 @@ import { isSold, rememberSoldModels } from './sold.js';
 
 const VEHICLES_SHEET = 'Vehicles';
 const CATALOG_SHEET = 'Catalog';
+// Пока парк в таблице — читаем не чаще раза в 2 минуты; из базы — быстро, кэш короткий
 const CACHE_MS = 2 * 60 * 1000;
+const PORTAL_CACHE_MS = 15 * 1000;
+
+/** Данные парка есть всегда: в портале (раньше — только при подключённой таблице) */
+export const fleetEnabled = true;
 
 const VEHICLE_COL = {
   type: 'Тип',
@@ -96,14 +99,16 @@ async function loadFleet() {
 }
 
 async function loadFleetAll() {
-  if (cache && Date.now() - cache.loadedAt < CACHE_MS) return cache;
+  if (cache && Date.now() - cache.loadedAt < (fleetMoved() ? PORTAL_CACHE_MS : CACHE_MS)) return cache;
 
   try {
-    // Цены — из вкладки «Прайс» портала; листы цен таблицы читаем, только пока прайс не перенесён
+    if (!fleetMoved() && !googleEnabled) markMovedWithoutSheet();
+    if (fleetMoved()) return loadFromPortal();
+    // Переезд: один раз читаем таблицу и переносим технику и каталог в портал
     const portal = priceActive();
     const [vehicleRows, catalogRows, sheetPricing] = await Promise.all([
       getRows(VEHICLES_SHEET),
-      getRows(CATALOG_SHEET).catch(() => []),
+      getRows(CATALOG_SHEET),
       portal ? Promise.resolve(null) : loadPricing().catch(() => null)
     ]);
     let pricing = sheetPricing;
@@ -155,6 +160,12 @@ async function loadFleetAll() {
       for (const [model, entry] of catalog) if (from.has(model)) entry.priceFrom = from.get(model);
     }
 
+    try {
+      importFromSheet(vehicleRows, catalogRows);
+      return loadFromPortal();
+    } catch (err) {
+      console.error('Fleet move to the portal failed (still reading the sheet):', err.message);
+    }
     cache = { loadedAt: Date.now(), units, catalog, pricing };
     lastError = null;
     return cache;
@@ -166,9 +177,25 @@ async function loadFleetAll() {
   }
 }
 
+/** Парк из базы портала: техника, каталог, цены из «Прайса» */
+function loadFromPortal() {
+  const catalog = catalogMap();
+  const units = vehicleUnits(catalog);
+  let pricing = null;
+  if (priceActive()) {
+    pricing = buildPortalPricing(units, plateKey);
+    // «Цена от» на сайте — из прайса: самая низкая цена 28+ дней
+    const from = priceFromByModel();
+    for (const [model, entry] of catalog) if (from.has(model)) entry.priceFrom = from.get(model);
+  }
+  cache = { loadedAt: Date.now(), units, catalog, pricing };
+  lastError = null;
+  return cache;
+}
+
 /**
  * Единица свободна на [from, to], если она не в ремонте и её текущая аренда
- * из таблицы не пересекается с этими датами.
+ * не пересекается с этими датами (запасной вариант, когда WS не отвечает).
  */
 function isUnitFree(unit, from, to) {
   if (REPAIR_STATUSES.includes(unit.status)) return false;
@@ -308,15 +335,15 @@ export function invalidateFleet() {
   if (cache) cache.loadedAt = 0;
 }
 
-/** Загрузка при старте сервера, чтобы /health сразу показывал состояние таблицы */
+/** Загрузка при старте сервера (и переезд парка из таблицы, если ещё не было) */
 export function warmUpFleet() {
-  if (!sheetsEnabled) return;
   loadFleet().catch((err) => console.error('Fleet warm-up failed:', err.message));
 }
 
 export function fleetStatus() {
   return {
-    enabled: sheetsEnabled,
+    enabled: true,
+    source: fleetMoved() ? 'portal' : 'sheet',
     units: cache ? cache.units.length : 0,
     catalogModels: cache ? cache.catalog.size : 0,
     seasons: cache?.pricing ? cache.pricing.seasons.length : 0,
@@ -327,4 +354,5 @@ export function fleetStatus() {
   };
 }
 
-export { sheetsEnabled };
+// Прежнее имя «таблица подключена» — теперь «данные парка есть» (их читают дашборд, сайт, CRM)
+export { fleetEnabled as sheetsEnabled };

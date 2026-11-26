@@ -2,7 +2,7 @@
  * ============================================================================
  * Сайт сотрудников: фото и описания моделей для публичного сайта
  * ============================================================================
- *   GET  /api/staff/models                    — модели из листа Catalog
+ *   GET  /api/staff/models                    — модели из каталога портала (fleetStore.js)
  *   POST /api/staff/models/description        { model, descriptions: { en, ru, th, zh } }
  *   POST /api/staff/models/photo?model=…      тело — картинка webp/jpeg/png
  *                                             (браузер заранее уменьшает её);
@@ -11,8 +11,8 @@
  *   POST /api/staff/models/thumb?photo=…      миниатюра к загруженному фото
  *   POST /api/staff/models/gallery            { model, photo, gallery: [...] } —
  *                                             главное фото и порядок галереи
- * Менять могут сотрудники с ролью Editor или Admin в листе Users (roles.js),
- * остальные только смотрят. Описание и ссылки на фото пишутся в лист Catalog, файлы фото
+ * Менять могут те, у кого «Сайт: меняет» (roles.js), остальные только смотрят.
+ * Описание и ссылки на фото хранятся в каталоге портала (раньше — лист Catalog), файлы фото
  * лежат на сервере (папка uploads, Caddy отдаёт их по адресу /uploads/…).
  * Каждое изменение попадает в журнал: кто, когда, что было и что стало.
  * ============================================================================
@@ -24,26 +24,13 @@ import crypto from 'node:crypto';
 import { config } from './config.js';
 import * as db from './db.js';
 import { HttpError, sendJson, readJson, readBody, rateLimiter } from './http.js';
-import { getValues, updateRange, sheetsEnabled } from './google/sheets.js';
 import { getFleet, invalidateFleet } from './fleet.js';
+import { catalogEntry, setCatalogFields } from './fleetStore.js';
 import { resetCatalog } from './publicApi.js';
 import { slugify, TYPE_ORDER } from './site/urls.js';
 import { safePhoto, parseGallery, MAX_GALLERY } from './photos.js';
 import { can } from './roles.js';
 
-const CATALOG_SHEET = 'Catalog';
-const COL = {
-  model: 'Модель для клиента',
-  // «Описание для клиента» — английское, переводы — в своих колонках
-  description: 'Описание для клиента',
-  descriptionRu: 'Описание RU',
-  descriptionTh: 'Описание TH',
-  descriptionZh: 'Описание ZH',
-  photo: 'Фото (ссылка)',
-  gallery: 'Фото — галерея'
-};
-// Эти колонки добавили позже: без них работает всё, кроме их правки
-const OPTIONAL_COLS = ['gallery', 'descriptionRu', 'descriptionTh', 'descriptionZh'];
 const DESCRIPTION_FIELDS = { en: 'description', ru: 'descriptionRu', th: 'descriptionTh', zh: 'descriptionZh' };
 const MAX_PHOTO_BYTES = 4 * 1024 * 1024;
 const MAX_DESCRIPTION = 100;
@@ -56,49 +43,25 @@ export const canEdit = (staff) => can(staff, 'site.edit');
 
 function requireEditor(staff) {
   if (!canEdit(staff)) throw new HttpError(403, 'read_only');
-  if (!sheetsEnabled) throw new HttpError(503, 'sheets_not_configured');
 }
 
 /** 0 → 'A', 25 → 'Z', 26 → 'AA' */
-function columnLetter(index) {
-  let n = index + 1;
-  let letters = '';
-  while (n > 0) {
-    letters = String.fromCharCode(65 + ((n - 1) % 26)) + letters;
-    n = Math.floor((n - 1) / 26);
-  }
-  return letters;
+/** Модель из каталога портала (раньше — строка листа Catalog) */
+function findCatalogRow(model) {
+  const entry = catalogEntry(model);
+  if (!entry) throw new HttpError(404, 'model_not_found');
+  return { entry };
 }
 
-/** Строка модели в листе Catalog: { rowNumber, row, cols } */
-async function findCatalogRow(model) {
-  const [header = [], ...rows] = await getValues(`'${CATALOG_SHEET}'`);
-  const cols = Object.fromEntries(Object.entries(COL).map(([key, title]) => [key, header.findIndex((h) => String(h).trim() === title)]));
-  if (Object.entries(cols).some(([key, i]) => i < 0 && !OPTIONAL_COLS.includes(key))) throw new HttpError(500, 'catalog_columns_missing');
-  const index = rows.findIndex((r) => String(r[cols.model] || '').trim() === model);
-  if (index < 0) throw new HttpError(404, 'model_not_found');
-  return { rowNumber: index + 2, row: rows[index], cols };
-}
-
-/** Записать поля модели в Catalog и в журнал; сайт и бот увидят изменение сразу */
 async function writeFields(model, values, staff, found = null) {
-  const { rowNumber, row, cols } = found || await findCatalogRow(model);
-  let changed = false;
-  for (const [field, value] of Object.entries(values)) {
-    if (cols[field] < 0) throw new HttpError(500, 'catalog_columns_missing');
-    const oldValue = String(row[cols[field]] ?? '').trim();
-    if (oldValue === value) continue;
-    // RAW — текст как есть: описание «=…» не превратится в формулу
-    await updateRange(`'${CATALOG_SHEET}'!${columnLetter(cols[field])}${rowNumber}`, [[value]], { raw: true });
-    db.logCatalogChange({ model, field, oldValue, newValue: value, email: staff.email, name: staff.name });
-    changed = true;
-  }
-  if (!changed) return;
+  if (!found) findCatalogRow(model);
+  const changes = setCatalogFields(model, values) || [];
+  for (const c of changes) db.logCatalogChange({ model, field: c.field, oldValue: c.oldValue, newValue: c.newValue, email: staff.email, name: staff.name });
+  if (!changes.length) return;
   invalidateFleet();
   resetCatalog();
 }
 
-/** Адрес фото для сайта сотрудников (картинки сайта и загрузки отдаются и на staff-домене) */
 function photoUrl(value) {
   const text = String(value || '').trim();
   return /^\/?(img|uploads)\/[\w\-./]+$/.test(text) && !text.includes('..') ? `/${text.replace(/^\//, '')}` : '';
@@ -106,7 +69,6 @@ function photoUrl(value) {
 
 export async function listModels(staff, req, res) {
   if (!can(staff, 'site.view')) throw new HttpError(403, 'no_section_access');
-  if (!sheetsEnabled) return sendJson(res, 200, { canEdit: false, models: [] });
   const { units, catalog } = await getFleet();
   const unitCount = new Map();
   for (const unit of units) if (unit.model) unitCount.set(unit.model, (unitCount.get(unit.model) || 0) + 1);
@@ -137,13 +99,9 @@ export async function saveDescription(staff, req, res) {
   // Старый формат { description } — только английское
   const given = body.descriptions && typeof body.descriptions === 'object' ? body.descriptions : { en: body.description };
   const descriptions = Object.fromEntries(Object.keys(DESCRIPTION_FIELDS).filter((l) => l in given).map((l) => [l, clean(given[l])]));
-  const found = await findCatalogRow(model);
+  const found = findCatalogRow(model);
   const values = {};
-  for (const [lang, text] of Object.entries(descriptions)) {
-    // Колонки перевода ещё нет, а текст пустой — писать нечего
-    if (found.cols[DESCRIPTION_FIELDS[lang]] < 0 && !text) continue;
-    values[DESCRIPTION_FIELDS[lang]] = text;
-  }
+  for (const [lang, text] of Object.entries(descriptions)) values[DESCRIPTION_FIELDS[lang]] = text;
   await writeFields(model, values, staff, found);
   sendJson(res, 200, { ok: true, descriptions, description: descriptions.en ?? '' });
 }
@@ -218,10 +176,9 @@ export async function saveGallery(staff, req, res) {
   if (!model) throw new HttpError(400, 'model_required');
   if (!Array.isArray(body.gallery)) throw new HttpError(400, 'gallery_required');
   const found = await findCatalogRow(model);
-  const { row, cols } = found;
-  if (cols.gallery < 0) throw new HttpError(500, 'catalog_columns_missing');
+  const { entry } = found;
 
-  const known = new Set([safePhoto(row[cols.photo]), ...parseGallery(row[cols.gallery])].filter(Boolean));
+  const known = new Set([safePhoto(entry.photo), ...parseGallery(entry.gallery)].filter(Boolean));
   const check = (value) => {
     const photo = safePhoto(value);
     if (!photo || (!known.has(photo) && !isOwnUpload(model, photo))) throw new HttpError(400, 'unknown_photo');

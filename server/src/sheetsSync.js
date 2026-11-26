@@ -38,8 +38,11 @@ async function prepareSheet() {
   sheetReady = true;
 }
 
+// Ушли от Google-таблицы (владелец, 2026-11): заявки живут только в портале, в лист Requests не пишем
+const MIRROR_TO_SHEET = false;
+
 export async function mirrorNewRequest(request) {
-  if (!sheetsEnabled) return;
+  if (!MIRROR_TO_SHEET || !sheetsEnabled) return;
   try {
     await prepareSheet();
     const days = request.date_from && request.date_to ? daysBetween(request.date_from, request.date_to) : '';
@@ -67,7 +70,7 @@ export async function mirrorNewRequest(request) {
 }
 
 export async function mirrorRequestStatus(request) {
-  if (!sheetsEnabled || !request.sheet_row) return;
+  if (!MIRROR_TO_SHEET || !sheetsEnabled || !request.sheet_row) return;
   try {
     await updateRange(`'${REQUESTS_SHEET}'!L${request.sheet_row}:N${request.sheet_row}`, [[
       STATUS_LABELS[request.status] || request.status,

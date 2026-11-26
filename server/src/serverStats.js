@@ -218,7 +218,9 @@ function integrationLamps(now) {
   else if (now - Date.parse(sync.lastSyncAt) >= LIMITS.syncStaleMinutes * 60000) ws = 'warning';
   else if (sync.error) ws = 'caution';
 
-  const sheets = !sheetsEnabled ? 'warning' : fleetStatus().error ? 'warning' : 'ok';
+  // Парк перенесён в портал — Google-таблица больше не нужна, лампа погашена
+  const fs = fleetStatus();
+  const sheets = fs.source === 'portal' ? 'off' : fs.error ? 'warning' : 'ok';
   const telegram = !telegramEnabled || !getStaffChatId() ? 'warning' : staffGroupFailure() ? 'warning' : 'ok';
   const mail = !mailEnabled ? 'caution' : mailFailure() ? 'caution' : 'ok';
   // Наблюдатель WhatsApp: пока ни разу не подключали — лампа погашена
