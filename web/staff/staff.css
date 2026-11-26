@@ -187,6 +187,7 @@ a { color: var(--brand); }
   .tabs--top button svg { width: 20px; height: 20px; }
   .tabs--top button[aria-current="page"] { color: #fff; background: rgba(255, 255, 255, .1); }
   .tabs--top .count { position: static; }
+  .tabs--top .tab-alert { position: static; margin-left: -2px; }
 }
 /* Вкладки не помещаются в шапку (зависит от языка, числа вкладок и ширины экрана — проверяет
    staff.js): сначала подпись только у открытой, у остальных значок; если и так тесно — одни значки */
@@ -1194,3 +1195,11 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
   .pr-table th.pr-model { min-width: 150px; }
   .pr-table table { font-size: 13px; }
 }
+
+/* Значок тревоги на вкладке «Сервер» (лампы MASTER WARNING / CAUTION) */
+.tab-alert { position: absolute; top: 6px; left: calc(50% + 8px); width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--surface); }
+.tab-alert--warning { background: var(--rent); animation: tab-alert-blink 1.2s steps(2, start) infinite; }
+.tab-alert--caution { background: #f5b301; }
+.tabs--top .tab-alert { border-color: var(--navy); }
+@keyframes tab-alert-blink { to { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .tab-alert--warning { animation: none; } }

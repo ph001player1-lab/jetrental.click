@@ -409,8 +409,12 @@
     if (state.tab === 'finance') finance.load();
     if (state.tab === 'crm') crm.load();
     if (state.tab === 'marketing') marketing.load();
+    if (state.tab === 'price') price.load();
     clearInterval(state.timer);
     state.timer = setInterval(() => { if (!document.hidden) loadData(); }, REFRESH_MS);
+    loadServerAlert();
+    clearInterval(state.alertTimer);
+    state.alertTimer = setInterval(loadServerAlert, 30 * 1000);
   }
 
   async function loadData() {
@@ -484,6 +488,25 @@
   window.addEventListener('resize', () => { clearTimeout(fitTimer); fitTimer = setTimeout(fitTopTabs, 100); });
   document.fonts?.ready?.then(() => fitTopTabs());
 
+  /** Значок на вкладке «Сервер»: красный — авария, жёлтый — предупреждение */
+  function serverDot() {
+    const a = state.serverAlert;
+    if (!a || (!a.warning && !a.caution)) return '';
+    const label = t(a.warning ? 'tab.alertWarning' : 'tab.alertCaution');
+    return `<span class="tab-alert tab-alert--${a.warning ? 'warning' : 'caution'}" role="img" aria-label="${esc(label)}" title="${esc(label)}"></span>`;
+  }
+
+  /** Состояние ламп сервера — раз в 30 секунд (значок виден на любой вкладке) */
+  async function loadServerAlert() {
+    if (!can('server.view') || document.hidden) return;
+    try {
+      const s = await api('/server/status');
+      const changed = JSON.stringify(state.serverAlert) !== JSON.stringify({ warning: s.warning, caution: s.caution });
+      state.serverAlert = { warning: s.warning, caution: s.caution };
+      if (changed) renderTabs();
+    } catch { /* нет связи — значок не трогаем */ }
+  }
+
   function renderTabs() {
     const count = newRequestsCount();
     const list = tabs();
@@ -493,6 +516,7 @@
       <button type="button" data-tab="${tab.id}" aria-label="${esc(tab.title)}" title="${esc(tab.title)}" ${state.tab === tab.id ? 'aria-current="page"' : ''}>
         ${ICONS[tab.id]}<span class="tab__label">${esc(tab.title)}</span>
         ${tab.id === 'requests' && count ? `<span class="count">${count}</span>` : ''}
+        ${tab.id === 'server' ? serverDot() : ''}
       </button>`;
     const html = list.map(button).join('');
     const top = document.querySelector('.tabs--top');
@@ -509,8 +533,10 @@
       const rest = list.slice(main.length);
       const inRest = rest.some((tab) => tab.id === state.tab);
       const more = t('tab.more');
+      // «Сервер» спрятан в «Ещё» — значок тревоги и на кнопке «Ещё»
+      const moreDot = rest.some((tab) => tab.id === 'server') ? serverDot() : '';
       bottom.innerHTML = `${main.map(button).join('')}
-        <button type="button" data-more aria-label="${esc(more)}" title="${esc(more)}" aria-expanded="${state.moreOpen}" ${inRest ? 'aria-current="page"' : ''}>${ICONS.more}<span class="tab__label">${esc(more)}</span></button>
+        <button type="button" data-more aria-label="${esc(more)}" title="${esc(more)}" aria-expanded="${state.moreOpen}" ${inRest ? 'aria-current="page"' : ''}>${ICONS.more}<span class="tab__label">${esc(more)}</span>${moreDot}</button>
         ${state.moreOpen ? `<div class="tabs-more" role="menu">${rest.map(button).join('')}${extras.join('')}</div>` : ''}`;
     }
   }
@@ -745,6 +771,8 @@
     try {
       state.server = await api('/server');
       state.serverFailed = false;
+      state.serverAlert = { warning: state.server.master.warning, caution: state.server.master.caution };
+      renderTabs();
     } catch (err) {
       if (err.status === 401) return showLogin('email', err.code === 'no_access' ? ERRORS.no_access : '');
       state.serverFailed = true;

@@ -23,7 +23,7 @@ import { wsEnabled } from './ws/api.js';
 import { wsSyncStatus } from './ws/sync.js';
 import { fleetStatus, sheetsEnabled } from './fleet.js';
 import { telegramEnabled, sendMessage } from './telegram/api.js';
-import { getStaffChatId, staffGroupFailure } from './staff.js';
+import { getStaffChatId, staffGroupFailure, sendToStaffGroup } from './staff.js';
 import { mailEnabled, mailFailure } from './mail.js';
 import { adminTelegramIds } from './staffUsers.js';
 import { can } from './roles.js';
@@ -224,7 +224,10 @@ function integrationLamps(now) {
   // Наблюдатель WhatsApp: пока ни разу не подключали — лампа погашена
   const wa = observerStatus(now);
   const whatsapp = wa.connected ? 'ok' : wa.everLinked ? 'warning' : 'off';
-  return { ws, sheets, telegram, mail, whatsapp };
+  // WhatsApp-бот для клиентов: пока номер ни разу не подключали — лампа погашена
+  const bot = wabotStatus(now);
+  const wabot = bot.connected ? 'ok' : bot.lastOkAt ? 'warning' : 'off';
+  return { ws, sheets, telegram, mail, whatsapp, wabot };
 }
 
 /* --------------------------------------------------------------- Отчёт */
@@ -309,7 +312,8 @@ function lampsFor(host, engine, traffic, now) {
     { id: 'sheets', level: integrations.sheets },
     { id: 'telegram', level: integrations.telegram },
     { id: 'mail', level: integrations.mail },
-    { id: 'whatsapp', level: integrations.whatsapp }
+    { id: 'whatsapp', level: integrations.whatsapp },
+    { id: 'wabot', level: integrations.wabot }
   ];
   // Прогноз выше лимита — жёлтая, даже если сейчас мало
   const t = lamps.find((l) => l.id === 'traffic');
@@ -347,6 +351,13 @@ function requireAdmin(staff, perm) {
 export function serverReport(staff, req, res) {
   requireAdmin(staff, 'server.view');
   sendJson(res, 200, { ...collectServerReport(), settings: trafficSettings() });
+}
+
+/** GET /api/staff/server/status — горят ли лампы (значок на вкладке «Сервер») */
+export function serverStatusRoute(staff, req, res) {
+  requireAdmin(staff, 'server.view');
+  const r = collectServerReport();
+  sendJson(res, 200, { ...r.master, issues: r.lamps.filter((l) => l.level === 'warning' || l.level === 'caution') });
 }
 
 /** POST /api/staff/server/settings { trafficLimitGb, trafficBasis } */
@@ -461,6 +472,77 @@ async function startupAlert() {
   await notifyAdmins(text);
 }
 
+/* ------------------------------- Тревога в Telegram-группу: лампа горит больше минуты */
+
+const LAMP_ALERT_MS = 60 * 1000;
+const LAMP_CHECK_MS = 15 * 1000;
+// Пауза после запуска (секунды); LAMP_GRACE_S — только для тестового стенда
+const LAMP_GRACE_S = Number(process.env.LAMP_GRACE_S) || 180;
+const lampSince = new Map();
+const pct = (v) => new Intl.NumberFormat(groupLocale, { maximumFractionDigits: 0 }).format(v ?? 0);
+
+/** Подробность лампы для сообщения: свободно 4%, процессор 95%… */
+function lampDetail(id, r) {
+  const tr = r.traffic;
+  const values = {
+    disk: { percent: pct(r.host.disk?.freePercent), free: gb(r.host.disk?.free || 0) },
+    cpu: { v: pct(r.host.cpu) },
+    memory: { v: pct(r.host.memory?.percent) },
+    load: { v: new Intl.NumberFormat(groupLocale, { maximumFractionDigits: 2 }).format(r.host.load?.perCore ?? 0) },
+    response: { v: pct(r.engine.responseMs) },
+    traffic: { percent: pct(tr.usedPercent), forecast: gb(tr.forecast || 0), limit: tr.limitGb }
+  }[id] || {};
+  return g(`lamp.d.${id}`, values);
+}
+
+async function sendLampAlert(text) {
+  // В рабочую группу Telegram; если её нет или сам Telegram в беде — админам лично
+  if (getStaffChatId()) {
+    try {
+      await sendToStaffGroup(text, { disable_web_page_preview: true });
+      return;
+    } catch (err) {
+      console.error('Server alarm to the Telegram group failed:', err.message);
+    }
+  }
+  await notifyAdmins(text);
+}
+
+async function checkLampAlarms(now = Date.now()) {
+  // Первые 3 минуты после запуска Автопрокат, таблица и WhatsApp ещё подключаются — не тревожим
+  if (process.uptime() < LAMP_GRACE_S) return;
+  const r = collectServerReport(now);
+  let alerted = {};
+  try { alerted = JSON.parse(db.getSetting('server_lamp_alerted') || '{}') || {}; } catch { alerted = {}; }
+  const link = `\n\n👉 ${config.staff.url}/#server`;
+  let changed = false;
+  for (const lamp of r.lamps) {
+    const bad = lamp.level === 'warning' || lamp.level === 'caution';
+    if (!bad) {
+      lampSince.delete(lamp.id);
+      // Было оповещение — пишем, что всё в норме
+      if (alerted[lamp.id]) {
+        delete alerted[lamp.id];
+        changed = true;
+        await sendLampAlert(g('lamp.ok', { name: g(`lamp.n.${lamp.id}`) }));
+        console.log(`Server lamp ${lamp.id} is OK again`);
+      }
+      continue;
+    }
+    const since = lampSince.get(lamp.id);
+    if (!since || since.level !== lamp.level) lampSince.set(lamp.id, { level: lamp.level, at: since?.at || now });
+    const startedAt = lampSince.get(lamp.id).at;
+    // Горит больше минуты и об этом уровне ещё не сообщали (жёлтая → красная — сообщаем снова)
+    if (now - startedAt >= LAMP_ALERT_MS && alerted[lamp.id] !== lamp.level && !(alerted[lamp.id] === 'warning' && lamp.level === 'caution')) {
+      alerted[lamp.id] = lamp.level;
+      changed = true;
+      await sendLampAlert(g(lamp.level === 'warning' ? 'lamp.warning' : 'lamp.caution', { name: g(`lamp.n.${lamp.id}`), detail: lampDetail(lamp.id, r) }) + link);
+      console.log(`Server lamp ${lamp.id} is ${lamp.level} for over a minute — alarm sent`);
+    }
+  }
+  if (changed) db.setSetting('server_lamp_alerted', JSON.stringify(alerted));
+}
+
 export function startServerStats() {
   setInterval(sample, SAMPLE_MS).unref();
   measureSizes().catch(() => {});
@@ -471,5 +553,6 @@ export function startServerStats() {
     startupAlert().catch((err) => console.error('Startup alert failed:', err.message));
     checkAlerts().catch((err) => console.error('Server alerts failed:', err.message));
     setInterval(() => checkAlerts().catch((err) => console.error('Server alerts failed:', err.message)), ALERT_CHECK_MS).unref();
+    setInterval(() => checkLampAlarms().catch((err) => console.error('Server lamp alarms failed:', err.message)), LAMP_CHECK_MS).unref();
   }, 60 * 1000).unref();
 }

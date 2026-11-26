@@ -50,7 +50,7 @@ import { soldList, markSold, unmarkSold, markSoldList, SoldError } from './sold.
 import { marketingReport, marketingDetails, saveSource, deleteSource, placeSource, saveSettings, MarketingError } from './marketing.js';
 import { crmList, crmClient, saveClient, setTags, addNote, mergeClients, importClients, CrmError } from './crm.js';
 import { importCashbook } from './cashbook.js';
-import { serverReport, saveServerSettings, alertAdminsOnce } from './serverStats.js';
+import { serverReport, serverStatusRoute, saveServerSettings, alertAdminsOnce } from './serverStats.js';
 import { g } from './groupTexts.js';
 import { escapeHtml } from './format.js';
 import { getJournal, fixEvent, getTimesheet, getReconcile, getMedia, importHistory } from './journal/api.js';
@@ -597,6 +597,7 @@ const ROUTES = {
   'GET /api/staff/requests': requests,
   'POST /api/staff/requests/archive': signedIn(requestArchive),
   'GET /api/staff/price': signedIn(priceRoute),
+  'GET /api/staff/server/status': signedIn(serverStatusRoute),
   'POST /api/staff/price/save': signedIn(priceSave),
   'POST /api/staff/price/revert': signedIn(priceRevert),
   'GET /api/staff/price/quote': signedIn(priceQuote),

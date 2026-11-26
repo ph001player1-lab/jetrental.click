@@ -12,7 +12,7 @@
 (() => {
   'use strict';
 
-  const LAMPS = ['disk', 'cpu', 'memory', 'load', 'response', 'traffic', 'ws', 'sheets', 'telegram', 'mail', 'whatsapp', 'engine'];
+  const LAMPS = ['disk', 'cpu', 'memory', 'load', 'response', 'traffic', 'ws', 'sheets', 'telegram', 'mail', 'whatsapp', 'wabot', 'engine'];
   const CATEGORY_ORDER = ['pages', 'photos', 'assets', 'api', 'webhooks', 'other', 'system'];
 
   let h; // помощники из staff.js: t, tn, esc, lang, locale, dateTime, time
@@ -124,6 +124,7 @@
       load: () => ({ v: num(r.host.load.perCore, 2) }),
       response: () => ({ v: num(r.engine.responseMs, 0) }),
       whatsapp: () => ({}),
+      wabot: () => ({}),
       traffic: () => ({ used: `${gbOf(tr.used || 0)} ${h.t('srv.u.GB')}`, limit: `${num(tr.limitGb, 0)} ${h.t('srv.u.GB')}`, percent: num(tr.usedPercent || 0, 0), forecast: `${gbOf(tr.forecast || 0)} ${h.t('srv.u.GB')}` })
     }[id];
     return h.t(`srv.msg.${id}`, p ? p() : {});
