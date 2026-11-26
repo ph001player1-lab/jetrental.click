@@ -137,8 +137,8 @@
       const d = st.data;
       const head = d.roles.map((r) => `
         <th class="ac-role">
-          <input class="ac-rname" data-ac-rname="${esc(r.id)}" value="${esc(r.name)}" maxlength="40" aria-label="${esc(t('ac.roleName'))}">
-          <div class="ac-role__meta"><span class="muted">${esc(t('ac.people', { n: r.staffCount }))}</span>
+          <input class="ac-rname" data-ac-rname="${esc(r.id)}" value="${esc(r.name)}" maxlength="40" title="${esc(r.name)}" aria-label="${esc(t('ac.roleName'))}">
+          <div class="ac-role__meta"><span class="muted" title="${esc(t('ac.people', { n: r.staffCount }))}">👤 ${r.staffCount}</span>
             ${r.staffCount ? '' : `<button type="button" class="link ac-danger" data-ac-rdel="${esc(r.id)}" title="${esc(t('ac.delete'))}">🗑</button>`}</div>
         </th>`).join('');
       const body = d.sections.map((sec) => `

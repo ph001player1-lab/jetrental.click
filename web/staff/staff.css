@@ -1408,3 +1408,13 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
   .vh-td-actions { flex-direction: column; }
 }
 .vh-kinds { flex-wrap: wrap; overflow: visible; }
+
+/* «Роли и доступы»: длинные пояснения разделов переносятся, колонки ролей узкие —
+   таблица помещается в окно (раньше первая колонка растягивалась на всю строку пояснения) */
+.ac-matrix .ac-sec-name { min-width: 0; width: 180px; }
+.ac-matrix .ac-sec-name .jr-small { width: 180px; white-space: normal; font-weight: 400; }
+.ac-matrix .ac-role { min-width: 0; }
+.ac-matrix .ac-role--admin { width: 64px; }
+.ac-matrix .ac-rname { width: 88px; }
+.ac-matrix .ac-level { max-width: 92px; padding: 4px 2px; font-size: 12px; }
+.ac-matrix th, .ac-matrix td { padding: 6px 5px; }
