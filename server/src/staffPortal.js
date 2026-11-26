@@ -22,6 +22,7 @@
  *                                               табель, сверка с WS (journal/api.js)
  *   /api/staff/wa…                            — подключение наблюдателя (Admin)
  *   /api/staff/tickets…                       — «Ошибки и предложения» (tickets.js)
+ *   /api/staff/agent…                         — кабинет агента, выплаты (agent.js)
  * Права ролей — в roles.js.
  *
  * В базе храним только хэши кодов и сессий.
@@ -48,11 +49,12 @@ import { roleOf, roleNameOf, permissionsOf, can, canAny } from './roles.js';
 import { accessOverview, saveRole, deleteRole, saveStaff, deleteStaff, importStaffList, AccessError } from './access.js';
 import { financeReport, saveLoans } from './finance.js';
 import { soldList, markSold, unmarkSold, markSoldList, SoldError } from './sold.js';
-import { marketingReport, marketingDetails, saveSource, deleteSource, placeSource, saveSettings, MarketingError } from './marketing.js';
+import { marketingReport, marketingDetails, saveSource, deleteSource, placeSource, saveSettings, allSources, MarketingError } from './marketing.js';
 import { crmList, crmClient, saveClient, setTags, addNote, mergeClients, importClients, CrmError } from './crm.js';
 import { importCashbook } from './cashbook.js';
 import { serverReport, serverStatusRoute, saveServerSettings, alertAdminsOnce } from './serverStats.js';
 import { listTickets, ticketsBadge, createTicket, uploadShot, getShot, setTicketStatus, markSeen, deleteTicket } from './tickets.js';
+import { agentCabinet, agentRequest, agentPayout, agentPayoutDelete } from './agent.js';
 import { g } from './groupTexts.js';
 import { escapeHtml } from './format.js';
 import { getJournal, fixEvent, getTimesheet, getReconcile, getMedia, importHistory } from './journal/api.js';
@@ -202,7 +204,9 @@ async function verify(req, res) {
 function publicUser(staff) {
   return {
     email: staff.email, name: staff.name, role: roleOf(staff), roleName: roleNameOf(staff),
-    permissions: permissionsOf(staff), canEdit: canEdit(staff)
+    permissions: permissionsOf(staff), canEdit: canEdit(staff),
+    // Агент: к какому источнику привязан его «Кабинет»
+    sourceId: staff.sourceId || null
   };
 }
 
@@ -549,7 +553,9 @@ async function accessCall(fn) {
 
 async function accessGet(staff, req, res) {
   needAccessAdmin(staff);
-  sendJson(res, 200, accessOverview(await adminList()));
+  // Источники из «Маркетинга» — чтобы привязать агента к его кабинету
+  const sources = allSources().map((x) => ({ id: x.id, name: x.name, kind: x.kind, active: x.active }));
+  sendJson(res, 200, accessOverview(await adminList(), sources));
 }
 
 async function accessRole(staff, req, res) {
@@ -661,7 +667,11 @@ const ROUTES = {
   'POST /api/staff/tickets/shot': signedIn(uploadShot),
   'POST /api/staff/tickets/status': signedIn(setTicketStatus),
   'POST /api/staff/tickets/seen': signedIn(markSeen),
-  'POST /api/staff/tickets/delete': signedIn(deleteTicket)
+  'POST /api/staff/tickets/delete': signedIn(deleteTicket),
+  'GET /api/staff/agent': signedIn(agentCabinet),
+  'POST /api/staff/agent/request': signedIn(agentRequest),
+  'POST /api/staff/agent/payout': signedIn(agentPayout),
+  'POST /api/staff/agent/payout/delete': signedIn(agentPayoutDelete)
 };
 
 /** Обработчик для пути /api/staff/*; null — такого маршрута нет */

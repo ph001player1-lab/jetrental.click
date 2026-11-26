@@ -1276,3 +1276,84 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
 .tk-handle { display: grid; gap: 8px; padding-top: 10px; border-top: 1px solid var(--line); }
 .tk-handle__btns { display: flex; flex-wrap: wrap; gap: 8px; }
 .tk-del { margin-left: auto; }
+
+/* --- Вкладка «Кабинет» агента --- */
+
+.cab { display: grid; gap: 14px; min-width: 0; }
+.cab-preview {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px;
+  padding: 10px 14px; border-radius: 12px; background: var(--reserve-bg); color: var(--text); font-size: 14px; font-weight: 600;
+}
+.cab-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.cab-head h2 { margin: 0; font-size: 22px; overflow-wrap: anywhere; }
+.cab-pct { background: var(--free-bg); color: var(--free); }
+.cab-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+@media (min-width: 700px) { .cab-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 1000px) { .cab-stats { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+.cab-stat { padding: 12px 14px; display: grid; gap: 4px; min-width: 0; }
+.cab-stat span { font-size: 12px; color: var(--muted); font-weight: 600; }
+.cab-stat b { font-size: 20px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.cab-stat--main { border-color: var(--free); box-shadow: inset 0 0 0 1px var(--free); }
+.cab-stat--main b { color: var(--free); }
+.cab-grid { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+@media (min-width: 1000px) { .cab-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+.cab-col { display: grid; gap: 14px; min-width: 0; }
+.cab-sec { padding: 14px 16px; display: grid; gap: 10px; min-width: 0; }
+.cab-sec--plain { padding: 0; }
+.cab-sec h3 { margin: 0; font-size: 17px; }
+.cab-sec h4 { margin: 6px 0 0; font-size: 14px; }
+.cab-sec .section-title { margin: 4px 0 0; }
+.cab-tip, .cab-muted { margin: 0; font-size: 13px; color: var(--muted); }
+.cab-links { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.cab-link { display: grid; gap: 6px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.cab-link:last-child { padding-bottom: 0; border-bottom: 0; }
+.cab-link__url { min-height: 40px; font-size: 14px; }
+.cab-link__btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.cab-qr { width: min(240px, 100%); padding: 8px; background: #fff; border-radius: 12px; border: 1px solid var(--line); }
+.cab-qr svg { display: block; width: 100%; height: auto; }
+.cab-form { display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 560px) { .cab-form { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .cab-form__wide, .cab-form__dates { grid-column: 1 / -1; } }
+.cab-form__dates { display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.cab-form textarea { min-height: 0; padding: 10px 14px; font: inherit; font-size: 16px; resize: vertical; }
+.cab-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.cab-msg { margin: 0; font-size: 14px; font-weight: 600; }
+.cab-msg--ok { color: var(--free); }
+.cab-msg--error { color: var(--rent); }
+.cab-req { padding: 12px 14px; display: grid; gap: 8px; min-width: 0; }
+.cab-req__head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.cab-req__head b { overflow-wrap: anywhere; }
+.cab-req__what { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.cab-req__at { font-size: 12px; }
+.cab-stage--new { background: var(--surface-2); color: var(--muted); }
+.cab-stage--taken { background: var(--reserve-bg); color: var(--reserve); }
+.cab-stage--booked { background: var(--tickets-bg); color: var(--tickets); }
+.cab-stage--rental { background: var(--free-bg); color: var(--free); }
+.cab-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; font-size: 11px; color: var(--muted); }
+.cab-steps li { padding-top: 6px; border-top: 4px solid var(--line); text-align: center; overflow-wrap: anywhere; }
+.cab-steps li.is-done { border-top-color: var(--free); color: var(--text); font-weight: 600; }
+.cab-rentals { list-style: none; margin: 0; padding: 8px 10px; display: grid; gap: 6px; border-radius: 10px; background: var(--surface-2); font-size: 13px; }
+.cab-rentals li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.cab-acc--yes { background: var(--free-bg); color: var(--free); }
+.cab-acc--wait { background: var(--surface); color: var(--muted); }
+.cab-table { overflow-x: auto; }
+.cab-table table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.cab-table th, .cab-table td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+.cab-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.cab-table thead th { font-size: 12px; color: var(--muted); font-weight: 600; }
+.cab-prices tbody th { font-weight: 600; }
+.cab-prices__type th { padding-top: 12px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; border-bottom: 0; }
+.cab-payouts { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 14px; }
+.cab-payouts li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.cab-danger { color: var(--rent); }
+.cab-pay { display: grid; gap: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.cab-pay h4 { margin: 0; }
+.cab-pay__grid { display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+@media (max-width: 480px) { .cab-pay__grid { grid-template-columns: minmax(0, 1fr); } }
+.cab-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+
+.cab-form input[type="date"] { min-width: 0; width: 100%; }
+@media (max-width: 420px) { .cab-form__dates { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 480px) {
+  .cab-pctcol { display: none; }
+  .cab-table th, .cab-table td { padding: 6px 5px; }
+}

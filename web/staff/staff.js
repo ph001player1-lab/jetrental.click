@@ -68,7 +68,7 @@
   const TYPES = labels('types', ['scooter', 'motorcycle', 'car']);
   const TYPE_ONE = labels('type', ['scooter', 'motorcycle', 'car']);
   const STATUS = labels('status', ['free', 'rent', 'reserve', 'service']);
-  const CHANNELS = { telegram: 'Telegram', whatsapp: 'WhatsApp', get site() { return t('channel.site'); } };
+  const CHANNELS = { telegram: 'Telegram', whatsapp: 'WhatsApp', get site() { return t('channel.site'); }, get agent() { return t('channel.agent'); } };
   const LANGS = { en: '🇬🇧 EN', ru: '🇷🇺 RU', th: '🇹🇭 TH', zh: '🇨🇳 ZH' };
   const ERRORS = labels('err', [
     'invalid_email', 'invalid_code', 'too_many_attempts', 'wait_a_minute', 'too_many_codes', 'too_many_requests',
@@ -97,7 +97,9 @@
   ICONS.price = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M21.41 11.58l-9-9A2 2 0 0 0 11 2H4a2 2 0 0 0-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58s1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41s-.23-1.06-.59-1.42zM5.5 7A1.5 1.5 0 1 1 7 5.5 1.5 1.5 0 0 1 5.5 7z"/></svg>';
   // «Ошибки и предложения» — жук; значок вкладки цветной, чтобы был заметнее других (staff.css)
   ICONS.tickets = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M20 8h-2.81a5.98 5.98 0 0 0-1.82-1.96L17 4.41 15.59 3l-2.17 2.17a6.02 6.02 0 0 0-2.83 0L8.41 3 7 4.41l1.62 1.63A5.98 5.98 0 0 0 6.81 8H4v2h2.09A6.3 6.3 0 0 0 6 11v1H4v2h2v1c0 .34.04.67.09 1H4v2h2.81A5.99 5.99 0 0 0 12 21a5.99 5.99 0 0 0 5.19-3H20v-2h-2.09c.05-.33.09-.66.09-1v-1h2v-2h-2v-1c0-.34-.04-.67-.09-1H20V8zm-6 8h-4v-2h4v2zm0-4h-4v-2h4v2z"/></svg>';
-  const ALL_TABS = ['overview', 'fleet', 'price', 'journal', 'calendar', 'requests', 'crm', 'marketing', 'finance', 'site', 'server', 'access', 'tickets'];
+  ICONS.cabinet = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M20 6h-4V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2zm-6 0h-4V4h4v2z"/></svg>';
+  // «Кабинет» — первым: у агента это главная вкладка
+  const ALL_TABS = ['cabinet', 'overview', 'fleet', 'price', 'journal', 'calendar', 'requests', 'crm', 'marketing', 'finance', 'site', 'server', 'access', 'tickets'];
   // Внизу на телефоне помещается 6 кнопок; если вкладок больше — последние уходят в «Ещё»
   const BOTTOM_MAX = 6;
   // Вкладка видна, если у роли есть хотя бы одно из этих прав (настраивает админ на вкладке «Доступы»)
@@ -105,11 +107,14 @@
     overview: ['overview.view'], fleet: ['fleet.view'], price: ['price.view'], calendar: ['calendar.view'], requests: ['requests.view'],
     journal: ['journal.view', 'timesheet.view', 'reconcile.view', 'whatsapp.view'],
     crm: ['crm.view'], marketing: ['marketing.view'], finance: ['finance.view'], site: ['site.view'], server: ['server.view'], access: ['access.admin'],
-    tickets: ['tickets.view']
+    tickets: ['tickets.view'],
+    // «Кабинет» — по привязке к источнику агента (не по роли) или просмотр из «Маркетинга»
+    cabinet: []
   };
   const can = (perm) => Boolean(state.user?.permissions?.includes(perm));
   /** Вкладки, доступные роли вошедшего сотрудника */
-  const tabs = () => ALL_TABS.filter((id) => TAB_PERMISSION[id].some(can))
+  const cabinetVisible = () => Boolean(state.user?.sourceId || state.cabinetPreview);
+  const tabs = () => ALL_TABS.filter((id) => (id === 'cabinet' ? cabinetVisible() : TAB_PERMISSION[id].some(can)))
     .map((id) => ({ id, title: t(`tab.${id}`) }));
 
   const state = {
@@ -414,6 +419,7 @@
     if (state.tab === 'marketing') marketing.load();
     if (state.tab === 'price') price.load();
     if (state.tab === 'tickets') tickets.load();
+    if (state.tab === 'cabinet') cabinet.load();
     clearInterval(state.timer);
     state.timer = setInterval(() => { if (!document.hidden) loadData(); }, REFRESH_MS);
     loadServerAlert();
@@ -669,6 +675,7 @@
     if (tab === 'marketing') marketing.load();
     if (tab === 'price') price.load();
     if (tab === 'tickets') tickets.load();
+    if (tab === 'cabinet') cabinet.load(state.cabinetPreview);
     if (tab === 'site' && !state.models) loadModels();
     if (tab === 'server') startServerPolling();
     else stopServerPolling();
@@ -703,6 +710,7 @@
     if (state.tab === 'price' && (!view.querySelector('.pr') || price.canRefresh())) view.innerHTML = price.render();
     // Тикеты: пока сотрудник пишет, фоновое обновление вкладку не трогает
     if (state.tab === 'tickets' && (!view.querySelector('.tk') || tickets.canRefresh())) view.innerHTML = tickets.render();
+    if (state.tab === 'cabinet' && (!view.querySelector('.cab') || cabinet.canRefresh())) view.innerHTML = cabinet.render();
     // Роли не открыт ни один раздел — подсказка вместо пустого экрана
     if (!tabs().length) view.innerHTML = `<div class="empty">${esc(t('app.noSections'))}</div>`;
   }
@@ -722,6 +730,7 @@
 
   const marketing = window.STAFF_MARKETING.create({
     api, esc, can,
+    openCabinet: (id) => openCabinet(id),
     rerender: () => { if (state.tab === 'marketing') { $('#view').innerHTML = marketing.render(); marketing.mount(); } }
   });
 
@@ -733,6 +742,24 @@
     seasonName: (name) => (I18N.en[`season.${name}`] ? t(`season.${name}`) : name),
     rerender: () => { if (state.tab === 'price') $('#view').innerHTML = price.render(); }
   });
+
+  /* ---------------------------------------------- Вкладка «Кабинет» агента */
+
+  const cabinet = window.STAFF_CABINET.create({
+    api, t, esc, money, dateTime,
+    lang: () => lang,
+    today: () => new Date(Date.now() + TZ_OFFSET_MS).toISOString().slice(0, 10),
+    seasonName: (name) => (I18N.en[`season.${name}`] ? t(`season.${name}`) : name),
+    // Закрыть просмотр чужого кабинета — вернуться в «Маркетинг»
+    closePreview: () => { state.cabinetPreview = null; setTab(state.user?.sourceId ? 'cabinet' : 'marketing'); },
+    rerender: () => { if (state.tab === 'cabinet') $('#view').innerHTML = cabinet.render(); }
+  });
+
+  /** Из «Маркетинга»: открыть кабинет источника (как его видит агент) */
+  function openCabinet(sourceId) {
+    state.cabinetPreview = sourceId;
+    setTab('cabinet');
+  }
 
   /* ------------------------------------------ Вкладка «Ошибки и предложения» */
 
@@ -1944,6 +1971,7 @@
       if (state.tab === 'marketing' && marketing.onClick(event)) return;
       if (state.tab === 'price' && price.onClick(event)) return;
       if (state.tab === 'tickets' && tickets.onClick(event)) return;
+      if (state.tab === 'cabinet' && cabinet.onClick(event)) return;
       if (event.target.closest('[data-more]')) {
         state.moreOpen = !state.moreOpen;
         return renderTabs();
@@ -2046,6 +2074,7 @@
       if (state.tab === 'crm') crm.onChange(event);
       if (state.tab === 'price') price.onChange(event);
       if (state.tab === 'tickets') tickets.onChange(event);
+      if (state.tab === 'cabinet') cabinet.onChange(event);
     });
     // Ctrl+V скриншота на вкладке «Ошибки и предложения»
     document.addEventListener('paste', (event) => {
@@ -2062,6 +2091,7 @@
       if (state.tab === 'crm' && crm.onInput(event)) return;
       if (state.tab === 'price' && price.onInput(event)) return;
       if (state.tab === 'tickets' && tickets.onInput(event)) return;
+      if (state.tab === 'cabinet' && cabinet.onInput(event)) return;
       if (!event.target.matches('[data-search]')) return;
       state.filters.q = event.target.value;
       const caret = event.target.selectionStart;
@@ -2085,6 +2115,7 @@
       if (state.tab === 'marketing' && marketing.onSubmit(event)) return;
       if (state.tab === 'price' && price.onSubmit(event)) return;
       if (state.tab === 'tickets' && tickets.onSubmit(event)) return;
+      if (state.tab === 'cabinet' && cabinet.onSubmit(event)) return;
       const soldForm = event.target.closest('[data-sold-form]');
       if (soldForm) {
         event.preventDefault();

@@ -32,6 +32,7 @@ import { fleetStatus, warmUpFleet } from './fleet.js';
 import { startWsSync, wsSyncStatus } from './ws/sync.js';
 import { startMorningSummary } from './morning.js';
 import { startServerStats, recordRequest, version } from './serverStats.js';
+import { startAgents } from './agent.js';
 import { startJournal } from './journal/start.js';
 import { whatsappEnabled, knownPhoneNumberId } from './whatsapp/api.js';
 import { verifySignature, processWebhook, whatsappStatus } from './whatsapp/webhook.js';
@@ -170,6 +171,7 @@ server.listen(config.port, () => {
   startWsSync();
   startMorningSummary();
   startServerStats();
+  startAgents();
   startJournal();
 
   if (telegramEnabled) {

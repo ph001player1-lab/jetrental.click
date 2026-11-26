@@ -46,6 +46,10 @@ const E = 'edit';
 const N = 'none';
 const preset = (overview, fleet, calendar, requests, journal, clients, timesheet, reconcile, whatsapp, site, finance, server, crm = N, marketing = N, price = N, tickets = V) =>
   ({ overview, fleet, calendar, requests, journal, clients, timesheet, reconcile, whatsapp, site, finance, server, crm, marketing, price, tickets });
+// «Кабинет» даёт не роль, а привязка к источнику (агент или партнёр) — так менеджер может быть
+// и агентом: у него свои вкладки и ещё кабинет. Роль «Агент» — для тех, кто только агент:
+// ни парка, ни чужих заявок, только кабинет и свои тикеты
+const AGENT_ROLE = ['agent', 'Агент', preset(N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, V)];
 const DEFAULT_ROLES = [
   // CRM по умолчанию — только у владельца (и админа); остальным админ открывает сам
   // Прайс меняют только владелец и админ, менеджеры смотрят (называть цены клиентам)
@@ -56,7 +60,8 @@ const DEFAULT_ROLES = [
   ['service', 'Работник сервиса', preset(N, V, V, N, V, N, N, N, N, N, N, N)],
   ['courier', 'Курьер', preset(N, V, V, N, V, V, N, N, N, N, N, N)],
   // «Просмотр» — роль по умолчанию (и для прежней роли Viewer из таблицы)
-  ['viewer', 'Просмотр', preset(V, V, V, V, V, N, N, V, N, V, N, N, N, N, V)]
+  ['viewer', 'Просмотр', preset(V, V, V, V, V, N, N, V, N, V, N, N, N, N, V)],
+  AGENT_ROLE
 ];
 export const DEFAULT_ROLE = 'viewer';
 
@@ -93,6 +98,10 @@ db.raw.exec(`
 if (!db.raw.prepare('PRAGMA table_info(access_staff)').all().some((c) => c.name === 'rate')) {
   db.raw.exec('ALTER TABLE access_staff ADD COLUMN rate REAL');
 }
+// Агент или партнёр: к какому источнику из «Маркетинга» привязан его кабинет
+if (!db.raw.prepare('PRAGMA table_info(access_staff)').all().some((c) => c.name === 'source_id')) {
+  db.raw.exec('ALTER TABLE access_staff ADD COLUMN source_id INTEGER');
+}
 
 const now = () => new Date().toISOString();
 
@@ -111,6 +120,8 @@ const q = {
   updateStaff: db.raw.prepare(`UPDATE access_staff SET name = ?, email = ?, telegram_id = ?, whatsapp = ?, role_id = ?, active = ?, updated_at = ?
     WHERE id = ?`),
   setRate: db.raw.prepare('UPDATE access_staff SET rate = ? WHERE id = ?'),
+  setSource: db.raw.prepare('UPDATE access_staff SET source_id = ? WHERE id = ?'),
+  bySource: db.raw.prepare('SELECT * FROM access_staff WHERE source_id = ? AND active = 1'),
   deleteStaff: db.raw.prepare('DELETE FROM access_staff WHERE id = ?'),
   log: db.raw.prepare('INSERT INTO access_log (at, by, action, details) VALUES (?, ?, ?, ?)'),
   lastLog: db.raw.prepare('SELECT * FROM access_log ORDER BY id DESC LIMIT ?')
@@ -143,6 +154,12 @@ if (db.getSetting('access_price_section') !== '1') {
     if (!perms.price) q.updateRole.run(role.name, JSON.stringify({ ...perms, price: level }), now(), role.id);
   }
   db.setSetting('access_price_section', '1');
+}
+
+// Роль «Агент» появилась позже — добавляем один раз
+if (db.getSetting('access_agent_role') !== '1') {
+  if (!q.role.get(AGENT_ROLE[0])) q.addRole.run(AGENT_ROLE[0], AGENT_ROLE[1], JSON.stringify(AGENT_ROLE[2]), 50, now(), now());
+  db.setSetting('access_agent_role', '1');
 }
 
 // Раздел «Ошибки и предложения» появился позже: разбирать тикеты один раз открываем владельцу
@@ -200,8 +217,12 @@ const digitsOnly = (value) => String(value || '').replace(/\D/g, '');
 // Без почты сотрудник есть в списке, но войти в портал не может («не подключён»)
 const publicStaff = (row) => ({
   id: row.id, name: row.name, email: row.email || '', telegramId: row.telegram_id || '', whatsapp: row.whatsapp || '',
-  roleId: row.role_id, active: Boolean(row.active), connected: Boolean(row.email), rate: row.rate || 0
+  roleId: row.role_id, active: Boolean(row.active), connected: Boolean(row.email), rate: row.rate || 0,
+  sourceId: row.source_id || null
 });
+
+/** Кабинеты источника: активные агенты, привязанные к нему (для уведомлений) */
+export const agentsOfSource = (sourceId) => q.bySource.all(Number(sourceId) || 0).map(publicStaff);
 
 /** Ставки в час для зарплаты по табелю: [{ name, whatsapp, rate }] */
 export const staffRates = () => q.staff.all().filter((r) => r.active && r.rate > 0)
@@ -217,7 +238,7 @@ export function staffByEmail(email) {
 
 // Роль из таблицы при переезде: код, русское название или прежнее Editor
 const ROLE_ALIASES = {
-  editor: 'manager', 'менеджер': 'manager', 'владелец': 'owner', 'финансист': 'finance', 'курьер': 'courier',
+  editor: 'manager', 'менеджер': 'manager', 'владелец': 'owner', 'агент': 'agent', 'партнёр': 'agent', 'партнер': 'agent', 'финансист': 'finance', 'курьер': 'courier',
   'сервис': 'service', 'работник сервиса': 'service', 'просмотр': 'viewer'
 };
 
@@ -313,12 +334,16 @@ export function saveStaff(input, by, { isAdminEmail }) {
   const active = input.active === false ? 0 : 1;
   // Ставка не передана (вставка списком) — прежняя остаётся
   const rate = input.rate === undefined ? undefined : Math.max(0, Math.min(100000, Math.round(Number(input.rate) || 0)));
+  // Кабинет агента — источник из «Маркетинга» (не передан — прежний остаётся)
+  const sourceId = input.sourceId === undefined ? undefined : (Number(input.sourceId) > 0 ? Math.round(Number(input.sourceId)) : null);
   if (input.id) {
     const old = q.staffById.get(Number(input.id));
     if (!old) throw new AccessError('unknown_staff');
     q.updateStaff.run(name, email, telegramId, whatsapp, role.id, active, now(), old.id);
     if (rate !== undefined) q.setRate.run(rate || null, old.id);
+    if (sourceId !== undefined) q.setSource.run(sourceId, old.id);
     const changes = {};
+    if (sourceId !== undefined && (old.source_id || null) !== sourceId) changes.source = `${old.source_id || '—'} → ${sourceId || '—'}`;
     if (rate !== undefined && (old.rate || 0) !== rate) changes.rate = `${old.rate || 0} → ${rate}`;
     if (old.name !== name) changes.name = `${old.name} → ${name}`;
     if ((old.email || null) !== email) changes.email = `${old.email || '—'} → ${email || '—'}`;
@@ -331,6 +356,7 @@ export function saveStaff(input, by, { isAdminEmail }) {
   }
   const info = q.addStaff.run(name, email, telegramId, whatsapp, role.id, active, now(), now());
   if (rate) q.setRate.run(rate, Number(info.lastInsertRowid));
+  if (sourceId) q.setSource.run(sourceId, Number(info.lastInsertRowid));
   logChange(by, 'staff.create', { staff: name, role: role.name });
   return publicStaff(q.staffById.get(Number(info.lastInsertRowid)));
 }
@@ -394,7 +420,7 @@ function whatsappName(phone) {
 }
 
 /** Всё для вкладки «Доступы» */
-export function accessOverview(admins) {
+export function accessOverview(admins, sources = []) {
   const roleRows = q.roles.all();
   const order = new Map(roleRows.map((r, i) => [r.id, i]));
   // Порядок: по ролям (владелец, финансист, менеджер, …), внутри — по имени
@@ -402,5 +428,5 @@ export function accessOverview(admins) {
     .sort((a, b) => (order.get(a.roleId) ?? 99) - (order.get(b.roleId) ?? 99) || a.name.localeCompare(b.name));
   const roles = roleRows.map(parseRole).map((r) => ({ ...r, staffCount: staff.filter((s) => s.roleId === r.id).length }));
   const log = q.lastLog.all(40).map((r) => ({ at: r.at, by: r.by, action: r.action, details: JSON.parse(r.details || '{}') }));
-  return { sections: SECTIONS, roles, staff, admins, log };
+  return { sections: SECTIONS, roles, staff, admins, log, sources };
 }

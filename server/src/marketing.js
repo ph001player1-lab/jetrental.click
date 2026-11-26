@@ -157,6 +157,10 @@ const rowOf = (r) => r && {
 };
 
 export const sourceByCode = (code) => rowOf(q.byCode.get(String(code || '').toLowerCase()));
+export const sourceById = (id) => rowOf(q.byId.get(Number(id) || 0));
+export const allSources = () => q.all.all().map(rowOf);
+/** Ссылки источника: сайт, Telegram-бот, WhatsApp (для кабинета агента) */
+export const sourceLinks = (s) => linksOf(s, marketingSettings());
 const validCode = (code) => /^[a-z0-9_-]{3,24}$/.test(code);
 
 /* --------------------------------------------------------------- Настройки */

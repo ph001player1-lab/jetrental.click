@@ -1248,6 +1248,7 @@
         ${s.manual ? `<p class="mk-tip">В месяце учтены ручные цифры: заявок ${num(s.manual.leads)}, продаж ${num(s.manual.paid)}, выручка ${baht(s.manual.revenue)}.</p>` : ''}
         <div><div class="mk-label">Код «${esc(s.code)}» — ссылки для раздачи</div>${linksBlock(s)}</div>
         ${s.notes ? `<div><div class="mk-label">Заметки</div><p class="mk-text">${esc(s.notes)}</p></div>` : ''}
+        ${s.kind !== 'site' ? `<div class="mk-actions"><button type="button" class="btn btn--small" data-mk-cabinet="${s.id}">💼 Кабинет и выплаты</button></div>` : ''}
         ${canEdit() ? `<div class="mk-actions"><button type="button" class="btn btn--small" data-mk-edit="${s.id}">Изменить</button><button type="button" class="btn btn--small" data-mk-place="${s.id}">${posOf(s) ? 'Переставить на карте' : 'Поставить на карту'}</button></div>` : ''}
         ${status()}`;
     }
@@ -1412,6 +1413,9 @@
         return true;
       }
       if (el.closest('[data-mk-new]')) { st.editing = 'new'; st.msg = null; refreshPanel(); return true; }
+      // Кабинет источника (агента, партнёра) — как его видит агент, плюс запись выплат
+      const cabinet = el.closest('[data-mk-cabinet]');
+      if (cabinet) { ctx.openCabinet?.(Number(cabinet.dataset.mkCabinet)); return true; }
       const edit = el.closest('[data-mk-edit]');
       if (edit) { st.editing = Number(edit.dataset.mkEdit); st.msg = null; st.delAsk = false; refreshPanel(); return true; }
       const place = el.closest('[data-mk-place]');

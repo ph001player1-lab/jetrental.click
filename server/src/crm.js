@@ -775,7 +775,25 @@ export function blacklistReports(now = Date.now()) {
  * за 60 дней до начала аренды (и не позже дня начала), — без двойного счёта.
  */
 export async function requestOutcomes(now = Date.now()) {
+  const out = new Map();
+  for (const [id, x] of await requestRentals(now)) {
+    out.set(id, {
+      booked: x.booked || x.rentals.length > 0,
+      paid: x.rentals.length > 0,
+      revenue: x.rentals.reduce((sum, r) => sum + r.sum, 0)
+    });
+  }
+  return out;
+}
+
+/**
+ * Аренды и брони по каждой заявке (для кабинета агента): requestId →
+ * { booked, rentals: [{ key, model, plates, from, to, startTs, sum, active, ended }] }.
+ * Сумма — без залога; аренда «закончилась», когда машину вернули или прошёл её последний день.
+ */
+export async function requestRentals(now = Date.now()) {
   const { clients } = await buildIndex(now);
+  const today = bangkokIso(now);
   const out = new Map();
   const ownerOf = (requests, ts) => {
     let best = null;
@@ -787,14 +805,18 @@ export async function requestOutcomes(now = Date.now()) {
   };
   for (const c of clients.values()) {
     if (!c.requests.length) continue;
-    for (const r of c.requests) out.set(r.id, { booked: false, paid: false, revenue: 0 });
+    for (const r of c.requests) out.set(r.id, { booked: false, rentals: [] });
     for (const rental of c.rentals) {
       const owner = ownerOf(c.requests, Date.parse(rental.startTs));
       if (!owner) continue;
-      const o = out.get(owner.id);
-      o.booked = true;
-      o.paid = true;
-      o.revenue += rental.ws ? rental.ws.sum : Math.round(rental.revenue);
+      const from = rental.from || bangkokIso(Date.parse(rental.startTs));
+      out.get(owner.id).rentals.push({
+        key: `${rental.plates[0] || rental.model || 'unit'}|${from}`,
+        model: rental.model || null, plates: rental.plates, from, to: rental.to || null, startTs: rental.startTs,
+        sum: rental.ws ? rental.ws.sum : Math.round(rental.revenue),
+        active: Boolean(rental.active),
+        ended: !rental.active && Boolean(rental.returnedAt || !rental.to || rental.to < today)
+      });
     }
     for (const b of c.bookings) {
       const owner = ownerOf(c.requests, Date.parse(b.ts));

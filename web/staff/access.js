@@ -53,6 +53,7 @@
 
     function staffForm(s) {
       const roles = st.data.roles.map((r) => `<option value="${esc(r.id)}"${r.id === s.roleId ? ' selected' : ''}>${esc(r.name)}</option>`).join('');
+      const sources = (st.data.sources || []).map((x) => `<option value="${x.id}"${x.id === s.sourceId ? ' selected' : ''}>${esc(x.name)}${x.active ? '' : ` (${esc(t('ac.f.sourceOff'))})`}</option>`).join('');
       return `
         <form class="ac-form card" data-ac-staff="${esc(s.id || '')}">
           <h4>${esc(t(s.id ? 'ac.staff.edit' : 'ac.staff.add'))}</h4>
@@ -62,6 +63,9 @@
             <label class="field"><span>${esc(t('ac.f.role'))}</span><select name="roleId" class="search">${roles}</select></label>
             <label class="field"><span>${esc(t('ac.f.whatsapp'))}</span><input name="whatsapp" class="search" inputmode="tel" value="${esc(s.whatsapp ? `+${s.whatsapp}` : '')}" placeholder="+66 6x xxx xxxx"></label>
             <label class="field"><span>${esc(t('ac.f.rate'))}</span><input name="rate" class="search" type="number" min="0" step="1" inputmode="numeric" value="${esc(s.rate ? String(s.rate) : '')}" placeholder="0"></label>
+            <label class="field"><span>${esc(t('ac.f.telegram'))}</span><input name="telegramId" class="search" inputmode="numeric" value="${esc(s.telegramId || '')}" placeholder="123456789"></label>
+            <label class="field"><span>${esc(t('ac.f.source'))}</span>
+              <select name="sourceId" class="search"><option value="">${esc(t('ac.f.sourceNone'))}</option>${sources}</select></label>
           </div>
           <p class="muted jr-small">${esc(t('ac.f.hint'))}</p>
           <div class="ac-form__buttons">
@@ -76,6 +80,8 @@
       const parts = [];
       if (s.whatsapp && /\p{L}/u.test(s.name)) parts.push(`WhatsApp +${s.whatsapp}`);
       if (s.waName && s.waName !== s.name) parts.push(t('ac.waName', { name: s.waName }));
+      const source = s.sourceId && (st.data.sources || []).find((x) => x.id === s.sourceId);
+      if (source) parts.push(t('ac.cabinetOf', { name: source.name }));
       return parts.length ? `<div class="muted jr-small">${esc(parts.join(' · '))}</div>` : '';
     }
 
@@ -311,7 +317,7 @@
       if (form.matches('[data-ac-staff]')) {
         const id = form.dataset.acStaff ? Number(form.dataset.acStaff) : undefined;
         const old = id ? staffById(id) : null;
-        call('/access/staff', { ...data, id, telegramId: old?.telegramId || '', active: old ? old.active : true }).then((ok) => {
+        call('/access/staff', { ...data, id, sourceId: data.sourceId || null, active: old ? old.active : true }).then((ok) => {
           if (ok) { st.editing = null; ctx.rerender(); }
         });
         return true;

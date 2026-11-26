@@ -136,12 +136,17 @@ async function notifyClientTaken(request) {
  * Заявку взяли (кнопкой в Telegram или ответом «+» в группе WhatsApp):
  * обновить карточку, сказать клиенту, отметить в таблице и в другой группе
  */
+// Кому ещё сообщить, что заявку взяли (например, агенту в его кабинет — agent.js)
+const takenListeners = [];
+export const addTakenListener = (fn) => { takenListeners.push(fn); };
+
 export async function onRequestTaken(request, via) {
   const steps = [
     ['Telegram card refresh', () => refreshStaffMessage(request)],
     ['client notice', () => notifyClientTaken(request)],
     ['sheet mirror', () => mirrorRequestStatus(request)],
-    ...(via !== 'wa' ? [['WhatsApp group note', () => noteTakenInWaGroup(request)]] : [])
+    ...(via !== 'wa' ? [['WhatsApp group note', () => noteTakenInWaGroup(request)]] : []),
+    ...takenListeners.map((fn) => ['taken listener', () => fn(request)])
   ];
   for (const [what, step] of steps) {
     try {

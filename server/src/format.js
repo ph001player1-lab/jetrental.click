@@ -91,6 +91,7 @@ function channelLabel(channel) {
     case 'telegram': return 'Telegram';
     case 'whatsapp': return 'WhatsApp';
     case 'site': return g('channel.site');
+    case 'agent': return g('channel.agent');
     case 'test': return g('channel.test');
     default: return channel;
   }

@@ -73,7 +73,7 @@ export async function findStaff(email) {
   const admin = (await loadAdmins()).admins.get(key);
   if (admin) return admin;
   const staff = staffByEmail(key);
-  return staff ? { email: staff.email, name: staff.name, role: staff.roleId, telegramId: staff.telegramId, staffId: staff.id } : null;
+  return staff ? { email: staff.email, name: staff.name, role: staff.roleId, telegramId: staff.telegramId, staffId: staff.id, sourceId: staff.sourceId } : null;
 }
 
 /** Имена сотрудников по номеру WhatsApp (только цифры) */
