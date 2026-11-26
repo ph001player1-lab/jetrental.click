@@ -9,6 +9,7 @@
  */
 
 import { SITE_LANGS } from './texts.js';
+import { siteSourceCode } from '../marketing.js';
 import { pagePath, langPrefix, CATEGORY_BY_TYPE, TYPE_ORDER } from './urls.js';
 import {
   TYPE_ICON, LANG_LABEL, NAV_KEY, esc, money, icon, isFullPhoto, waLink, tgLink, head, SPRITE, LOCK, crumbs, search,
@@ -311,7 +312,7 @@ function contact(ctx) {
 function layout(ctx, meta, main) {
   const { brand, lang } = ctx;
   return `${head(ctx, meta)}
-<body data-whatsapp="${brand.whatsapp}" data-telegram="${brand.telegram}" data-brand="${brand.id}" data-brand-name="${esc(brand.name)}" data-prefix="${langPrefix(lang)}" data-theme="modern">
+<body data-whatsapp="${brand.whatsapp}" data-telegram="${brand.telegram}" data-brand="${brand.id}" data-brand-name="${esc(brand.name)}"${brand.whatsappBot ? ` data-wa-bot="1" data-site-ref="${esc(siteSourceCode(new URL(brand.origin).hostname) || '')}"` : ''} data-prefix="${langPrefix(lang)}" data-theme="modern">
   ${SPRITE}
 ${topbar(ctx, meta.alternates)}
 ${header(ctx)}

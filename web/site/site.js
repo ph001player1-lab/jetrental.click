@@ -112,8 +112,22 @@
 
   const errorText = (err, fallbackKey) => (err?.code && DICT.en[`err.${err.code}`] ? t(`err.${err.code}`) : t(fallbackKey));
 
+  // jetmobility.org: WhatsApp ведёт на бота компании — добавляем метку источника:
+  // сначала сам сайт, потом коды ссылок, по которым человек приходил (агент, реклама…)
+  const WA_TAGS = document.body.dataset.waBot
+    ? [...new Set([document.body.dataset.siteRef, ...REFS.map((r) => r && r.code)].filter(Boolean))].slice(-4).map((c) => `[ref:${c}]`).join(' ')
+    : '';
+  const tagged = (text) => (WA_TAGS && !String(text).includes('[ref:') ? `${text}\n\n${WA_TAGS}` : String(text));
+
   function waLink(text) {
-    return `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(text)}`;
+    return `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(tagged(text))}`;
+  }
+  // Кнопки WhatsApp, которые нарисовал сервер, — тоже с меткой
+  if (WA_TAGS) {
+    for (const a of document.querySelectorAll('a[href^="https://wa.me/"]')) {
+      const u = new URL(a.href);
+      a.href = `https://wa.me/${u.pathname.replace(/\D/g, '')}?text=${encodeURIComponent(tagged(u.searchParams.get('text') || ''))}`;
+    }
   }
 
   /* ---------------------------------------------------------------- Шапка */

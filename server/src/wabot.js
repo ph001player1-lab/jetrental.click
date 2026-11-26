@@ -9,7 +9,7 @@
  *   - менеджер написал клиенту сам → бот молчит в этом чате 12 часов;
  *     после заявки бот молчит сутки (клиент может написать «меню»).
  * Режимы: off — бот молчит; test — отвечает только тестовым номерам;
- * on — всем клиентам, кроме участников рабочей группы (это сотрудники).
+ * on — всем, кто написал (и сотрудникам тоже — так проще проверять).
  *
  * Внутренний API (порт 3001, общий секрет):
  *   POST /internal/wabot/status   { connected, status, me, groupId, members, … }
@@ -147,7 +147,6 @@ function acceptClient(body) {
   const { mode, testNumbers } = wabotSettings();
   if (mode === 'off') return null;
   if (mode === 'test' && !(phone && testNumbers.includes(phone))) return null;
-  if (mode === 'on' && phone && status.members.has(phone)) return null;
   if (db.isChatPaused(key)) {
     // Клиент сам попросил меню — бот снова на связи
     if (!isRestartText(body.text)) return null;
@@ -155,6 +154,11 @@ function acceptClient(body) {
   }
   return { key, phone, jid, name: body.name ? String(body.name).slice(0, 80) : '' };
 }
+
+// Последний ответ в чате: тот же вопрос второй раз подряд (клиент написал два
+// сообщения, пока бот «печатал») не повторяем
+const lastReply = new Map();
+const REPEAT_MS = 90 * 1000;
 
 // Сообщения одного клиента обрабатываем по очереди (он может написать два подряд)
 const chains = new Map();
@@ -175,7 +179,16 @@ async function askManager(c, lang) {
 }
 
 async function handleClient(c, body) {
-  const ui = wabotUi(c.key, (text) => wabotSend(c.jid, text));
+  const ui = wabotUi(c.key, async (text) => {
+    const last = lastReply.get(c.key);
+    if (last && last.text === text && Date.now() - last.at < REPEAT_MS) {
+      console.log(`WhatsApp bot: same reply to ${c.key} not repeated`);
+      return;
+    }
+    lastReply.set(c.key, { text, at: Date.now() });
+    if (lastReply.size > 2000) lastReply.delete(lastReply.keys().next().value);
+    await wabotSend(c.jid, text);
+  });
   const chat = {
     channel: 'whatsapp', key: c.key, id: c.jid, name: c.name, phone: c.phone ? `+${c.phone}` : null, ui,
     managerOption: true,
@@ -249,9 +262,11 @@ async function handleGroupReply(body) {
   if (TAKE.test(text)) {
     if (!db.takeRequest(request.id, `wa:${author}`, name)) {
       const cur = db.getRequest(request.id);
+      console.log(`Request #${request.id}: «+» from «${name}» (+${author || '?'}) — already taken by «${cur?.taken_by_name}» (${cur?.taken_by_id})`);
       if (cur?.status === 'taken') await wabotSend(request.wa_group_id, g('wa.alreadyTaken', { id: cur.id, name: cur.taken_by_name }), reply);
       return;
     }
+    console.log(`Request #${request.id} taken in the WhatsApp group by «${name}» (number +${author || '?'}, WhatsApp name «${body.authorName || '-'}»)`);
     await react('✅');
     await onRequestTaken(db.getRequest(request.id), 'wa');
     return;
@@ -284,6 +299,11 @@ export async function handleWabotInternal(req, res, url) {
       return undefined;
     }
     if (body.kind === 'client') {
+      // Повторная доставка того же сообщения — уже ответили
+      if (body.id && !db.markEventProcessed(`wabot:${body.id}`)) {
+        console.log(`WhatsApp bot: message ${body.id} already handled`);
+        return sendJson(res, 200, { ok: true, read: false });
+      }
       const c = acceptClient(body);
       // Отвечаем сразу: что бот ответит клиенту, решено; сам ответ — следом
       sendJson(res, 200, { ok: true, read: Boolean(c) });

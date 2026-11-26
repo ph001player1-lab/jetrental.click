@@ -41,6 +41,26 @@ const HEARTBEAT_MS = 2 * 60 * 1000;
 
 const log = (...args) => console.log(new Date().toISOString(), ...args);
 
+/* ------------------------------------------- Журнал в памяти (диагностика) */
+
+// Последние строки журнала — бот-сервер отдаёт их разработчику (bot.jetmobility.org/diag)
+const logLines = [];
+for (const [method, level] of [['log', 'INFO'], ['warn', 'WARN'], ['error', 'ERROR']]) {
+  const original = console[method].bind(console);
+  console[method] = (...args) => {
+    original(...args);
+    const text = args.map((a) => (typeof a === 'string' ? a : a instanceof Error ? a.message : JSON.stringify(a))).join(' ');
+    // log() уже ставит время первым — уровень пишем после него
+    const m = /^(\d{4}-\d{2}-\d{2}T[\d:.]+Z) ?/.exec(text);
+    logLines.push(`${m ? m[1] : new Date().toISOString()} ${level} ${m ? text.slice(m[0].length) : text}`);
+    if (logLines.length > 3000) logLines.shift();
+  };
+}
+const recentLog = (minutes) => {
+  const since = new Date(Date.now() - minutes * 60000).toISOString();
+  return logLines.filter((l) => l.slice(0, 24) >= since).join('\n');
+};
+
 // Baileys ждёт логгер в стиле pino; пишем только предупреждения и ошибки
 const quiet = {
   level: 'warn',
@@ -405,6 +425,10 @@ http.createServer(async (req, res) => {
   try {
     if (req.method === 'GET' && url.pathname === '/status') {
       return send(res, 200, { ...state, groupId: config.groupId, groupSubject: config.groupSubject });
+    }
+    if (req.method === 'GET' && url.pathname === '/logs') {
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return res.end(recentLog(Math.min(10080, Number(url.searchParams.get('minutes')) || 60)));
     }
     if (req.method === 'POST' && url.pathname === '/config') {
       const { groupId } = await readJson(req);

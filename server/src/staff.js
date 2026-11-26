@@ -147,6 +147,7 @@ export async function handleStaffCallback(query, action, requestId) {
       return answerCallback(query, g('cb.alreadyTaken', { name: db.getRequest(request.id).taken_by_name }));
     }
     const taken = db.getRequest(request.id);
+    console.log(`Request #${taken.id} taken in the Telegram group by «${name}» (Telegram id ${query.from.id})`);
     await answerCallback(query, g('cb.yours', { id: taken.id }));
     await onRequestTaken(taken, 'tg');
     return;

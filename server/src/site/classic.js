@@ -10,6 +10,7 @@
  */
 
 import { SITE_LANGS } from './texts.js';
+import { siteSourceCode } from '../marketing.js';
 import { pagePath, langPrefix, CATEGORY_BY_TYPE } from './urls.js';
 import {
   NAV_KEY, esc, icon, isFullPhoto, waLink, tgLink, head, SPRITE, LOCK, crumbs, search,
@@ -110,7 +111,7 @@ function footer(ctx) {
 function layout(ctx, meta, main) {
   const { brand, lang } = ctx;
   return `${head(ctx, meta)}
-<body class="cl" data-whatsapp="${brand.whatsapp}" data-telegram="${brand.telegram}" data-brand="${brand.id}" data-brand-name="${esc(brand.name)}" data-prefix="${langPrefix(lang)}" data-theme="classic">
+<body class="cl" data-whatsapp="${brand.whatsapp}" data-telegram="${brand.telegram}" data-brand="${brand.id}" data-brand-name="${esc(brand.name)}"${brand.whatsappBot ? ` data-wa-bot="1" data-site-ref="${esc(siteSourceCode(new URL(brand.origin).hostname) || '')}"` : ''} data-prefix="${langPrefix(lang)}" data-theme="classic">
   ${SPRITE}
 ${header(ctx, meta.alternates)}
 

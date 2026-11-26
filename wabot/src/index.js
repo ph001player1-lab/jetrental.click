@@ -47,6 +47,26 @@ const RATE_PER_MINUTE = 25;
 
 const log = (...args) => console.log(new Date().toISOString(), ...args);
 
+/* ------------------------------------------- Журнал в памяти (диагностика) */
+
+// Последние строки журнала — бот-сервер отдаёт их разработчику (bot.jetmobility.org/diag)
+const logLines = [];
+for (const [method, level] of [['log', 'INFO'], ['warn', 'WARN'], ['error', 'ERROR']]) {
+  const original = console[method].bind(console);
+  console[method] = (...args) => {
+    original(...args);
+    const text = args.map((a) => (typeof a === 'string' ? a : a instanceof Error ? a.message : JSON.stringify(a))).join(' ');
+    // log() уже ставит время первым — уровень пишем после него
+    const m = /^(\d{4}-\d{2}-\d{2}T[\d:.]+Z) ?/.exec(text);
+    logLines.push(`${m ? m[1] : new Date().toISOString()} ${level} ${m ? text.slice(m[0].length) : text}`);
+    if (logLines.length > 3000) logLines.shift();
+  };
+}
+const recentLog = (minutes) => {
+  const since = new Date(Date.now() - minutes * 60000).toISOString();
+  return logLines.filter((l) => l.slice(0, 24) >= since).join('\n');
+};
+
 // Baileys ждёт логгер в стиле pino; пишем только предупреждения и ошибки
 const quiet = {
   level: 'warn',
@@ -201,6 +221,14 @@ function rememberSent(id) {
   sentIds.add(id);
   if (sentIds.size > 2000) sentIds.delete(sentIds.values().next().value);
 }
+// WhatsApp иногда доставляет одно сообщение дважды — второй раз не передаём
+const seenIds = new Set();
+function firstTime(id) {
+  if (!id || seenIds.has(id)) return false;
+  seenIds.add(id);
+  if (seenIds.size > 2000) seenIds.delete(seenIds.values().next().value);
+  return true;
+}
 
 async function handleMessage(msg, type) {
   const jid = msg.key.remoteJid || '';
@@ -217,7 +245,7 @@ async function handleMessage(msg, type) {
   if (jid.endsWith('@g.us')) {
     if (jid !== config.groupId || msg.key.fromMe || type !== 'notify') return;
     const quotedId = inner.contextInfo?.stanzaId;
-    if (!quotedId) return;
+    if (!quotedId || !firstTime(msg.key.id)) return;
     const author = await phoneOf(msg.key.participantAlt, msg.key.participant, msg.participant);
     enqueue(() => botRequest('/internal/wabot/message', {
       kind: 'group', id: msg.key.id, ts: new Date(ts).toISOString(), author, authorJid: msg.key.participant || null,
@@ -235,6 +263,10 @@ async function handleMessage(msg, type) {
     return;
   }
   if (type !== 'notify' || Date.now() - ts > MAX_AGE_MS) return;
+  if (!firstTime(msg.key.id)) {
+    log(`duplicate delivery of ${msg.key.id} skipped`);
+    return;
+  }
 
   const phone = await phoneOf(jid, msg.key.remoteJidAlt);
   state.lastInboundAt = new Date().toISOString();
@@ -430,6 +462,10 @@ http.createServer(async (req, res) => {
   try {
     if (req.method === 'GET' && url.pathname === '/status') {
       return send(res, 200, { ...state, groupId: config.groupId, groupSubject: config.groupSubject });
+    }
+    if (req.method === 'GET' && url.pathname === '/logs') {
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return res.end(recentLog(Math.min(10080, Number(url.searchParams.get('minutes')) || 60)));
     }
     if (req.method === 'POST' && url.pathname === '/send') {
       const { to, text, quoted } = await readJson(req);

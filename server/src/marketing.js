@@ -289,8 +289,24 @@ export function countVisit(code) {
 
 /** Код из первого сообщения боту: «/start ref_КОД» (Telegram) или «[ref:КОД]» (WhatsApp) */
 export function refFromText(text) {
-  const m = /(?:^\/start\s+ref_|\[?\bref[:_#\s-]+)([a-z0-9_-]{3,24})/i.exec(String(text || ''));
-  return m && sourceByCode(m[1]) ? m[1].toLowerCase() : null;
+  return refsFromText(text)[0] || null;
+}
+
+/** Все коды из сообщения по порядку: сайт пишет «[ref:сайт] [ref:агент]…» (от старого к новому) */
+export function refsFromText(text) {
+  const out = [];
+  for (const m of String(text || '').matchAll(/(?:^\/start\s+ref_|\[?\bref[:_#\s-]+)([a-z0-9_-]{3,24})/gi)) {
+    const code = m[1].toLowerCase();
+    if (sourceByCode(code) && !out.includes(code)) out.push(code);
+  }
+  return out;
+}
+
+/** Код источника «Сайт» для домена (jetmobility.org → jetmobility) — метка в кнопках WhatsApp сайта */
+export function siteSourceCode(host) {
+  const h = String(host || '').toLowerCase().replace(/^www\./, '');
+  const s = q.all.all().map(rowOf).find((x) => x.active && x.kind === 'site' && String(x.host || '').toLowerCase().replace(/^www\./, '') === h);
+  return s ? s.code : null;
 }
 
 const fresh = (at) => {
@@ -309,11 +325,15 @@ function setChatSource(chatKey, value) {
   q.setChatRef.run(chatKey, value, new Date().toISOString());
 }
 
-/** Запомнить код источника для чата бота (из первого сообщения) */
+/**
+ * Запомнить код источника для чата бота (из первого сообщения). Кодов может
+ * быть несколько — по порядку, как с сайта: агент не перебивается остальными,
+ * иначе засчитывается последний.
+ */
 export function rememberChatRef(chatKey, text) {
-  const code = refFromText(text);
-  if (code) setChatSource(chatKey, code);
-  return code;
+  const codes = refsFromText(text);
+  for (const code of codes) setChatSource(chatKey, code);
+  return codes[codes.length - 1] || null;
 }
 
 /** Код источника чата (с учётом срока из настроек); ответы «откуда узнали» кодом не считаются */

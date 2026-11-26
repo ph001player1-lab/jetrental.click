@@ -40,6 +40,13 @@ main() {
     printf 'INTERNAL_SECRET=%s\n' "$(openssl rand -hex 32)" >> "$env_file"
     echo "Создан INTERNAL_SECRET для наблюдателя WhatsApp"
   fi
+  # Ключ служебной диагностики (журналы и заявки только на чтение по адресу
+  # bot.jetmobility.org/diag/…) — создаётся один раз. Посмотреть:
+  #   grep '^DIAG_TOKEN=' /opt/kokon/.env | cut -d= -f2-
+  if ! grep -q '^DIAG_TOKEN=' "$env_file" 2>/dev/null; then
+    printf 'DIAG_TOKEN=%s\n' "$(openssl rand -hex 32)" >> "$env_file"
+    echo "Создан DIAG_TOKEN — ключ служебной диагностики. Показать: grep '^DIAG_TOKEN=' /opt/kokon/.env | cut -d= -f2-"
+  fi
   # Переезд на jetmobility.org: старые адреса jetrental.click в настройках
   # отключаем (комментируем) — тогда работают новые адреса по умолчанию
   if grep -qE '^(PUBLIC_BASE_URL|STAFF_URL|MAIL_FROM|JETRENTAL_HOSTS|KOKON_PREVIEW_HOSTS)=.*jetrental\.click' "$env_file"; then

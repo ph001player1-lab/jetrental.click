@@ -8,12 +8,15 @@
  *   POST /webhooks/telegram  — обновления от Telegram (проверяется секрет)
  *   POST /webhooks/whatsapp  — сообщения WhatsApp от Kapso (проверяется подпись)
  *   /api/staff/*             — сайт сотрудников (staffPortal.js)
+ *   /diag/*                  — служебная диагностика по ключу DIAG_TOKEN (diag.js)
  *   /api/public/*            — открытое API сайта (publicApi.js)
  *   остальные GET на доменах сайта (jetmobility.org, kokoncar.com) — страницы
  *                              сайта, sitemap.xml, robots.txt (site/index.js)
  * ============================================================================
  */
 
+// Первым: журнал сервера пишется и в файл (для диагностики)
+import './logCapture.js';
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { config } from './config.js';
@@ -32,6 +35,7 @@ import { startServerStats, recordRequest, version } from './serverStats.js';
 import { startJournal } from './journal/start.js';
 import { whatsappEnabled, knownPhoneNumberId } from './whatsapp/api.js';
 import { verifySignature, processWebhook, whatsappStatus } from './whatsapp/webhook.js';
+import { handleDiag } from './diag.js';
 
 const STARTED_AT = new Date();
 
@@ -105,6 +109,13 @@ const server = http.createServer((req, res) => {
     const handler = pathname.startsWith('/api/staff/') ? staffRoute(req.method, pathname) : publicRoute(req.method, pathname);
     if (!handler) return sendJson(res, 404, { error: 'not_found' });
     return handleApi(handler, req, res, url);
+  }
+
+  if (pathname.startsWith('/diag/')) {
+    return handleDiag(req, res, url).catch((err) => {
+      console.error('Diag failed:', err);
+      if (!res.headersSent) sendJson(res, 500, { error: 'internal_error' });
+    });
   }
 
   if (req.method === 'GET' && pathname === '/health') {

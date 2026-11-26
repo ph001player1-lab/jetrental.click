@@ -28,6 +28,10 @@ const BRANDS = {
     assets: 'img/brand/jetmobility',
     logo: { width: 316, height: 100 },
     wordmark: 'JET MOBILITY',
+    // Кнопки WhatsApp — на номер компании с ботом (+66 98 227 6467); в сообщение
+    // сайт добавляет метку источника [ref:…], чтобы бот знал, откуда клиент
+    whatsapp: '66982276467',
+    whatsappBot: true,
     googleVerification: [],
     indexable: false,
     theme: 'classic'

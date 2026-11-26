@@ -1132,7 +1132,6 @@
         <li>Ведёт клиента по шагам, как Telegram-бот: язык → техника → даты → свободные модели с ценами → «откуда узнали» → заявка. Варианты — списком, клиент отвечает цифрой.</li>
         <li>Есть вариант «Связаться с менеджером» — для постоянных клиентов: бот молчит, в группу приходит сообщение.</li>
         <li>Менеджер написал клиенту сам (с телефона или из WhatsApp Web) — бот молчит в этом чате 12 часов. После заявки бот молчит сутки; клиент может написать «меню».</li>
-        <li>Сотрудникам из рабочей группы бот как клиентам не отвечает.</li>
         <li>Заявка приходит карточкой в рабочую группу WhatsApp. Взять — ответить на карточку «+», не можете — «-». Клиенту придёт, кто им занимается.</li>
       </ul></details>`;
       if (w.reachable === false) {
@@ -1151,7 +1150,7 @@
             <label class="mk-radio"><input type="radio" name="mode" value="off"${set.mode === 'off' ? ' checked' : ''}> Никому — клиентам отвечают люди с телефона</label>
             <label class="mk-radio"><input type="radio" name="mode" value="test"${set.mode === 'test' ? ' checked' : ''}> Только тестовым номерам — проверить перед запуском</label>
             <label class="field"><span>Тестовые номера (через запятую)</span><input class="search" name="testNumbers" inputmode="tel" value="${esc(set.testNumbers.map((n) => `+${n}`).join(', '))}" placeholder="+66 81 234 5678, +7 900 000 0000"></label>
-            <label class="mk-radio"><input type="radio" name="mode" value="on"${set.mode === 'on' ? ' checked' : ''}> Всем клиентам (кроме сотрудников из рабочей группы)</label>
+            <label class="mk-radio"><input type="radio" name="mode" value="on"${set.mode === 'on' ? ' checked' : ''}> Всем, кто пишет (сотрудникам тоже)</label>
             <button type="submit" class="btn btn--primary btn--small">Сохранить</button>
           </form>
           <form class="mk-form" data-mk-wabot-group>
