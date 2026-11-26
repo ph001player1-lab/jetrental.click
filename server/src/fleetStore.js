@@ -238,6 +238,14 @@ export function saveVehicle(input, by) {
   return publicVehicle(q.vehicle.get(Number(info.lastInsertRowid)));
 }
 
+/** Состояние «ремонт» из смены статуса (В ремонт / Свободна) — без остальных полей карточки */
+export function setRepair(id, repair, by) {
+  const old = q.vehicle.get(Number(id) || 0);
+  if (!old || !REPAIR.includes(repair) || old.repair === repair) return;
+  db.raw.prepare('UPDATE fleet_vehicles SET repair = ?, updated_at = ?, updated_by = ? WHERE id = ?').run(repair, nowIso(), by, old.id);
+  q.log.run(nowIso(), by, old.plate, 'update', JSON.stringify({ repair: `${old.repair} → ${repair}` }));
+}
+
 /** Удалить карточку (ошибка, дубль). Проданную — не удаляют, а переносят в архив */
 export function deleteVehicle(id, by) {
   const old = q.vehicle.get(Number(id) || 0);

@@ -50,6 +50,9 @@ function openUnreadable(list) {
 }
 
 /** Для вкладки «Сервер», журнала и предупреждений */
+/** Какую группу читает наблюдатель (рабочая группа) — туда бот пишет события парка */
+export const observerGroup = () => ({ id: status.groupId || null, subject: status.groupSubject || null });
+
 export function observerStatus(now = Date.now()) {
   const fresh = status.lastSeenAt && now - Date.parse(status.lastSeenAt) < STALE_MS;
   return {

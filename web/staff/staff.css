@@ -1380,3 +1380,31 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
 .vh-grid textarea { min-height: 0; padding: 10px 14px; font: inherit; font-size: 16px; resize: vertical; }
 .vh-grid input[type="date"] { min-width: 0; }
 .vh-del { margin-left: auto; }
+
+/* «Парк»: проблемы, вид таблицей, смена статуса */
+.vh-probs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.vh-table .vh-probs { margin-top: 0; }
+.vh-prob { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; line-height: 1.3; }
+.vh-prob--error { background: var(--rent-bg); color: var(--rent); }
+.vh-prob--warning { background: var(--reserve-bg); color: var(--warn); }
+.vh-prob[data-vh-model] { cursor: pointer; text-decoration: underline dotted; }
+.vh-ok { color: var(--free); font-weight: 700; }
+.vh-view { display: inline-flex; }
+.vh-onlyprob[aria-pressed="true"] { background: var(--warn); border-color: var(--warn); color: #fff; }
+.vh-table-wrap { margin-top: 10px; overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--line); background: var(--surface); }
+.vh-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.vh-table th, .vh-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.vh-table thead th { position: sticky; top: 0; background: var(--surface-2); font-size: 12px; color: var(--muted); white-space: nowrap; }
+.vh-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.vh-table tbody tr:last-child td { border-bottom: 0; }
+.vh-tr--error td:first-child { box-shadow: inset 4px 0 0 var(--rent); }
+.vh-tr--warn td:first-child { box-shadow: inset 4px 0 0 var(--reserve); }
+.vh-table .pill { white-space: nowrap; }
+.vh-td-actions { display: flex; gap: 2px; justify-content: flex-end; }
+.vh-td-actions .icon-btn { width: 34px; height: 34px; min-height: 0; padding: 0; font-size: 16px; }
+@media (max-width: 760px) {
+  .vh-table .vh-col-x { display: none; }
+  .vh-table th, .vh-table td { padding: 8px 6px; }
+  .vh-td-actions { flex-direction: column; }
+}
+.vh-kinds { flex-wrap: wrap; overflow: visible; }

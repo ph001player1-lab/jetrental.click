@@ -12,7 +12,7 @@
 (() => {
   'use strict';
 
-  const LAMPS = ['disk', 'cpu', 'memory', 'load', 'response', 'traffic', 'ws', 'sheets', 'telegram', 'mail', 'whatsapp', 'wabot', 'engine'];
+  const LAMPS = ['disk', 'cpu', 'memory', 'load', 'response', 'traffic', 'ws', 'telegram', 'mail', 'whatsapp', 'wabot', 'engine'];
   const CATEGORY_ORDER = ['pages', 'photos', 'assets', 'api', 'webhooks', 'other', 'system'];
 
   let h; // помощники из staff.js: t, tn, esc, lang, locale, dateTime, time

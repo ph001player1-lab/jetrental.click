@@ -22,6 +22,8 @@ const TEXTS = {
 
     'bookingNotIssued.title': 'Booking not issued: {car}',
     'bookingNotIssued.detail': 'Pickup time was {when}, but the vehicle is not rented out in Avtoprokat.',
+    'rentOverdue.title': 'Not returned on time: {car}',
+    'rentOverdue.detail': 'The rental ended on {date}, but there is no return report in the work group or the portal. Write «Accepted» in the group or set the status in Fleet.',
     'longService.title': 'Long service: {car}',
     'longService.detail': 'In service since {when}{end}.',
     'longService.noEnd': ', no end date',
@@ -125,6 +127,8 @@ const TEXTS = {
 
     'bookingNotIssued.title': 'Бронь не выдана: {car}',
     'bookingNotIssued.detail': 'Время выдачи — {when}, но в Автопрокате машина не выдана.',
+    'rentOverdue.title': 'Не вернули в срок: {car}',
+    'rentOverdue.detail': 'Аренда закончилась {date}, а отчёта о возврате нет ни в рабочей группе, ни в портале. Напишите «Accepted» в группе или поменяйте статус в «Парке».',
     'longService.title': 'Долгий сервис: {car}',
     'longService.detail': 'В сервисе с {when}{end}.',
     'longService.noEnd': ', без даты окончания',
@@ -228,6 +232,8 @@ const TEXTS = {
 
     'bookingNotIssued.title': 'ยังไม่ได้ส่งมอบรถที่จอง: {car}',
     'bookingNotIssued.detail': 'เวลารับรถคือ {when} แต่ใน Avtoprokat ยังไม่ได้ออกเช่า',
+    'rentOverdue.title': 'ยังไม่คืนตามกำหนด: {car}',
+    'rentOverdue.detail': 'การเช่าสิ้นสุด {date} แต่ไม่มีรายงานการคืนในกลุ่มหรือพอร์ทัล เขียน «Accepted» ในกลุ่มหรือเปลี่ยนสถานะในแท็บรถ',
     'longService.title': 'ซ่อมบำรุงนาน: {car}',
     'longService.detail': 'อยู่ระหว่างซ่อมบำรุงตั้งแต่ {when}{end}',
     'longService.noEnd': ' ไม่มีวันสิ้นสุด',

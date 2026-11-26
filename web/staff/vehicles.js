@@ -21,7 +21,11 @@
 
   function create(ctx) {
     const { api, t, esc } = ctx;
-    const st = { dialog: null, msg: null, saving: false, archiveOpen: false, archiveMsg: null };
+    const VIEW_KEY = 'jm_fleet_view';
+    const savedView = () => { try { return localStorage.getItem(VIEW_KEY) === 'table' ? 'table' : 'cards'; } catch { return 'cards'; } };
+    const st = { dialog: null, msg: null, saving: false, archiveOpen: false, archiveMsg: null, view: savedView(), onlyProblems: false };
+    const STATUS_KINDS = ['free', 'rent', 'reserve', 'service'];
+    const dm = (iso) => (iso ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}` : '');
     const fleet = () => ctx.fleet() || {};
     const canEdit = () => Boolean(fleet().canEditFleet);
     const keyOf = (plate) => String(plate || '').replace(/\D/g, '');
@@ -61,11 +65,14 @@
     }
 
     function actions(v) {
-      if (!canEdit()) return '';
-      return `<div class="vh-actions">
-        <button type="button" class="btn btn--small" data-vh-edit="${v.id}">✏️ ${esc(t('vh.edit'))}</button>
-        <button type="button" class="btn btn--small" data-vh-archive="${v.id}">🗄 ${esc(t('vh.toArchive'))}</button>
-      </div>`;
+      const model = nameOf(v);
+      const buttons = [
+        ctx.canSetStatus() ? `<button type="button" class="btn btn--small btn--primary" data-vh-status="${v.id}">🔄 ${esc(t('fs.change'))}</button>` : '',
+        canEdit() ? `<button type="button" class="btn btn--small" data-vh-edit="${v.id}">✏️ ${esc(t('vh.edit'))}</button>` : '',
+        ctx.canEditModel() ? `<button type="button" class="btn btn--small" data-vh-model="${esc(model)}">🖼 ${esc(t('vh.photoDesc'))}</button>` : '',
+        canEdit() ? `<button type="button" class="btn btn--small" data-vh-archive="${v.id}">🗄 ${esc(t('vh.toArchive'))}</button>` : ''
+      ].filter(Boolean);
+      return buttons.length ? `<div class="vh-actions">${buttons.join('')}</div>` : '';
     }
 
     /* ---------------------------------------- Вкладка: кнопка, «нет в WS», архив */
@@ -140,7 +147,7 @@
       st.dialog = d;
       st.msg = null;
       const dlg = dialogEl();
-      dlg.innerHTML = d.kind === 'archive' ? archiveForm(d) : vehicleForm(d);
+      dlg.innerHTML = d.type === 'status' ? statusForm(d) : d.kind === 'archive' ? archiveForm(d) : vehicleForm(d);
       if (!dlg.open) dlg.showModal();
       dlg.querySelector('input:not([type=hidden]), select, textarea')?.focus();
     }
@@ -219,6 +226,138 @@
             <button type="button" class="btn" data-vh-close>${esc(t('vh.cancel'))}</button>
           </div>
         </form>`;
+    }
+
+    /* ------------------------------------------- Проблемы, вид, таблица */
+
+    /** Значки «что сделать» — в карточке и в таблице */
+    function problemBadges(car, compact = false) {
+      const list = car.problems || [];
+      if (!list.length) return compact ? '<span class="vh-ok" title="OK">✓</span>' : '';
+      return `<span class="vh-probs">${list.map((p) => {
+        const text = t(`fp.${p.code}`, { date: dm(p.date), ws: p.ws ? (['free', 'rent', 'reserve', 'service'].includes(p.ws) ? ctx.statusName(p.ws) : p.ws) : '' });
+        const fix = ['no_photo', 'no_description'].includes(p.code) ? ` data-vh-model="${esc(car.model)}"` : '';
+        return `<span class="vh-prob vh-prob--${p.level}"${fix} title="${esc(text)}">${p.level === 'error' ? '⛔' : '⚠️'} ${esc(text)}</span>`;
+      }).join('')}</span>`;
+    }
+
+    const withProblems = (cars) => cars.filter((c) => (c.problems || []).length);
+
+    /** Кнопки над списком: добавить, вид (карточки / таблица), «только с проблемами» */
+    function toolbar(cars = []) {
+      const n = withProblems(cars).length;
+      return `<div class="vh-toolbar">
+        ${canEdit() ? `<button type="button" class="btn btn--small btn--primary" data-vh-new>＋ ${esc(t('vh.add'))}</button>` : ''}
+        <div class="chips vh-view" role="group" aria-label="${esc(t('fl.view.label'))}">
+          <button type="button" class="chip" data-vh-view="cards" aria-pressed="${st.view === 'cards'}">▦ ${esc(t('fl.view.cards'))}</button>
+          <button type="button" class="chip" data-vh-view="table" aria-pressed="${st.view === 'table'}">☰ ${esc(t('fl.view.table'))}</button>
+        </div>
+        <button type="button" class="chip vh-onlyprob" data-vh-onlyprob aria-pressed="${st.onlyProblems}">⚠️ ${esc(t('fl.onlyProblems', { n }))}</button>
+        ${st.msg && !st.dialog ? `<span class="vh-msg vh-msg--${st.msg.kind}" role="status">${esc(st.msg.text)}</span>` : ''}
+      </div>`;
+    }
+
+    const filterProblems = (cars) => (st.onlyProblems ? withProblems(cars) : cars);
+    const view = () => st.view;
+
+    /** Строка о статусе в WS (сверка): совпадает — молчим */
+    function wsLine(car) {
+      if (!fleet().ws?.enabled) return '';
+      if (!car.ws) return `<div class="car__group warn">⚠️ ${esc(t('fp.not_in_ws'))}</div>`;
+      if (car.ws.status === car.status) return '';
+      return `<div class="car__group warn">⚠️ ${esc(t('fl.inWs', { status: ctx.statusName(car.ws.status) }))}</div>`;
+    }
+
+    /** Последнее событие по технике: «Выдача · 12 Nov, 12:44 · группа» */
+    function lastLine(car) {
+      const l = car.last;
+      if (!l) return '';
+      const kind = l.kind.startsWith('p_') ? t(`fs.kind.${l.kind.slice(2)}`) : t(`jr.kind.${l.kind}`);
+      return `<div class="muted jr-small">${esc(t('fs.last', { what: kind, at: ctx.dateTime(l.at), src: t(`fs.src.${l.src}`) }))}${l.by ? ` · ${esc(l.by)}` : ''}</div>`;
+    }
+
+    function statusText(car) {
+      if (car.status === 'rent' && car.overdue) return t('fl.rentOverdue', { date: dm(car.until) });
+      if (car.status === 'rent' && car.until) return `${ctx.statusName('rent')} ${t('fl.until', { date: dm(car.until) })}`;
+      return ctx.statusName(car.status);
+    }
+
+    function renderTable(cars) {
+      const tariff = (car) => fleet().tariffs?.[car.id]?.tiers?.find(Boolean);
+      const rows = cars.map((car) => {
+        const v = car.vehicleId ? byId(car.vehicleId) : null;
+        const service = v ? [v.nextServiceDate && dm(v.nextServiceDate), v.nextServiceKm && `${num(v.nextServiceKm)} ${t('vh.km')}`].filter(Boolean).join(' · ') : '';
+        return `<tr class="vh-tr${(car.problems || []).some((p) => p.level === 'error') ? ' vh-tr--error' : (car.problems || []).length ? ' vh-tr--warn' : ''}">
+          <td><b class="car__plate">${esc(car.plate || '—')}</b></td>
+          <td><b>${esc(car.model || car.wsModel || '—')}</b><div class="muted jr-small">${TYPE_ICON[car.type] || ''} ${esc(v ? `${v.brand} ${v.model}`.trim() : car.wsModel || '')}</div></td>
+          <td><span class="pill pill--${car.status}">${esc(statusText(car))}</span></td>
+          <td class="vh-col-x">${car.ws ? (car.ws.status === car.status ? '<span class="vh-ok">✓</span>' : `<span class="warn">⚠️ ${esc(ctx.statusName(car.ws.status))}</span>`) : fleet().ws?.enabled ? '<span class="warn">—</span>' : ''}</td>
+          <td class="num vh-col-x">${tariff(car) ? esc(ctx.money(tariff(car))) : '—'}</td>
+          <td class="num vh-col-x">${v?.mileage !== null && v?.mileage !== undefined ? esc(num(v.mileage)) : ''}</td>
+          <td class="vh-col-x">${esc(service)}</td>
+          <td>${problemBadges(car, true)}</td>
+          <td><div class="vh-td-actions">
+            ${ctx.canSetStatus() && car.vehicleId ? `<button type="button" class="icon-btn icon-btn--plain" data-vh-status="${car.vehicleId}" title="${esc(t('fs.change'))}" aria-label="${esc(t('fs.change'))}">🔄</button>` : ''}
+            ${canEdit() && car.vehicleId ? `<button type="button" class="icon-btn icon-btn--plain" data-vh-edit="${car.vehicleId}" title="${esc(t('vh.edit'))}" aria-label="${esc(t('vh.edit'))}">✏️</button>` : ''}
+            ${car.model && ctx.canEditModel() ? `<button type="button" class="icon-btn icon-btn--plain" data-vh-model="${esc(car.model)}" title="${esc(t('vh.photoDesc'))}" aria-label="${esc(t('vh.photoDesc'))}">🖼</button>` : ''}
+            ${canEdit() && car.vehicleId ? `<button type="button" class="icon-btn icon-btn--plain" data-vh-archive="${car.vehicleId}" title="${esc(t('vh.toArchive'))}" aria-label="${esc(t('vh.toArchive'))}">🗄</button>` : ''}
+          </div></td>
+        </tr>`;
+      }).join('');
+      return `<div class="table-wrap vh-table-wrap"><table class="vh-table">
+        <thead><tr><th>${esc(t('fl.th.plate'))}</th><th>${esc(t('fl.th.model'))}</th><th>${esc(t('fl.th.status'))}</th><th class="vh-col-x">WS</th>
+          <th class="num vh-col-x">${esc(t('fl.th.price'))}</th><th class="num vh-col-x">${esc(t('fl.th.mileage'))}</th><th class="vh-col-x">${esc(t('fl.th.service'))}</th><th>${esc(t('fl.th.problems'))}</th><th></th></tr></thead>
+        <tbody>${rows}</tbody></table></div>`;
+    }
+
+    /* ------------------------------------------------------ Смена статуса */
+
+    function statusForm(d) {
+      const v = d.vehicle;
+      const k = d.kind || 'rent';
+      const dates = k === 'rent'
+        ? `<label class="field"><span>${esc(t('fs.until'))}</span><input class="search" type="date" name="to" min="${ctx.today()}"></label>`
+        : k === 'reserve'
+          ? `<label class="field"><span>${esc(t('fs.from'))}</span><input class="search" type="date" name="from" min="${ctx.today()}"></label>
+             <label class="field"><span>${esc(t('fs.to'))}</span><input class="search" type="date" name="to" min="${ctx.today()}"></label>` : '';
+      return `
+        <form class="sheet__body vh-form" data-vh-status-form novalidate>
+          <div class="sheet__head">
+            <div><div class="muted">${esc(t('fs.title'))}</div><h2>${esc(`${nameOf(v)} · ${v.plate}`)}</h2></div>
+            <button type="button" class="icon-btn icon-btn--plain" data-vh-close aria-label="${esc(t('vh.close'))}">×</button>
+          </div>
+          <div class="chips vh-kinds" role="group" aria-label="${esc(t('fs.title'))}">
+            ${STATUS_KINDS.map((x) => `<button type="button" class="chip" data-vh-kind="${x}" aria-pressed="${x === k}"><span class="dot dot--${x}"></span>${esc(t(`fs.kind.${x}`))}</button>`).join('')}
+          </div>
+          <div class="vh-grid">${dates}
+            <label class="field vh-wide"><span>${esc(t('fs.note'))}</span><input class="search" name="note" maxlength="300" placeholder="${esc(t('fs.notePh'))}"></label>
+          </div>
+          <p class="muted jr-small">${esc(t(fleet().eventsToGroup ? 'fs.tipGroup' : 'fs.tipNoGroup'))}</p>
+          <div data-vh-dmsg></div>
+          <div class="vh-actions">
+            <button type="submit" class="btn btn--primary">${esc(t('fs.save'))}</button>
+            <button type="button" class="btn" data-vh-close>${esc(t('vh.cancel'))}</button>
+          </div>
+        </form>`;
+    }
+
+    async function saveStatus(form) {
+      const data = Object.fromEntries(new FormData(form));
+      const d = st.dialog;
+      st.saving = true;
+      st.msg = null;
+      refreshDialogMsg();
+      try {
+        const r = await api('/fleet/status', { body: { vehicleId: d.vehicle.id, kind: d.kind, ...data } });
+        st.saving = false;
+        closeDialog();
+        st.msg = { kind: r.wa === 'failed' ? 'error' : 'ok', text: `${t('fs.saved', { plate: d.vehicle.plate })} ${t(`fs.wa.${r.wa}`)}` };
+        await ctx.reload();
+      } catch (err) {
+        st.saving = false;
+        st.msg = { kind: 'error', text: t({ date_required: 'fs.err.dates', date_past: 'fs.err.past', date_order: 'fs.err.order' }[err.code] || 'vh.err.failed') };
+        refreshDialogMsg();
+      }
     }
 
     /* ------------------------------------------------------- Действия */
@@ -304,10 +443,20 @@
     /* ------------------------------------------------------- События */
 
     function onClick(event) {
-      const el = event.target.closest('[data-vh-new], [data-vh-edit], [data-vh-add-ws], [data-vh-archive], [data-vh-archive-edit], [data-vh-restore], [data-vh-delete], [data-vh-close], [data-vh-archive-box] > summary');
+      const el = event.target.closest('[data-vh-new], [data-vh-edit], [data-vh-add-ws], [data-vh-archive], [data-vh-archive-edit], [data-vh-restore], [data-vh-delete], [data-vh-close], [data-vh-archive-box] > summary, [data-vh-view], [data-vh-onlyprob], [data-vh-status], [data-vh-kind], [data-vh-model]');
       if (!el) return false;
       const d = el.dataset;
       if (el.matches('summary')) { st.archiveOpen = !el.parentElement.open; return false; }
+      if (d.vhView) {
+        st.view = d.vhView;
+        try { localStorage.setItem(VIEW_KEY, st.view); } catch { /* приватный режим */ }
+        ctx.rerender();
+        return true;
+      }
+      if ('vhOnlyprob' in d) { st.onlyProblems = !st.onlyProblems; ctx.rerender(); return true; }
+      if (d.vhModel) { ctx.openModel(d.vhModel); return true; }
+      if (d.vhStatus) { const v = byId(d.vhStatus); if (v) openDialog({ type: 'status', vehicle: v, kind: 'rent' }); return true; }
+      if (d.vhKind) { if (st.dialog?.type === 'status') openDialog({ ...st.dialog, kind: d.vhKind }); return true; }
       if ('vhNew' in d) openDialog({ kind: 'vehicle', vehicle: null });
       else if (d.vhEdit) openDialog({ kind: 'vehicle', vehicle: byId(d.vhEdit) });
       else if (d.vhAddWs) openDialog({ kind: 'vehicle', vehicle: fromWs(d.vhAddWs) });
@@ -322,11 +471,12 @@
     }
 
     function onSubmit(event) {
-      const form = event.target.closest('[data-vh-form], [data-vh-archive-form]');
+      const form = event.target.closest('[data-vh-form], [data-vh-archive-form], [data-vh-status-form]');
       if (!form) return false;
       event.preventDefault();
       if (st.saving) return true;
       if (form.matches('[data-vh-form]')) saveVehicle(form);
+      else if (form.matches('[data-vh-status-form]')) saveStatus(form);
       else saveArchive(form);
       return true;
     }
@@ -340,7 +490,10 @@
       return true;
     }
 
-    return { cardBlock, toolbar, renderNotInWs, renderArchive, onClick, onSubmit, onChange, canEdit, dialogOpen: () => Boolean(st.dialog) };
+    return {
+      cardBlock, toolbar, renderNotInWs, renderArchive, renderTable, problemBadges, wsLine, lastLine, statusText, filterProblems, view,
+      onClick, onSubmit, onChange, canEdit, dialogOpen: () => Boolean(st.dialog)
+    };
   }
 
   window.STAFF_VEHICLES = { create };

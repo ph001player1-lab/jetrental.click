@@ -1162,6 +1162,7 @@
             <p class="mk-tip">Выключено — заявки только в этой группе WhatsApp, брать их можно в одном месте. Утренняя сводка и оповещения в Telegram остаются. Если бот не на связи, заявка всё равно придёт в Telegram.</p>
             <button type="submit" class="btn btn--small">Сохранить</button>
           </form>
+          ${eventsForm(w, set)}
           ${msg}
           ${how}
           <button type="button" class="btn btn--small mk-danger" data-mk-wabot-logout>Отвязать номер</button>`;
@@ -1436,6 +1437,26 @@
       return false;
     }
 
+    /**
+     * События парка (ручной статус в «Парке») → рабочая группа, которую читает наблюдатель.
+     * Пишет этот же номер; отдельный номер — позже (свой бот, см. планы).
+     */
+    function eventsForm(w, set) {
+      const obs = w.observerGroup || {};
+      const list = w.groups || [];
+      const botInObserver = obs.id && list.some((g) => g.id === obs.id);
+      const options = list.map((g) => `<option value="${esc(g.id)}"${g.id === set.eventsGroup ? ' selected' : ''}>${esc(`${g.subject} (${g.size})`)}${g.id === obs.id ? ' — читает наблюдатель' : ''}</option>`).join('');
+      return `
+        <form class="mk-form" data-mk-wabot-events>
+          <label class="field"><span>События парка → рабочая группа (номер этого бота)</span>
+            <select class="search" name="eventsGroup"><option value="">— не писать —</option>${options}</select></label>
+          <p class="mk-tip">Когда в «Парке» меняют статус вручную (выдача, возврат, бронь, ремонт), бот пишет это в группу тем же текстом, что отчёт, — его видят все и читает наблюдатель.
+            ${obs.id ? (botInObserver ? '' : `Наблюдатель читает группу «${esc(obs.subject || '')}» — добавьте туда номер бота ${esc(phoneText(w.me?.id))}, и она появится в списке.`) : 'Наблюдатель ещё не выбрал рабочую группу (вкладка «Журнал» → WhatsApp).'}
+            Писать с отдельного номера — подключим позже отдельным ботом.</p>
+          <button type="submit" class="btn btn--small">Сохранить</button>
+        </form>`;
+    }
+
     function onSubmit(event) {
       const form = event.target;
       if (!form.closest?.('.mk')) return false;
@@ -1452,6 +1473,12 @@
         api('/wabot/settings', { body: { telegramCopy } }).catch(() => null)
           .then(() => wabotAction('/wabot/config', { groupId: f.get('groupId') },
             f.get('groupId') ? `Заявки будут приходить в эту группу${telegramCopy ? ' и копией в Telegram' : ''}.` : 'Заявки в WhatsApp-группу не приходят — только в Telegram.'));
+        return true;
+      }
+      if (form.matches('[data-mk-wabot-events]')) {
+        const group = f.get('eventsGroup') || null;
+        wabotAction('/wabot/settings', { eventsGroup: group },
+          group ? 'События парка будут приходить в эту группу.' : 'События парка в группу не пишем.').then(load);
         return true;
       }
       if (form.matches('[data-mk-wabot-pair]')) {

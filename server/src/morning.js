@@ -17,6 +17,7 @@ import { todayIso } from './dates.js';
 import { collectProblems, bookingOutlook, CATEGORIES } from './dashboard.js';
 import { getStaffChatId, sendToStaffGroup } from './staff.js';
 import { getWsSnapshot } from './ws/sync.js';
+import { getPortalSnapshot } from './fleet.js';
 import { wsEnabled } from './ws/api.js';
 import { telegramEnabled } from './telegram/api.js';
 import { g, gn, groupLang, groupLocale } from './groupTexts.js';
@@ -62,7 +63,9 @@ export function formatSummary(problems, outlook, snapshot, now = Date.now()) {
 
 export async function sendMorningSummary() {
   const now = Date.now();
-  const text = formatSummary(await collectProblems(now, groupLang), bookingOutlook(now), getWsSnapshot(), now);
+  // Статусы парка — из портала (WS только сверяется)
+  const portal = await getPortalSnapshot().catch(() => null);
+  const text = formatSummary(await collectProblems(now, groupLang), bookingOutlook(now), portal, now);
   return sendToStaffGroup(text, { disable_web_page_preview: true });
 }
 
@@ -75,6 +78,7 @@ async function tick() {
   if (local.getUTCHours() !== SEND_HOUR) return;
   const day = todayIso(new Date(now));
   if (db.getSetting('morning_summary_day') === day) return;
+  // Ждём первый снимок WS (для сверки в «Проблемах»), но не дольше нескольких минут
   if (wsEnabled && !getWsSnapshot() && local.getUTCMinutes() < WAIT_DATA_UNTIL_MINUTE) return;
   sending = true;
   try {

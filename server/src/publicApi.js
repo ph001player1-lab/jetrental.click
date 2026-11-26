@@ -13,10 +13,9 @@
 
 import * as db from './db.js';
 import { HttpError, sendJson, readJson, clientIp, rateLimiter } from './http.js';
-import { findAvailableModels, getFleet, sheetsEnabled } from './fleet.js';
+import { findAvailableModels, getFleet, sheetsEnabled, portalSnapshotNow } from './fleet.js';
 import { soldList } from './sold.js';
 import { sourceByCode, countVisit, resolveSiteRefs } from './marketing.js';
-import { getWsSnapshot } from './ws/sync.js';
 import { publishRequest } from './staff.js';
 import { todayIso } from './dates.js';
 import { VEHICLE_TYPES } from './format.js';
@@ -57,7 +56,8 @@ function descriptionsFor(entry) {
 async function buildCatalog() {
   if (!sheetsEnabled) return { updatedAt: null, models: [] };
   const { units, catalog, soldUnits = [] } = await getFleet();
-  const snapshot = getWsSnapshot();
+  // «Свободно сейчас» — по статусам портала
+  const snapshot = portalSnapshotNow();
 
   const unitCount = new Map();
   for (const unit of units) if (unit.model) unitCount.set(unit.model, (unitCount.get(unit.model) || 0) + 1);

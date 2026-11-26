@@ -21,7 +21,8 @@
 import * as db from './db.js';
 import { getWsSnapshot, wsSyncStatus } from './ws/sync.js';
 import { wsEnabled } from './ws/api.js';
-import { getFleet, fleetStatus, sheetsEnabled, plateKey } from './fleet.js';
+import { getFleet, fleetStatus, sheetsEnabled, plateKey, portalSnapshotNow } from './fleet.js';
+import { sameModel } from './vehicleStatus.js';
 import { getCatalog } from './publicApi.js';
 import { getStaffChatId, staffGroupFailure } from './staff.js';
 import { mailEnabled, mailFailure } from './mail.js';
@@ -99,6 +100,14 @@ function vehicleProblems(tx, snapshot, now) {
         detail: tx.t('bookingNotIssued.detail', { when: since(tx, current.from, now, windowFrom) })
       });
     }
+    // Срок аренды прошёл, а возврата в группе (или в портале) нет
+    if (car.overdue && car.until) {
+      problems.push({
+        group: 'bookings', level: 'error', target,
+        title: tx.t('rentOverdue.title', { car: carName(car) }),
+        detail: tx.t('rentOverdue.detail', { date: `${car.until.slice(8, 10)}.${car.until.slice(5, 7)}` })
+      });
+    }
     if (current.kind === 'service') {
       // Проблема — только ремонт дольше 15 дней И без даты окончания
       // (окончание позже окна снимка в 30 дней считаем «без даты»)
@@ -115,8 +124,6 @@ function vehicleProblems(tx, snapshot, now) {
   return problems;
 }
 
-/** Модель для сравнения: буквы и цифры без пробелов, без «(1019)» в конце названия из WS */
-const modelKey = (value) => String(value || '').replace(/\s*\(\d+\)\s*$/, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
 
 export function matchProblems(tx, snapshot, fleet) {
   const problems = [];
@@ -133,9 +140,7 @@ export function matchProblems(tx, snapshot, fleet) {
       continue;
     }
     // Разная модель в WS и в парке: ни одно название не входит в другое (Haval H6 ≠ Haval Jolion)
-    const ws = modelKey(car.wsModel);
-    const names = [modelKey(unit.wsName), modelKey(unit.model)].filter(Boolean);
-    if (ws && names.length && !names.some((n) => n.includes(ws) || ws.includes(n))) {
+    if (!sameModel(car.wsModel, [unit.wsName, unit.model])) {
       problems.push({
         group: 'data', level: 'warning', target: { tab: 'fleet', q: car.plate },
         title: tx.t('modelDiff.title', { car: `${unit.model || unit.wsName} · ${car.plate}` }),
@@ -478,13 +483,15 @@ const GROUP_ORDER = ['requests', 'bookings', 'system', 'website', 'prices', 'rec
  */
 export async function collectProblems(now = Date.now(), lang = 'en') {
   const tx = dashboardTranslator(lang);
+  // WS — только для сверки (matchProblems); статусы и брони — из портала
   const snapshot = getWsSnapshot();
   const fleet = sheetsEnabled ? await getFleet().catch(() => null) : null;
+  const portal = portalSnapshotNow();
   const problems = [
     ...systemProblems(tx, now),
     ...requestProblems(tx, now),
     ...blacklistProblems(tx, now),
-    ...(snapshot ? vehicleProblems(tx, snapshot, now) : []),
+    ...(portal ? vehicleProblems(tx, portal, now) : []),
     ...(snapshot ? matchProblems(tx, snapshot, fleet) : []),
     ...priceProblems(tx, fleet),
     ...(await websiteProblems(tx, fleet).catch(() => [])),
@@ -541,11 +548,11 @@ export function requestStats(now = Date.now()) {
 /* ------------------------------------------------------------ Брони впереди */
 
 /**
- * Брони и загрузка парка по снимку Автопроката. Две брони одной машины встык
- * Автопрокат отдаёт одним куском — поэтому считаем и машины, и дни.
+ * Брони и загрузка парка по статусам портала (отчёты группы и события портала).
+ * Считаем и машины, и дни: две брони встык — это два куска.
  */
 export function bookingOutlook(now = Date.now()) {
-  const snapshot = getWsSnapshot();
+  const snapshot = portalSnapshotNow();
   if (!snapshot) return null;
   const cars = snapshot.cars.map((car) => ({ car, segments: parsed(car) }));
   const ahead = (days) => {

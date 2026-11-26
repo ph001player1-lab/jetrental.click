@@ -38,7 +38,7 @@ import { HttpError, sendJson, readJson, readBody, parseCookies, clientIp, rateLi
 import { findStaff, normalizeEmail, isValidEmail, adminList, isAdminEmail } from './staffUsers.js';
 import { mailEnabled, sendMail } from './mail.js';
 import { getWsSnapshot, wsSyncStatus } from './ws/sync.js';
-import { getFleet, sheetsEnabled, plateKey, invalidateFleet } from './fleet.js';
+import { getFleet, sheetsEnabled, plateKey, invalidateFleet, getPortalSnapshot } from './fleet.js';
 import { tariffOn, quotePlate } from './pricing.js';
 import { priceActive, priceView, applyChanges, revertChange, PriceError } from './price.js';
 import { todayIso } from './dates.js';
@@ -49,7 +49,8 @@ import { roleOf, roleNameOf, permissionsOf, can, canAny } from './roles.js';
 import { accessOverview, saveRole, deleteRole, saveStaff, deleteStaff, importStaffList, AccessError } from './access.js';
 import { financeReport, saveLoans } from './finance.js';
 import { soldList, markSold, unmarkSold, markSoldList, isSold, SoldError } from './sold.js';
-import { listVehicles, saveVehicle, deleteVehicle, fleetLog, FleetError } from './fleetStore.js';
+import { listVehicles, saveVehicle, deleteVehicle, fleetLog, getVehicle, setRepair, FleetError } from './fleetStore.js';
+import { addStatusEvent, eventReport, setEventWa, recentEvents, invalidateStatuses, sameModel, StatusError } from './vehicleStatus.js';
 import { marketingReport, marketingDetails, saveSource, deleteSource, placeSource, saveSettings, allSources, MarketingError } from './marketing.js';
 import { crmList, crmClient, saveClient, setTags, addNote, mergeClients, importClients, CrmError } from './crm.js';
 import { importCashbook } from './cashbook.js';
@@ -60,7 +61,7 @@ import { g } from './groupTexts.js';
 import { escapeHtml } from './format.js';
 import { getJournal, fixEvent, getTimesheet, getReconcile, getMedia, importHistory } from './journal/api.js';
 import { waStatus, waConfig, waPair, waLogout } from './journal/observer.js';
-import { wabotPortalStatus, wabotPortalSettings, wabotPortalConfig, wabotPortalPair, wabotPortalLogout } from './wabot.js';
+import { wabotPortalStatus, wabotPortalSettings, wabotPortalConfig, wabotPortalPair, wabotPortalLogout, wabotSettings, postFleetEvent } from './wabot.js';
 import { groupStatusByPlate } from './journal/reconcile.js';
 
 const COOKIE = 'jr_staff';
@@ -274,38 +275,107 @@ async function priceData(cars) {
   }
 }
 
+/**
+ * Что сделать по технике: [{ code, level }] — видно в карточке, таблице «Парка» и счётчике «с проблемами».
+ * WS здесь только для сверки (нет в WS, другая модель, другой статус).
+ */
+function vehicleIssues(car, { vehicle, entry, tariff, wsOn, today }) {
+  const out = [];
+  const add = (code, level, params = {}) => out.push({ code, level, ...params });
+  if (car.overdue) add('overdue', 'error', { date: car.until });
+  if (car.needsRepair) add('needs_repair', 'warning');
+  if (priceActive() && !tariff?.tiers?.some(Boolean)) add('no_price', 'error');
+  if (vehicle) {
+    const byDate = vehicle.nextServiceDate && vehicle.nextServiceDate <= today;
+    const byKm = vehicle.nextServiceKm && vehicle.mileage && vehicle.mileage >= vehicle.nextServiceKm;
+    if (byDate || byKm) add('service_due', 'warning');
+  }
+  if (!entry?.photo) add('no_photo', 'warning');
+  if (!entry?.description) add('no_description', 'warning');
+  if (wsOn) {
+    if (!car.ws) add('not_in_ws', 'warning');
+    else {
+      if (!sameModel(car.ws.model, [car.wsModel, car.model])) add('model_diff', 'warning', { ws: car.ws.model });
+      if (car.ws.status !== car.status) add('status_diff', 'warning', { ws: car.ws.status });
+    }
+  }
+  return out;
+}
+
 async function fleet(req, res) {
-  // Парк нужен и обзору, и календарю
+  // Парк нужен и обзору, и календарю. Статусы — из портала, WS — только для сверки
   const staff = await requireStaff(req);
   needAny(staff, ['fleet.view', 'calendar.view', 'overview.view']);
-  const snapshot = getWsSnapshot();
   const sync = wsSyncStatus();
-  // Модель и тип — из парка портала прямо сейчас (правка карточки видна сразу, не ждём синхронизации WS)
-  let units = [];
-  try { units = (await getFleet()).units; } catch { /* без парка — как в снимке */ }
-  const unitByPlate = new Map(units.map((u) => [plateKey(u.plate), u]));
-  const cars = (snapshot?.cars || []).map((car) => {
-    const unit = unitByPlate.get(plateKey(car.plate));
-    return { ...car, model: unit?.model || '', type: unit?.type || null, vehicleId: unit?.id || null };
-  });
+  const ws = getWsSnapshot();
+  const portal = await getPortalSnapshot().catch((err) => { console.error('Portal statuses failed:', err.message); return null; });
+  const wsByPlate = new Map((ws?.cars || []).map((c) => [plateKey(c.plate), c]));
   const editFleet = can(staff, 'fleet.edit');
   const fleetView = can(staff, 'fleet.view');
+  const vehicles = listVehicles().filter((v) => !isSold(v.plate));
+  const vehicleById = new Map(vehicles.map((v) => [v.id, v]));
+  let cars = (portal?.cars || []).map((car) => {
+    const w = wsByPlate.get(plateKey(car.plate));
+    return { ...car, ws: w ? { id: w.id, status: w.status, model: w.wsModel, freeFrom: w.freeFrom } : null };
+  });
+  const prices = await priceData(cars);
+  let catalog = new Map();
+  try { catalog = (await getFleet()).catalog; } catch { /* без каталога — без проверок фото */ }
+  const today = todayIso();
+  const wsOn = Boolean(sync.enabled && ws);
+  cars = cars.map((car) => ({
+    ...car,
+    problems: fleetView ? vehicleIssues(car, { vehicle: vehicleById.get(car.vehicleId), entry: catalog.get(car.model), tariff: prices.tariffs?.[car.id], wsOn, today }) : []
+  }));
   sendJson(res, 200, {
-    enabled: sync.enabled,
-    error: sync.error,
-    updatedAt: snapshot?.updatedAt || null,
-    windowFrom: snapshot?.windowFrom || null,
-    windowTo: snapshot?.windowTo || null,
+    // Данные парка — портал (всегда есть); WS — отдельно, для сверки
+    enabled: true,
+    error: null,
+    source: 'portal',
+    ws: { enabled: sync.enabled, error: sync.error, updatedAt: ws?.updatedAt || null },
+    updatedAt: portal?.updatedAt || null,
+    windowFrom: portal?.windowFrom || null,
+    windowTo: portal?.windowTo || null,
     cars,
     canEditFleet: editFleet,
+    // Менять статус вручную (позже — и менеджерам: бронь, приём машины)
+    canSetStatus: editFleet,
+    eventsToGroup: Boolean(wabotSettings().eventsGroup),
     // Карточки техники из портала (первоисточник) — тем, кому открыт «Парк»
-    ...(fleetView ? { vehicles: listVehicles().filter((v) => !isSold(v.plate)) } : {}),
+    ...(fleetView ? { vehicles } : {}),
     // Архив (продана, списана, другое) — тем, кто правит парк: поправить или вернуть в парк
     ...(editFleet ? { sold: soldList(), fleetLog: fleetLog(20) } : {}),
-    // Статус машин по рабочей группе WhatsApp: госномер → последний отчёт
+    // Статус по рабочей группе WhatsApp: госномер → последний отчёт (сверка в «Журнале»)
     group: Object.fromEntries([...groupStatusByPlate()].map(([plate, g]) => [plate, { status: g.status, at: g.at, kind: g.kind }])),
-    ...(await priceData(cars))
+    ...prices
   });
+}
+
+/**
+ * POST /api/staff/fleet/status { vehicleId, kind: rent|free|reserve|service, from?, to?, note? } —
+ * ручная смена статуса: событие в портале + сообщение ботом в рабочую группу (если включено)
+ */
+async function fleetStatusRoute(staff, req, res) {
+  if (!can(staff, 'fleet.edit')) throw new HttpError(403, 'read_only');
+  const body = await readJson(req);
+  const vehicle = getVehicle(body.vehicleId);
+  if (!vehicle || isSold(vehicle.plate)) throw new HttpError(404, 'not_found');
+  let event;
+  try {
+    event = addStatusEvent(vehicle, body, staff);
+  } catch (err) {
+    if (err instanceof StatusError) throw new HttpError(400, err.code);
+    throw err;
+  }
+  // «В ремонт» — состояние в карточке; «Свободна» снимает ремонт
+  if (body.kind === 'service') setRepair(vehicle.id, 'in_repair', staff.email);
+  if (body.kind === 'free' && vehicle.repair !== 'ok') setRepair(vehicle.id, 'ok', staff.email);
+  invalidateFleet();
+  invalidateStatuses();
+  const name = vehicle.clientModel || `${vehicle.brand} ${vehicle.model}`.trim();
+  const wa = await postFleetEvent(eventReport(event, name));
+  setEventWa(event.id, wa.status, wa.error || null);
+  sendJson(res, 200, { ok: true, event: { id: event.id, kind: event.kind }, wa: wa.status, events: recentEvents(vehicle.plate) });
 }
 
 async function requests(req, res) {
@@ -689,6 +759,7 @@ const ROUTES = {
   'POST /api/staff/finance/cashbook': signedIn(financeCashbook),
   'POST /api/staff/fleet/sold': signedIn(fleetSold),
   'POST /api/staff/fleet/vehicle': signedIn(fleetVehicle),
+  'POST /api/staff/fleet/status': signedIn(fleetStatusRoute),
   'POST /api/staff/fleet/vehicle/delete': signedIn(fleetVehicleDelete),
   'POST /api/staff/finance/loans': signedIn(financeLoans),
   'GET /api/staff/marketing': signedIn(marketingRoute),

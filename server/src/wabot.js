@@ -31,6 +31,7 @@ import { formatStaffRequest, formatShortDate, escapeHtml } from './format.js';
 import { t, normalizeLanguage } from './i18n.js';
 import { g } from './groupTexts.js';
 import { staffPhones } from './staffUsers.js';
+import { observerGroup } from './journal/observer.js';
 import { marketingSettings, saveSettings as saveMarketingSettings, chatRefOf } from './marketing.js';
 import { onRequestTaken, refreshStaffMessage, getStaffChatId, sendToStaffGroup, publishRequest } from './staff.js';
 
@@ -51,6 +52,9 @@ const digits = (v) => String(v || '').replace(/\D/g, '');
 
 /* ---------------------------------------------------------- Настройки */
 
+/** Идентификатор группы WhatsApp («…@g.us») или null */
+const validGroup = (id) => (typeof id === 'string' && /^[\w.-]+@g\.us$/.test(id) ? id : null);
+
 export function wabotSettings() {
   let saved = {};
   try { saved = JSON.parse(db.getSetting('wabot_settings') || '{}') || {}; } catch { /* по умолчанию */ }
@@ -58,9 +62,13 @@ export function wabotSettings() {
     mode: MODES.includes(saved.mode) ? saved.mode : 'off',
     testNumbers: Array.isArray(saved.testNumbers) ? saved.testNumbers : [],
     // Заявки и в Telegram-группу (по умолчанию — только в WhatsApp-группу)
-    telegramCopy: saved.telegramCopy === true
+    telegramCopy: saved.telegramCopy === true,
+    // События парка (ручной статус в портале) → рабочая группа, которую читает наблюдатель.
+    // Пишет этот же номер (бот для клиентов); отдельный номер — позже, отдельным ботом
+    eventsGroup: validGroup(saved.eventsGroup)
   };
 }
+
 
 export function saveWabotSettings(input) {
   const cur = wabotSettings();
@@ -68,10 +76,26 @@ export function saveWabotSettings(input) {
   const testNumbers = input.testNumbers === undefined ? cur.testNumbers
     : [...new Set(String(input.testNumbers).split(/[,;\n]+/).map(digits).filter((n) => n.length >= 8 && n.length <= 15))].slice(0, 20);
   const telegramCopy = typeof input.telegramCopy === 'boolean' ? input.telegramCopy : cur.telegramCopy;
-  db.setSetting('wabot_settings', JSON.stringify({ mode, testNumbers, telegramCopy }));
+  const eventsGroup = input.eventsGroup !== undefined ? validGroup(input.eventsGroup) : cur.eventsGroup;
+  db.setSetting('wabot_settings', JSON.stringify({ mode, testNumbers, telegramCopy, eventsGroup }));
   // «Маркетинг»: отвечает ли бот в WhatsApp — по этому режиму
   saveMarketingSettings({ bots: { wa: mode === 'on' } });
-  return { mode, testNumbers, telegramCopy };
+  return { mode, testNumbers, telegramCopy, eventsGroup };
+}
+
+/**
+ * Событие парка (ручной статус в портале) — в рабочую группу текстом отчёта.
+ * { status: 'sent' | 'off' | 'failed', id?, error? }
+ */
+export async function postFleetEvent(text) {
+  const group = wabotSettings().eventsGroup;
+  if (!group) return { status: 'off' };
+  try {
+    return { status: 'sent', id: (await wabotCall('POST', '/send', { to: group, text })).id };
+  } catch (err) {
+    console.error('Fleet event to the work group failed:', err.code || err.message);
+    return { status: 'failed', error: err.code || err.message };
+  }
 }
 
 /* ------------------------------------------------------------ Состояние */
@@ -506,7 +530,11 @@ function needEdit(staff) {
 
 export async function wabotPortalStatus(staff, req, res) {
   if (!can(staff, 'marketing.view')) throw new HttpError(403, 'no_section_access');
-  const base = { settings: wabotSettings(), canEdit: can(staff, 'marketing.edit'), members: status.members.size, today: status.today };
+  const base = {
+    settings: wabotSettings(), canEdit: can(staff, 'marketing.edit'), members: status.members.size, today: status.today,
+    // Рабочая группа наблюдателя — подсказка, куда писать события парка
+    observerGroup: observerGroup()
+  };
   let live;
   try {
     live = await wabotCall('GET', '/status');
@@ -531,7 +559,7 @@ export async function wabotPortalStatus(staff, req, res) {
 export async function wabotPortalSettings(staff, req, res) {
   needEdit(staff);
   const result = saveWabotSettings(await readJson(req));
-  console.log(`WhatsApp bot mode «${result.mode}», Telegram copy ${result.telegramCopy ? 'on' : 'off'} set by ${staff.email}`);
+  console.log(`WhatsApp bot mode «${result.mode}», Telegram copy ${result.telegramCopy ? 'on' : 'off'}, fleet events ${result.eventsGroup ? 'on' : 'off'} set by ${staff.email}`);
   sendJson(res, 200, { ok: true, settings: result });
 }
 

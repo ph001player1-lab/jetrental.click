@@ -99,7 +99,8 @@
   ICONS.tickets = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M20 8h-2.81a5.98 5.98 0 0 0-1.82-1.96L17 4.41 15.59 3l-2.17 2.17a6.02 6.02 0 0 0-2.83 0L8.41 3 7 4.41l1.62 1.63A5.98 5.98 0 0 0 6.81 8H4v2h2.09A6.3 6.3 0 0 0 6 11v1H4v2h2v1c0 .34.04.67.09 1H4v2h2.81A5.99 5.99 0 0 0 12 21a5.99 5.99 0 0 0 5.19-3H20v-2h-2.09c.05-.33.09-.66.09-1v-1h2v-2h-2v-1c0-.34-.04-.67-.09-1H20V8zm-6 8h-4v-2h4v2zm0-4h-4v-2h4v2z"/></svg>';
   ICONS.cabinet = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M20 6h-4V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2zm-6 0h-4V4h4v2z"/></svg>';
   // «Кабинет» — первым: у агента это главная вкладка
-  const ALL_TABS = ['cabinet', 'overview', 'fleet', 'price', 'journal', 'calendar', 'requests', 'crm', 'marketing', 'finance', 'site', 'server', 'access', 'tickets'];
+  // «Сайт» (фото и описания моделей) переехал в карточку техники во вкладке «Парк»
+  const ALL_TABS = ['cabinet', 'overview', 'fleet', 'price', 'journal', 'calendar', 'requests', 'crm', 'marketing', 'finance', 'server', 'access', 'tickets'];
   // Внизу на телефоне помещается 6 кнопок; если вкладок больше — последние уходят в «Ещё»
   const BOTTOM_MAX = 6;
   // Вкладка видна, если у роли есть хотя бы одно из этих прав (настраивает админ на вкладке «Доступы»)
@@ -1165,15 +1166,15 @@
 
   function renderFleet() {
     if (!state.fleet) return loadingBox();
-    const list = filteredCars();
+    // «Только с проблемами» — кнопкой над списком
+    const list = vehicles.filterProblems(filteredCars());
     return `
-      ${vehicles.toolbar()}
+      ${vehicles.toolbar(cars())}
       ${renderFilters({ withStatus: true })}
       <div class="result-count">${esc(t('fleet.count', { n: list.length, total: cars().length }))}</div>
-      <div class="list" style="margin-top:10px">
-        ${list.length ? list.map(renderCar).join('') : nothingFound()}
-      </div>
-      ${vehicles.renderNotInWs(state.filters.q)}
+      ${vehicles.view() === 'table'
+        ? (list.length ? vehicles.renderTable(list) : nothingFound())
+        : `<div class="list" style="margin-top:10px">${list.length ? list.map(renderCar).join('') : nothingFound()}</div>`}
       ${vehicles.renderArchive()}`;
   }
 
@@ -1186,16 +1187,20 @@
     today: bkkToday,
     fleet: () => state.fleet,
     catalogModels: () => Object.keys(state.fleet?.prices || {}),
+    statusName: (status) => STATUS[status] || status,
+    canSetStatus: () => Boolean(state.fleet?.canSetStatus),
+    // Фото и описание модели для сайта — бывшая вкладка «Сайт», теперь из карточки техники
+    canEditModel: () => can('site.edit'),
+    openModel: async (model) => {
+      if (!(state.models || []).some((m) => m.model === model)) await loadModels();
+      openModel(model);
+      $('#model-dialog').addEventListener('close', () => { if (state.tab === 'fleet') loadData(); }, { once: true });
+    },
+    rerender: () => render(),
     reload: async () => { await loadData(); render(); }
   });
 
-  /** Статус по рабочей группе WhatsApp: «По группе: выдана 12 Nov, 12:44» и ⚠, если в WS иначе */
-  function groupLine(car) {
-    const g = state.fleet?.group?.[String(car.plate).replace(/\D/g, '')];
-    if (!g) return '';
-    const agree = g.status === 'rent' ? car.status === 'rent' : g.status === 'free' ? car.status !== 'rent' : ['reserve', 'rent'].includes(car.status);
-    return `<div class="car__group${agree ? '' : ' warn'}">${agree ? '' : '⚠️ '}${esc(t('fleet.byGroup', { status: t(`jr.gs.${g.status}`), time: dateTime(g.at) }))}</div>`;
-  }
+
 
   function renderCar(car) {
     const price = priceOf(car);
@@ -1228,9 +1233,10 @@
             <div class="car__title">${esc(carName(car))}</div>
             <div><span class="car__plate">${esc(car.plate)}</span><span class="muted" style="font-size:13px">${esc(TYPE_ONE[car.type] || '')}</span></div>
           </div>
-          ${statusPill(car.status)}
+          <span class="pill pill--${car.status}"><span class="dot dot--${car.status}"></span>${esc(vehicles.statusText(car))}</span>
         </div>
-        ${groupLine(car)}
+        ${vehicles.wsLine(car)}
+        ${vehicles.problemBadges(car)}
         <div class="car__meta">
           <span>${freeText(car)}</span>
           ${priceText ? `<span>${esc(t('fleet.price'))} <b>${esc(priceText)}</b></span>` : ''}
@@ -1239,7 +1245,7 @@
         ${open ? `
           <div class="car__details">
             <dl>
-              <dt>${esc(t('fleet.inWs'))}</dt><dd>${esc(car.wsModel)} · ID ${esc(car.id)}</dd>
+              <dt>${esc(t('fleet.inWs'))}</dt><dd>${car.ws ? esc(`${car.ws.model} · ${STATUS[car.ws.status]}`) : '—'}</dd>
               ${!car.model ? `<dt>${esc(t('fleet.sheet'))}</dt><dd class="warn">${esc(t('fleet.notMatched'))}</dd>` : ''}
               ${seasonText ? `<dt>${esc(t('fleet.seasonToday'))}</dt><dd${tariff.verified && !tariff.suspicious ? '' : ' class="warn"'}>${esc(seasonText)}</dd>` : ''}
               ${seasonTiers ? `<dt>${esc(t('fleet.priceList'))}</dt><dd>${esc(seasonTiers)}${tariff.overKm ? ` · ${esc(t('fleet.overKm', { price: money(tariff.overKm) }))}` : ''}</dd>` : ''}
@@ -1253,6 +1259,7 @@
                 <li><span class="dot dot--${s.kind}"></span>${esc(STATUS[s.kind])}: ${esc(dateTime(s.from))} → ${esc(dateTime(s.to))}</li>`).join('')}</ul>`
                 : `<div class="muted">${esc(t('fleet.nothing30'))}</div>`}
             </div>
+            ${vehicles.lastLine(car)}
             ${vehicles.cardBlock(car)}
           </div>` : ''}
       </article>`;

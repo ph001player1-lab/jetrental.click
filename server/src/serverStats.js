@@ -21,7 +21,6 @@ import * as db from './db.js';
 import { HttpError, sendJson, readJson } from './http.js';
 import { wsEnabled } from './ws/api.js';
 import { wsSyncStatus } from './ws/sync.js';
-import { fleetStatus, sheetsEnabled } from './fleet.js';
 import { telegramEnabled, sendMessage } from './telegram/api.js';
 import { getStaffChatId, staffGroupFailure, sendToStaffGroup } from './staff.js';
 import { mailEnabled, mailFailure } from './mail.js';
@@ -218,9 +217,6 @@ function integrationLamps(now) {
   else if (now - Date.parse(sync.lastSyncAt) >= LIMITS.syncStaleMinutes * 60000) ws = 'warning';
   else if (sync.error) ws = 'caution';
 
-  // Парк перенесён в портал — Google-таблица больше не нужна, лампа погашена
-  const fs = fleetStatus();
-  const sheets = fs.source === 'portal' ? 'off' : fs.error ? 'warning' : 'ok';
   const telegram = !telegramEnabled || !getStaffChatId() ? 'warning' : staffGroupFailure() ? 'warning' : 'ok';
   const mail = !mailEnabled ? 'caution' : mailFailure() ? 'caution' : 'ok';
   // Наблюдатель WhatsApp: пока ни разу не подключали — лампа погашена
@@ -229,7 +225,8 @@ function integrationLamps(now) {
   // WhatsApp-бот для клиентов: пока номер ни разу не подключали — лампа погашена
   const bot = wabotStatus(now);
   const wabot = bot.connected ? 'ok' : bot.lastOkAt ? 'warning' : 'off';
-  return { ws, sheets, telegram, mail, whatsapp, wabot };
+  // Google-таблицы больше нет (всё в портале) — и лампы для неё нет
+  return { ws, telegram, mail, whatsapp, wabot };
 }
 
 /* --------------------------------------------------------------- Отчёт */
@@ -311,7 +308,6 @@ function lampsFor(host, engine, traffic, now) {
     { id: 'response', level: engine.responseMs == null ? 'ok' : levelOf(engine.responseMs, THRESHOLDS.responseMs) },
     { id: 'traffic', level: traffic.available ? levelOf(traffic.usedPercent, THRESHOLDS.traffic) : 'off' },
     { id: 'ws', level: integrations.ws },
-    { id: 'sheets', level: integrations.sheets },
     { id: 'telegram', level: integrations.telegram },
     { id: 'mail', level: integrations.mail },
     { id: 'whatsapp', level: integrations.whatsapp },
