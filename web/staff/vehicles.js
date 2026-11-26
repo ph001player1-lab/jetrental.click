@@ -288,8 +288,8 @@
         const v = car.vehicleId ? byId(car.vehicleId) : null;
         const service = v ? [v.nextServiceDate && dm(v.nextServiceDate), v.nextServiceKm && `${num(v.nextServiceKm)} ${t('vh.km')}`].filter(Boolean).join(' · ') : '';
         return `<tr class="vh-tr${(car.problems || []).some((p) => p.level === 'error') ? ' vh-tr--error' : (car.problems || []).length ? ' vh-tr--warn' : ''}">
-          <td><b class="car__plate">${esc(car.plate || '—')}</b></td>
-          <td><b>${esc(car.model || car.wsModel || '—')}</b><div class="muted jr-small">${TYPE_ICON[car.type] || ''} ${esc(v ? `${v.brand} ${v.model}`.trim() : car.wsModel || '')}</div></td>
+          <td class="vh-col-p"><b class="car__plate">${esc(car.plate || '—')}</b></td>
+          <td><b>${esc(car.model || car.wsModel || '—')}</b><div class="muted jr-small"><span class="car__plate vh-plate-m">${esc(car.plate || '—')}</span>${TYPE_ICON[car.type] || ''} ${esc(v ? `${v.brand} ${v.model}`.trim() : car.wsModel || '')}</div></td>
           <td><span class="pill pill--${car.status}">${esc(statusText(car))}</span></td>
           <td class="vh-col-x">${car.ws ? (car.ws.status === car.status ? '<span class="vh-ok">✓</span>' : `<span class="warn">⚠️ ${esc(ctx.statusName(car.ws.status))}</span>`) : fleet().ws?.enabled ? '<span class="warn">—</span>' : ''}</td>
           <td class="num vh-col-x">${tariff(car) ? esc(ctx.money(tariff(car))) : '—'}</td>
@@ -304,11 +304,28 @@
           </div></td>
         </tr>`;
       }).join('');
-      return `<div class="table-wrap vh-table-wrap"><table class="vh-table">
-        <thead><tr><th>${esc(t('fl.th.plate'))}</th><th>${esc(t('fl.th.model'))}</th><th>${esc(t('fl.th.status'))}</th><th class="vh-col-x">WS</th>
+      return `<div class="vh-table-wrap"><table class="vh-table">
+        <thead><tr><th class="vh-col-p">${esc(t('fl.th.plate'))}</th><th>${esc(t('fl.th.model'))}</th><th>${esc(t('fl.th.status'))}</th><th class="vh-col-x">WS</th>
           <th class="num vh-col-x">${esc(t('fl.th.price'))}</th><th class="num vh-col-x">${esc(t('fl.th.mileage'))}</th><th class="vh-col-x">${esc(t('fl.th.service'))}</th><th>${esc(t('fl.th.problems'))}</th><th></th></tr></thead>
         <tbody>${rows}</tbody></table></div>`;
     }
+
+    /**
+     * Подписи столбцов всегда видны: закреплены под верхней панелью и строкой поиска с фильтрами
+     * (их высота разная на телефоне и компьютере — считаем после отрисовки). Если таблица шире
+     * экрана, она прокручивается вбок внутри себя, а подписи закреплены в ней.
+     */
+    function afterRender() {
+      const wrap = document.querySelector('.vh-table-wrap');
+      if (!wrap) return;
+      const bar = document.querySelector('#view .toolbar');
+      const top = (parseFloat(bar ? getComputedStyle(bar).top : '') || 60) + (bar ? bar.offsetHeight : 0);
+      wrap.style.setProperty('--vh-head-top', `${top}px`);
+      const table = wrap.querySelector('table');
+      wrap.classList.toggle('vh-table-wrap--scroll', table.scrollWidth > wrap.clientWidth + 1);
+    }
+    let fitTimer = null;
+    window.addEventListener('resize', () => { clearTimeout(fitTimer); fitTimer = setTimeout(afterRender, 100); });
 
     /* ------------------------------------------------------ Смена статуса */
 
@@ -491,7 +508,7 @@
     }
 
     return {
-      cardBlock, toolbar, renderNotInWs, renderArchive, renderTable, problemBadges, wsLine, lastLine, statusText, filterProblems, view,
+      cardBlock, toolbar, renderNotInWs, renderArchive, renderTable, problemBadges, wsLine, lastLine, statusText, filterProblems, view, afterRender,
       onClick, onSubmit, onChange, canEdit, dialogOpen: () => Boolean(st.dialog)
     };
   }

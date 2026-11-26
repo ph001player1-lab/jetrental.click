@@ -696,7 +696,7 @@
     renderTabs();
     const view = $('#view');
     if (state.tab === 'overview') view.innerHTML = renderOverview();
-    if (state.tab === 'fleet') view.innerHTML = renderFleet();
+    if (state.tab === 'fleet') { view.innerHTML = renderFleet(); vehicles.afterRender(); }
     if (state.tab === 'calendar') view.innerHTML = renderCalendar();
     if (state.tab === 'requests') view.innerHTML = renderRequests();
     if (state.tab === 'site') view.innerHTML = renderSite();

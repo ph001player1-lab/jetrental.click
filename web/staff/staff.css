@@ -1391,10 +1391,18 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
 .vh-ok { color: var(--free); font-weight: 700; }
 .vh-view { display: inline-flex; }
 .vh-onlyprob[aria-pressed="true"] { background: var(--warn); border-color: var(--warn); color: #fff; }
-.vh-table-wrap { margin-top: 10px; overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--line); background: var(--surface); }
+.vh-table-wrap { margin-top: 10px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--surface); }
+/* Шире экрана — прокрутка вбок внутри таблицы (тогда подписи закреплены внутри неё) */
+.vh-table-wrap--scroll { overflow-x: auto; }
 .vh-table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .vh-table th, .vh-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
-.vh-table thead th { position: sticky; top: 0; background: var(--surface-2); font-size: 12px; color: var(--muted); white-space: nowrap; }
+.vh-table thead th {
+  position: sticky; top: var(--vh-head-top, 60px); z-index: 5; background: var(--surface-2); font-size: 12px; color: var(--muted); white-space: nowrap;
+  box-shadow: 0 1px 0 var(--line);
+}
+.vh-table thead th:first-child { border-top-left-radius: var(--radius); }
+.vh-table thead th:last-child { border-top-right-radius: var(--radius); }
+.vh-table-wrap--scroll .vh-table thead th { top: 0; }
 .vh-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .vh-table tbody tr:last-child td { border-bottom: 0; }
 .vh-tr--error td:first-child { box-shadow: inset 4px 0 0 var(--rent); }
@@ -1402,8 +1410,13 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
 .vh-table .pill { white-space: nowrap; }
 .vh-td-actions { display: flex; gap: 2px; justify-content: flex-end; }
 .vh-td-actions .icon-btn { width: 34px; height: 34px; min-height: 0; padding: 0; font-size: 16px; }
+.vh-plate-m { display: none; }
 @media (max-width: 760px) {
-  .vh-table .vh-col-x { display: none; }
+  .vh-table .vh-col-x, .vh-table .vh-col-p { display: none; }
+  /* Госномер — под названием модели; статус и проблемы переносятся — таблица в ширину экрана */
+  .vh-plate-m { display: inline-block; margin-right: 6px; }
+  .vh-table .pill { white-space: normal; }
+  .vh-table thead th { white-space: normal; }
   .vh-table th, .vh-table td { padding: 8px 6px; }
   .vh-td-actions { flex-direction: column; }
 }
