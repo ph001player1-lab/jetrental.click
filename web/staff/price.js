@@ -167,7 +167,12 @@
 
     function table() {
       const list = visibleModels();
-      if (!list.length) return `<div class="empty">${esc(t('pr.none'))}</div>`;
+      if (!list.length) {
+        // Пусто из-за поиска или фильтра — показываем, что ищем, и кнопку «все модели»
+        const filtered = st.q.trim() || st.type !== 'all';
+        return `<div class="empty">${esc(filtered && st.q.trim() ? t('pr.noneFor', { q: st.q.trim() }) : t('pr.none'))}
+          ${filtered ? `<p><button type="button" class="btn btn--small" data-pr-reset>${esc(t('pr.showAll'))}</button></p>` : ''}</div>`;
+      }
       const head = `<thead><tr><th scope="col" class="pr-model">${esc(t('pr.model'))}</th>${st.data.tiers.map((x) => `<th scope="col">${esc(x)} ${esc(t('unit.d'))}</th>`).join('')}<th scope="col">${esc(t('pr.deposit'))}</th><th scope="col">${esc(t('pr.overKm'))}</th></tr></thead>`;
       const body = TYPES.concat([null]).map((type) => {
         const rows = list.filter((m) => (type ? m.type === type : !TYPES.includes(m.type)));
@@ -182,7 +187,7 @@
       const others = st.data.seasons.filter((s) => String(s.id) !== String(st.season));
       return `<div class="pr-tools">
         <div class="chips">${types}</div>
-        <input class="search pr-search" type="search" placeholder="${esc(t('pr.search'))}" value="${esc(st.q)}" data-pr-q aria-label="${esc(t('pr.search'))}">
+        <input class="search pr-search" type="search" name="pr-model-filter" autocomplete="off" placeholder="${esc(t('pr.search'))}" value="${esc(st.q)}" data-pr-q aria-label="${esc(t('pr.search'))}">
         ${canEdit() ? `
         <form class="pr-bulk" data-pr-bulk>
           <span>${esc(t('pr.bulk', { n: st.selected.size }))}</span>
@@ -429,6 +434,7 @@
       if (dlg && (el === dlg || el.closest('[data-pr-close]'))) { closeDialog(); return true; }
       const season = el.closest('[data-pr-season]');
       if (season) { st.season = Number(season.dataset.prSeason); rerender(); return true; }
+      if (el.closest('[data-pr-reset]')) { st.q = ''; st.type = 'all'; rerender(); return true; }
       const type = el.closest('[data-pr-type]');
       if (type) { st.type = type.dataset.prType; rerender(); return true; }
       const open = el.closest('[data-pr-open]');
@@ -569,6 +575,7 @@
     /** Переход из «Обзора»: сразу найти модель */
     function show({ q = '' } = {}) {
       st.q = q;
+      st.type = 'all';
     }
 
     /** Фоновое обновление портала не трогает вкладку, пока есть правки или открыто окно */

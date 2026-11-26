@@ -1169,12 +1169,13 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
 @media (min-width: 860px) { .pr-savebar { bottom: 12px; } }
 .pr-lower { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: start; }
 @media (max-width: 860px) { .pr-lower { grid-template-columns: minmax(0, 1fr); } }
-.pr-calc, .pr-history { display: grid; gap: 10px; }
+.pr-calc, .pr-history { display: grid; gap: 10px; padding: 14px 16px; }
 .pr-calc h3, .pr-history h3 { margin: 0; font-size: 17px; }
 .pr-calc__form { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; align-items: end; }
 .pr-calc__res { margin: 0; font-size: 15px; }
 .pr-history ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: 14px; max-height: 320px; overflow: auto; }
 .pr-history li { display: grid; gap: 2px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.pr-history li:last-child { padding-bottom: 0; border-bottom: 0; }
 .pr-history li .link, .pr-history li .pill { justify-self: start; }
 .pr-sheet { width: min(720px, calc(100% - 16px)); }
 .pr-changes { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 50vh; overflow: auto; font-size: 14px; }
