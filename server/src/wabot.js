@@ -330,7 +330,6 @@ async function handleClient(c, body) {
       if (lang) {
         db.setChatLanguage(c.key, lang);
         if (db.getSession(c.key)?.step === 'lang') db.clearSession(c.key);
-        ui.setFooter(t(lang, 'lang_hint'));
       }
     }
     // Открытая заявка и не начат новый диалог: статус + сообщение — менеджеру.

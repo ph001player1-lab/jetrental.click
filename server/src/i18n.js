@@ -177,7 +177,6 @@ const TEXTS = {
   },
   // WhatsApp компании: варианты списком — клиент отвечает цифрой
   reply_number: { en: 'Reply with a number 👆', ru: 'Ответьте цифрой 👆', th: 'ตอบเป็นตัวเลขได้เลยค่ะ 👆', zh: '请回复数字 👆' },
-  lang_hint: { en: '🌐 Other language: type “lang”', ru: '🌐 Другой язык: напишите «lang»', th: '🌐 เปลี่ยนภาษา: พิมพ์ “lang”', zh: '🌐 更换语言：输入“lang”' },
   talk_manager: { en: '💬 Talk to a manager', ru: '💬 Связаться с менеджером', th: '💬 คุยกับเจ้าหน้าที่', zh: '💬 联系客服' },
   manager_soon: {
     en: 'Got it! A manager will contact you as soon as they are free 🤝',
@@ -218,6 +217,8 @@ const TEXTS = {
   },
   // «Назад» на любом шаге диалога
   back: { en: '◀️ Back', ru: '◀️ Назад', th: '◀️ ย้อนกลับ', zh: '◀️ 返回' },
+  // В первом меню — сменить язык (по-английски тоже, чтобы нашёл любой)
+  change_language: { en: '🌐 Language', ru: '🌐 Язык · Language', th: '🌐 ภาษา · Language', zh: '🌐 语言 · Language' },
   manager_taken_question: {
     en: '👋 Manager {name} is handling your question. They will contact you soon!',
     ru: '👋 Вашим вопросом занимается менеджер {name}. Скоро свяжется с вами!',

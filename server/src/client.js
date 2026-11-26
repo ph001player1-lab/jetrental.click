@@ -54,6 +54,8 @@ function isBackText(text) {
 /** Вариант «◀️ Назад» — есть на каждом шаге, кроме выбора языка */
 const backOption = (lang) => ({ id: 'back:1', title: t(lang, 'back'), back: true });
 const withBack = (lang, options) => [...options, backOption(lang)];
+// Первое меню: вместо «Назад» — «Язык» (шаг назад отсюда и есть выбор языка)
+const withLanguage = (lang, options) => [...options, { ...backOption(lang), title: t(lang, 'change_language') }];
 
 /** Вопрос, на который клиент отвечает текстом (даты, название отеля…), — с «Назад» */
 function askText(chat, lang, text) {
@@ -92,7 +94,7 @@ async function startFlow(chat) {
   const lang = chatLanguage(chat);
   if (!lang) return askLanguage(chat);
   db.saveSession(chat.key, { step: 'type' });
-  await chat.ui.choices(t(lang, 'greeting'), withBack(lang, typeOptions(lang, chat)));
+  await chat.ui.choices(t(lang, 'greeting'), withLanguage(lang, typeOptions(lang, chat)));
 }
 
 function askPhone(chat, lang) {
@@ -267,7 +269,7 @@ export async function handleClientText(chat, text, contact = null) {
   switch (session.step) {
 
     case 'type':
-      return chat.ui.choices(t(lang, 'choose_please'), withBack(lang, typeOptions(lang, chat)));
+      return chat.ui.choices(t(lang, 'choose_please'), withLanguage(lang, typeOptions(lang, chat)));
 
     case 'dates': {
       const result = parseDateRange(text);
