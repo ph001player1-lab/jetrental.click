@@ -41,6 +41,8 @@ const PORT = Number(process.env.PORT) || 3200;
 const HEARTBEAT_MS = 2 * 60 * 1000;
 // Сообщения старше этого (бот был выключен) не трогаем — их видят менеджеры на телефоне
 const MAX_AGE_MS = 3 * 3600 * 1000;
+// «+» в группе, который пришёл, пока бот перезапускался, ещё имеет смысл в течение 30 минут
+const GROUP_MAX_AGE_MS = 30 * 60 * 1000;
 const RATE_PER_MINUTE = 25;
 
 /* ------------------------------------------------------------ Журнал */
@@ -267,7 +269,16 @@ async function handleMessage(msg, type) {
 
   // Рабочая группа: ответы на сообщения и короткие «+», «+14», «беру», «-»
   if (jid.endsWith('@g.us')) {
-    if (jid !== config.groupId || msg.key.fromMe || type !== 'notify') return;
+    if (jid !== config.groupId) return;
+    if (msg.key.fromMe) {
+      log(`work group: own message ${msg.key.id} (from the company phone) — ignored`);
+      return;
+    }
+    // «append» — сообщение пришло, пока бот был не на связи (перезапуск): свежие тоже берём
+    if (type !== 'notify' && Date.now() - ts > GROUP_MAX_AGE_MS) {
+      log(`work group: old message ${msg.key.id} delivered after reconnect — ignored`);
+      return;
+    }
     if (!firstTime(msg.key.id)) return;
     const quotedId = inner.contextInfo?.stanzaId || null;
     const text = textOf(content);
@@ -290,7 +301,8 @@ async function handleMessage(msg, type) {
     enqueue(() => botRequest('/internal/wabot/message', { kind: 'manual', jid, phone }));
     return;
   }
-  if (type !== 'notify' || Date.now() - ts > MAX_AGE_MS) return;
+  // «append» без fromMe — сообщение клиента, пришедшее, пока бот был не на связи
+  if (Date.now() - ts > MAX_AGE_MS) return;
   if (!firstTime(msg.key.id)) {
     log(`duplicate delivery of ${msg.key.id} skipped`);
     return;
@@ -368,6 +380,9 @@ async function react(jid, id, participant, emoji) {
 
 // Список групп WhatsApp отдаёт не чаще раза в несколько секунд («rate-overlimit»):
 // события групп собираем в один запрос, при отказе — повтор через минуту
+// Данные групп (участники) — кэш: без него Baileys спрашивает их у WhatsApp при каждой
+// отправке в группу, и WhatsApp отвечает «rate-overlimit»
+const groupCache = new Map();
 let groupsTimer = null;
 let groupsRetryMs = 60000;
 function scheduleGroups(delayMs = 5000) {
@@ -383,6 +398,7 @@ async function refreshGroups() {
     const all = await sock.groupFetchAllParticipating();
     const members = [];
     for (const g of Object.values(all)) {
+      groupCache.set(g.id, g);
       for (const p of g.participants || []) {
         const lid = [p.id, p.lid].find((j) => String(j || '').endsWith('@lid'));
         const phone = [p.phoneNumber, p.id].find((j) => String(j || '').endsWith('@s.whatsapp.net'));
@@ -423,6 +439,7 @@ async function start() {
     markOnlineOnConnect: false,
     syncFullHistory: false,
     generateHighQualityLinkPreview: false,
+    cachedGroupMetadata: async (jid) => groupCache.get(jid),
     getMessage: async () => undefined
   });
   const current = sock;
@@ -472,13 +489,21 @@ async function start() {
   current.ev.on('messages.upsert', ({ messages, type }) => {
     if (type !== 'notify' && type !== 'append') return;
     for (const msg of messages) {
+      // Диагностика: что пришло из рабочей группы (без текста)
+      if (msg.key?.remoteJid && msg.key.remoteJid === config.groupId) {
+        log(`work group upsert ${type}: ${msg.key.id} fromMe=${Boolean(msg.key.fromMe)} stub=${msg.messageStubType || 0} content=${Object.keys(msg.message || {}).join(',') || '-'}`);
+      }
       handleMessage(msg, type).catch((err) => log('message failed:', err.message));
     }
   });
 
-  current.ev.on('groups.upsert', () => scheduleGroups());
-  current.ev.on('groups.update', () => scheduleGroups());
-  current.ev.on('group-participants.update', () => scheduleGroups());
+  current.ev.on('groups.upsert', (list) => { for (const g of list || []) if (g?.id) groupCache.set(g.id, g); scheduleGroups(); });
+  current.ev.on('groups.update', (list) => {
+    for (const u of list || []) if (u?.id && groupCache.has(u.id)) groupCache.set(u.id, { ...groupCache.get(u.id), ...u });
+    scheduleGroups();
+  });
+  // Состав группы поменялся — данные из кэша устарели
+  current.ev.on('group-participants.update', ({ id }) => { if (id) groupCache.delete(id); scheduleGroups(); });
 }
 
 /* ----------------------------------------------- HTTP для бота (внутри) */
