@@ -74,6 +74,29 @@
   const niceDate = (iso) => new Intl.DateTimeFormat(LOCALES[state.lang], { timeZone: 'UTC', day: 'numeric', month: 'short' })
     .format(new Date(`${iso}T00:00:00Z`));
 
+  /* ------------------------------------------------ Реферальная ссылка */
+
+  // ?ref=КОД (агент, реклама, соцсеть): помним 30 дней и передаём с заявкой;
+  // переход засчитываем один раз за посещение
+  const REF_DAYS = 30;
+  function referral() {
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem('jm_ref') || 'null'); } catch { saved = null; }
+    const fromUrl = (new URLSearchParams(location.search).get('ref') || '').toLowerCase();
+    if (/^[a-z0-9_-]{3,24}$/.test(fromUrl)) {
+      saved = { code: fromUrl, at: Date.now() };
+      try { localStorage.setItem('jm_ref', JSON.stringify(saved)); } catch { /* без памяти — только это посещение */ }
+      let counted = false;
+      try { counted = sessionStorage.getItem('jm_ref_visit') === fromUrl; } catch { counted = false; }
+      if (!counted) {
+        fetch(`${API}/visit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ref: fromUrl }), keepalive: true }).catch(() => {});
+        try { sessionStorage.setItem('jm_ref_visit', fromUrl); } catch { /* ничего */ }
+      }
+    }
+    return saved && Date.now() - saved.at < REF_DAYS * DAY_MS ? saved.code : null;
+  }
+  const REF = referral();
+
   /* ------------------------------------------------------------------ API */
 
   async function api(path, body) {
@@ -410,6 +433,7 @@
           from: bookForm.from.value,
           to: bookForm.to.value,
           lang: state.lang,
+          ref: REF,
           website: bookForm.website.value
         });
         state.booking.requestId = result.id || null;
@@ -443,6 +467,7 @@
           email: form.email.value,
           message: form.message.value,
           lang: state.lang,
+          ref: REF,
           website: form.website.value
         });
         form.reset();

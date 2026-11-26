@@ -15,6 +15,7 @@ import * as db from './db.js';
 import { HttpError, sendJson, readJson, clientIp, rateLimiter } from './http.js';
 import { findAvailableModels, getFleet, sheetsEnabled } from './fleet.js';
 import { soldList } from './sold.js';
+import { sourceByCode, countVisit } from './marketing.js';
 import { getWsSnapshot } from './ws/sync.js';
 import { publishRequest } from './staff.js';
 import { todayIso } from './dates.js';
@@ -30,6 +31,13 @@ const MAX_RENTAL_DAYS = 365;
 
 const availabilityLimiter = rateLimiter(60 * 1000, 30);
 const requestLimiter = rateLimiter(60 * 60 * 1000, 5);
+const visitLimiter = rateLimiter(60 * 60 * 1000, 60);
+// Домены сайтов: по ним заявка без реферального кода относится к своему сайту
+const SITE_HOSTS = ['jetmobility.org', 'kokoncar.com'];
+const siteHostOf = (req) => {
+  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').toLowerCase().replace(/:\d+$/, '').replace(/^www\./, '');
+  return SITE_HOSTS.includes(host) ? host : null;
+};
 
 let catalogCache = null;
 const availabilityCache = new Map();
@@ -211,13 +219,24 @@ async function createSiteRequest(req, res) {
     estimateThb,
     freeUnits,
     comment: [email && `email: ${email}`, message].filter(Boolean).join('\n') || null,
-    lang: LANGUAGES[body.lang] ? body.lang : null
+    lang: LANGUAGES[body.lang] ? body.lang : null,
+    // Реферальный код (ссылка ?ref=… агента, рекламы, соцсети) и домен сайта
+    sourceRef: body.ref && sourceByCode(body.ref)?.active ? String(body.ref).toLowerCase() : null,
+    siteHost: siteHostOf(req)
   });
   await publishRequest(request);
   sendJson(res, 200, { ok: true, id: request.id });
 }
 
+/** POST /api/public/visit { ref } — переход по реферальной ссылке (сайт шлёт один раз за посещение) */
+async function visit(req, res) {
+  const body = await readJson(req).catch(() => ({}));
+  if (!visitLimiter.hit(clientIp(req))) throw new HttpError(429, 'too_many_requests');
+  sendJson(res, 200, { ok: countVisit(String(body.ref || '').slice(0, 24)) });
+}
+
 const ROUTES = {
+  'POST /api/public/visit': visit,
   'GET /api/public/catalog': catalog,
   'GET /api/public/availability': availability,
   'POST /api/public/request': createSiteRequest

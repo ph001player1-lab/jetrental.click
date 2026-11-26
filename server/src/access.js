@@ -29,6 +29,7 @@ export const SECTIONS = [
   { id: 'site', levels: ['edit', 'view', 'none'] },
   { id: 'finance', levels: ['view', 'none'] },
   { id: 'crm', levels: ['edit', 'view', 'none'] },
+  { id: 'marketing', levels: ['edit', 'view', 'none'] },
   { id: 'server', levels: ['view', 'none'] }
 ];
 const SECTION_IDS = SECTIONS.map((s) => s.id);
@@ -40,11 +41,11 @@ export const ADMIN_ROLE = 'admin';
 const V = 'view';
 const E = 'edit';
 const N = 'none';
-const preset = (overview, fleet, calendar, requests, journal, clients, timesheet, reconcile, whatsapp, site, finance, server, crm = N) =>
-  ({ overview, fleet, calendar, requests, journal, clients, timesheet, reconcile, whatsapp, site, finance, server, crm });
+const preset = (overview, fleet, calendar, requests, journal, clients, timesheet, reconcile, whatsapp, site, finance, server, crm = N, marketing = N) =>
+  ({ overview, fleet, calendar, requests, journal, clients, timesheet, reconcile, whatsapp, site, finance, server, crm, marketing });
 const DEFAULT_ROLES = [
   // CRM по умолчанию — только у владельца (и админа); остальным админ открывает сам
-  ['owner', 'Владелец', preset(V, V, V, V, E, V, V, V, V, E, V, V, E)],
+  ['owner', 'Владелец', preset(V, V, V, V, E, V, V, V, V, E, V, V, E, E)],
   ['finance', 'Финансист', preset(V, V, V, N, V, V, N, V, N, N, V, N)],
   // Один «Менеджер» без отдела: разные права — разные роли, их админ создаёт сам
   ['manager', 'Менеджер', preset(V, V, V, V, E, V, N, V, N, E, N, N)],
@@ -116,15 +117,16 @@ if (!db.raw.prepare('SELECT COUNT(*) n FROM access_roles').get().n) {
   DEFAULT_ROLES.forEach(([id, name, perms], i) => q.addRole.run(id, name, JSON.stringify(perms), i, now(), now()));
 }
 
-// Раздел «CRM» появился позже: в уже созданной роли «Владелец» открываем его один раз,
-// у остальных ролей он «нет доступа» (так решил владелец бизнеса)
-if (db.getSetting('access_crm_section') !== '1') {
+// Разделы «CRM» и «Маркетинг» появились позже: в уже созданной роли «Владелец» открываем
+// их один раз, у остальных ролей они «нет доступа» (так решил владелец бизнеса)
+for (const section of ['crm', 'marketing']) {
+  if (db.getSetting(`access_${section}_section`) === '1') continue;
   const owner = q.role.get('owner');
   if (owner) {
     const perms = JSON.parse(owner.perms || '{}');
-    if (!perms.crm) q.updateRole.run(owner.name, JSON.stringify({ ...perms, crm: 'edit' }), now(), owner.id);
+    if (!perms[section]) q.updateRole.run(owner.name, JSON.stringify({ ...perms, [section]: 'edit' }), now(), owner.id);
   }
-  db.setSetting('access_crm_section', '1');
+  db.setSetting(`access_${section}_section`, '1');
 }
 
 /** Уровни роли по всем разделам (неизвестное и недопустимое — «нет доступа») */

@@ -44,6 +44,7 @@ import { roleOf, roleNameOf, permissionsOf, can, canAny } from './roles.js';
 import { accessOverview, saveRole, deleteRole, saveStaff, deleteStaff, importStaffList, AccessError } from './access.js';
 import { financeReport, saveLoans } from './finance.js';
 import { soldList, markSold, unmarkSold, markSoldList, SoldError } from './sold.js';
+import { marketingReport, saveSource, deleteSource, placeSource, saveSettings, MarketingError } from './marketing.js';
 import { crmList, crmClient, saveClient, setTags, addNote, mergeClients, importClients, CrmError } from './crm.js';
 import { importCashbook } from './cashbook.js';
 import { serverReport, saveServerSettings, alertAdminsOnce } from './serverStats.js';
@@ -418,6 +419,31 @@ async function crmImport(staff, req, res) {
   sendJson(res, 200, await crmCall(() => importClients(buffer, staff.email)));
 }
 
+/* ------------------------------------------------------- Вкладка «Маркетинг» */
+
+/** GET /api/staff/marketing?period=today|week|month */
+async function marketingRoute(staff, req, res, url) {
+  needAny(staff, ['marketing.view']);
+  const report = await marketingReport(url.searchParams.get('period') || 'month');
+  sendJson(res, 200, { ...report, canEdit: can(staff, 'marketing.edit') });
+}
+
+/** Изменения в «Маркетинге» — только с уровнем «меняет» */
+function marketingEdit(handler) {
+  return async (staff, req, res) => {
+    if (!can(staff, 'marketing.edit')) throw new HttpError(403, 'read_only');
+    const body = await readJson(req);
+    try {
+      const result = handler(body);
+      console.log(`Marketing change by ${staff.email}: ${req.url}`);
+      sendJson(res, 200, { ok: true, result: result ?? null });
+    } catch (err) {
+      if (err instanceof MarketingError) throw new HttpError(err.code === 'not_found' ? 404 : 400, err.code);
+      throw err;
+    }
+  };
+}
+
 /* ------------------------------------------------- Вкладка «Доступы» (админ) */
 
 function needAccessAdmin(staff) {
@@ -512,6 +538,11 @@ const ROUTES = {
   'POST /api/staff/finance/cashbook': signedIn(financeCashbook),
   'POST /api/staff/fleet/sold': signedIn(fleetSold),
   'POST /api/staff/finance/loans': signedIn(financeLoans),
+  'GET /api/staff/marketing': signedIn(marketingRoute),
+  'POST /api/staff/marketing/source': signedIn(marketingEdit((b) => saveSource(b))),
+  'POST /api/staff/marketing/source/delete': signedIn(marketingEdit((b) => deleteSource(b.id))),
+  'POST /api/staff/marketing/place': signedIn(marketingEdit((b) => placeSource(b.id, b.col, b.row))),
+  'POST /api/staff/marketing/settings': signedIn(marketingEdit((b) => saveSettings(b))),
   'GET /api/staff/crm': signedIn(crmListRoute),
   'GET /api/staff/crm/client': signedIn(crmClientRoute),
   'POST /api/staff/crm/client': signedIn(crmEdit((b, by) => saveClient(b, by))),

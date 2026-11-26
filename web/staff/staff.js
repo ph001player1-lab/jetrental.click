@@ -93,14 +93,15 @@
   ICONS.access = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 1 3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 6a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm5.4 10.4A7.06 7.06 0 0 1 12 20.9a7.06 7.06 0 0 1-5.4-3.5c.03-1.8 3.6-2.8 5.4-2.8s5.37 1 5.4 2.8z"/></svg>';
   ICONS.finance = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg>';
   ICONS.crm = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm-8 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5C15 14.17 10.33 13 8 13zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>';
-  const ALL_TABS = ['overview', 'fleet', 'journal', 'calendar', 'requests', 'crm', 'finance', 'site', 'server', 'access'];
+  ICONS.marketing = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M18 11v2h4v-2h-4zm-2 6.61c.96.71 2.21 1.65 3.2 2.39.4-.53.8-1.07 1.2-1.6-.99-.74-2.24-1.68-3.2-2.4-.4.54-.8 1.08-1.2 1.61zM20.4 5.6c-.4-.53-.8-1.07-1.2-1.6-.99.74-2.24 1.68-3.2 2.4.4.53.8 1.07 1.2 1.6.96-.72 2.21-1.65 3.2-2.4zM4 9c-1.1 0-2 .9-2 2v2c0 1.1.9 2 2 2h1v4h2v-4h1l5 3V6L8 9H4zm11.5 3c0-1.33-.58-2.53-1.5-3.35v6.69c.92-.81 1.5-2.01 1.5-3.34z"/></svg>';
+  const ALL_TABS = ['overview', 'fleet', 'journal', 'calendar', 'requests', 'crm', 'marketing', 'finance', 'site', 'server', 'access'];
   // Внизу на телефоне помещается 6 кнопок; если вкладок больше — последние уходят в «Ещё»
   const BOTTOM_MAX = 6;
   // Вкладка видна, если у роли есть хотя бы одно из этих прав (настраивает админ на вкладке «Доступы»)
   const TAB_PERMISSION = {
     overview: ['overview.view'], fleet: ['fleet.view'], calendar: ['calendar.view'], requests: ['requests.view'],
     journal: ['journal.view', 'timesheet.view', 'reconcile.view', 'whatsapp.view'],
-    crm: ['crm.view'], finance: ['finance.view'], site: ['site.view'], server: ['server.view'], access: ['access.admin']
+    crm: ['crm.view'], marketing: ['marketing.view'], finance: ['finance.view'], site: ['site.view'], server: ['server.view'], access: ['access.admin']
   };
   const can = (perm) => Boolean(state.user?.permissions?.includes(perm));
   /** Вкладки, доступные роли вошедшего сотрудника */
@@ -406,6 +407,7 @@
     if (state.tab === 'access') access.load();
     if (state.tab === 'finance') finance.load();
     if (state.tab === 'crm') crm.load();
+    if (state.tab === 'marketing') marketing.load();
     clearInterval(state.timer);
     state.timer = setInterval(() => { if (!document.hidden) loadData(); }, REFRESH_MS);
   }
@@ -595,6 +597,7 @@
     if (tab === 'access') access.load();
     if (tab === 'finance') finance.load();
     if (tab === 'crm') crm.load();
+    if (tab === 'marketing') marketing.load();
     if (tab === 'site' && !state.models) loadModels();
     if (tab === 'server') startServerPolling();
     else stopServerPolling();
@@ -623,6 +626,8 @@
     if (state.tab === 'access') view.innerHTML = access.render();
     if (state.tab === 'finance') view.innerHTML = finance.render();
     if (state.tab === 'crm') view.innerHTML = crm.render();
+    // Во время правки источника фоновое обновление вкладку не трогает (не теряем введённое)
+    if (state.tab === 'marketing' && (!view.querySelector('.mk') || marketing.canRefresh())) { view.innerHTML = marketing.render(); marketing.mount(); }
     // Роли не открыт ни один раздел — подсказка вместо пустого экрана
     if (!tabs().length) view.innerHTML = `<div class="empty">${esc(t('app.noSections'))}</div>`;
   }
@@ -636,6 +641,13 @@
     shortDate: (iso) => shortDate(iso),
     errorText: (err) => ERRORS[err.code] || t('app.loadFailed'),
     rerender: () => { if (state.tab === 'finance') $('#view').innerHTML = finance.render(); }
+  });
+
+  /* ---------------------------------------------------- Вкладка «Маркетинг» */
+
+  const marketing = window.STAFF_MARKETING.create({
+    api, esc, can,
+    rerender: () => { if (state.tab === 'marketing') { $('#view').innerHTML = marketing.render(); marketing.mount(); } }
   });
 
   /* ---------------------------------------------------------- Вкладка «CRM» */
@@ -1813,6 +1825,7 @@
       if (state.tab === 'access' && access.onClick(event)) return;
       if (state.tab === 'finance' && finance.onClick(event)) return;
       if (state.tab === 'crm' && crm.onClick(event)) return;
+      if (state.tab === 'marketing' && marketing.onClick(event)) return;
       if (event.target.closest('[data-more]')) {
         state.moreOpen = !state.moreOpen;
         return renderTabs();
@@ -1928,6 +1941,7 @@
       if (state.tab === 'access' && access.onSubmit(event)) return;
       if (state.tab === 'finance' && finance.onSubmit(event)) return;
       if (state.tab === 'crm' && crm.onSubmit(event)) return;
+      if (state.tab === 'marketing' && marketing.onSubmit(event)) return;
       const soldForm = event.target.closest('[data-sold-form]');
       if (soldForm) {
         event.preventDefault();

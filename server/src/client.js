@@ -18,6 +18,7 @@ import { VEHICLE_TYPES, formatShortDate, formatThb, daysBetween } from './format
 import { parseDateRange } from './dates.js';
 import { findAvailableModels, sheetsEnabled } from './fleet.js';
 import { publishRequest } from './staff.js';
+import { rememberChatRef, chatRefOf } from './marketing.js';
 import { LANGUAGES, LANGUAGE_PROMPT, LANGUAGE_LIST_BUTTON, normalizeLanguage, t } from './i18n.js';
 
 // В списке WhatsApp максимум 10 строк: 9 моделей + «Помогите выбрать»
@@ -146,7 +147,8 @@ async function finishRequest(chat, lang, session, phone, name = chat.name) {
     model: session.model,
     estimateThb: session.estimateThb,
     freeUnits: session.freeUnits,
-    lang
+    lang,
+    sourceRef: chatRefOf(chat.key)
   });
   db.clearSession(chat.key);
 
@@ -169,6 +171,8 @@ async function finishRequest(chat, lang, session, phone, name = chat.name) {
  * номер» в Telegram: { phone, name }.
  */
 export async function handleClientText(chat, text, contact = null) {
+  // Код источника из ссылки на бота («/start ref_КОД», «[ref:КОД]») — для вкладки «Маркетинг»
+  try { rememberChatRef(chat.key, text); } catch (err) { console.error('Chat ref failed:', err.message); }
   const word = firstWord(text);
   if (LANGUAGE_WORDS.includes(word)) return askLanguage(chat);
 

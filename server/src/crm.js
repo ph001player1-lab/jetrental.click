@@ -758,3 +758,40 @@ export function blacklistReports(now = Date.now()) {
   }
   return out;
 }
+
+/* ------------------------------------------- Итог заявок (для «Маркетинга») */
+
+/**
+ * Чем закончилась каждая заявка: { booked, paid, revenue } по id заявки.
+ * Аренда клиента относится к его последней заявке, сделанной не раньше чем
+ * за 60 дней до начала аренды (и не позже дня начала), — без двойного счёта.
+ */
+export async function requestOutcomes(now = Date.now()) {
+  const { clients } = await buildIndex(now);
+  const out = new Map();
+  const ownerOf = (requests, ts) => {
+    let best = null;
+    for (const r of requests) {
+      const at = Date.parse(r.at);
+      if (at <= ts + DAY_MS && at >= ts - 60 * DAY_MS && (!best || at > Date.parse(best.at))) best = r;
+    }
+    return best;
+  };
+  for (const c of clients.values()) {
+    if (!c.requests.length) continue;
+    for (const r of c.requests) out.set(r.id, { booked: false, paid: false, revenue: 0 });
+    for (const rental of c.rentals) {
+      const owner = ownerOf(c.requests, Date.parse(rental.startTs));
+      if (!owner) continue;
+      const o = out.get(owner.id);
+      o.booked = true;
+      o.paid = true;
+      o.revenue += rental.ws ? rental.ws.sum : Math.round(rental.revenue);
+    }
+    for (const b of c.bookings) {
+      const owner = ownerOf(c.requests, Date.parse(b.ts));
+      if (owner) out.get(owner.id).booked = true;
+    }
+  }
+  return out;
+}
