@@ -1628,3 +1628,14 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
 .set-disc-join { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line); }
 .set-disc-link a.btn { text-decoration: none; }
 .set-sec textarea { font: inherit; line-height: 1.45; }
+.set-map { width: 100%; border-collapse: collapse; font-size: 14px; }
+.set-map td { padding: 7px 8px; border-top: 1px solid var(--line); vertical-align: top; }
+.set-map tr:first-child td { border-top: 0; }
+.set-map td:first-child { width: 42%; }
+.set-map td:last-child { white-space: nowrap; text-align: right; }
+@media (max-width: 640px) {
+  .set-map tr { display: grid; grid-template-columns: 1fr auto; padding: 6px 0; border-top: 1px solid var(--line); }
+  .set-map tr:first-child { border-top: 0; }
+  .set-map td { border: 0; padding: 2px 4px; width: auto !important; }
+  .set-map td:first-child { grid-column: 1 / -1; font-weight: 600; }
+}

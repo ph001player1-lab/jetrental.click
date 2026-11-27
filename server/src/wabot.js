@@ -560,6 +560,22 @@ function needEdit(staff) {
   if (!can(staff, 'marketing.edit')) throw new HttpError(403, 'read_only');
 }
 
+/**
+ * Список групп бота: живой — запоминаем; пустой (WhatsApp временно не отдаёт список
+ * после перезапуска) — показываем последний известный, чтобы выбор групп не «слетал»
+ */
+function groupsForPortal(live) {
+  const list = Array.isArray(live) ? live : [];
+  if (list.length) {
+    const json = JSON.stringify(list);
+    if (db.getSetting('wabot_groups_seen') !== json) db.setSetting('wabot_groups_seen', json);
+    return { groups: list, groupsStale: false };
+  }
+  let seen = [];
+  try { seen = JSON.parse(db.getSetting('wabot_groups_seen') || '[]'); } catch { /* нет */ }
+  return { groups: Array.isArray(seen) ? seen : [], groupsStale: true };
+}
+
 export async function wabotPortalStatus(staff, req, res) {
   if (!can(staff, 'marketing.view')) throw new HttpError(403, 'no_section_access');
   const base = {
@@ -580,7 +596,8 @@ export async function wabotPortalStatus(staff, req, res) {
     qr: live.qrSvg ? `data:image/svg+xml;base64,${Buffer.from(live.qrSvg).toString('base64')}` : null,
     pairingCode: live.pairingCode,
     me: live.me,
-    groups: live.groups,
+    ...groupsForPortal(live.groups),
+    limitedAt: live.limitedAt || null,
     groupId: live.groupId,
     groupSubject: live.groupSubject,
     lastInboundAt: live.lastInboundAt,

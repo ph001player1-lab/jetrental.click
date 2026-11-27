@@ -103,7 +103,9 @@ const state = {
   qrSvg: null,
   pairingCode: null,
   me: null,
-  groups: [],
+  // Последний полученный список групп — с диска: после перезапуска WhatsApp может
+  // какое-то время не отдавать список («rate-overlimit»), а выбор групп в портале нужен сразу
+  groups: Array.isArray(config.groups) ? config.groups : [],
   // Телефоны участников рабочей группы: им бот как клиентам не отвечает
   members: [],
   error: null,
@@ -421,18 +423,27 @@ async function react(jid, id, participant, emoji) {
 /* ---------------------------------------------------------- Группы */
 
 // Список групп WhatsApp отдаёт не чаще раза в несколько секунд («rate-overlimit»):
-// события групп собираем в один запрос, при отказе — повтор через минуту
+// события групп собираем в один запрос и спрашиваем не чаще раза в 2 минуты; при отказе —
+// повтор через минуту, потом реже (события групп этот срок не сокращают)
 // Данные групп (участники) — кэш: без него Baileys спрашивает их у WhatsApp при каждой
 // отправке в группу, и WhatsApp отвечает «rate-overlimit»
 const groupCache = new Map();
 let groupsTimer = null;
+let groupsDueAt = 0;
+let nextFetchAt = 0;
 let groupsRetryMs = 60000;
+const GROUPS_MIN_GAP_MS = 2 * 60000;
 function scheduleGroups(delayMs = 5000) {
+  const due = Math.max(Date.now() + delayMs, nextFetchAt);
+  // Уже запланировано не позже — не переносим (иначе частые события откладывают запрос без конца)
+  if (groupsTimer && groupsDueAt <= due) return;
   clearTimeout(groupsTimer);
+  groupsDueAt = due;
   groupsTimer = setTimeout(async () => {
+    groupsTimer = null;
     if (state.status !== 'connected') return;
     if (await refreshGroups()) reportStatus();
-  }, delayMs);
+  }, Math.max(0, due - Date.now()));
 }
 
 async function refreshGroups() {
@@ -452,16 +463,20 @@ async function refreshGroups() {
     state.groups = Object.values(all).map((g) => ({ id: g.id, subject: g.subject, size: g.participants?.length || 0 }))
       .sort((a, b) => a.subject.localeCompare(b.subject));
     const current = state.groups.find((g) => g.id === config.groupId);
-    if (current && current.subject !== config.groupSubject) {
-      config.groupSubject = current.subject;
+    const renamed = Boolean(current && current.subject !== config.groupSubject);
+    if (renamed) config.groupSubject = current.subject;
+    if (renamed || JSON.stringify(config.groups || []) !== JSON.stringify(state.groups)) {
+      config.groups = state.groups;
       saveConfig();
     }
     groupsRetryMs = 60000;
+    nextFetchAt = Date.now() + GROUPS_MIN_GAP_MS;
     if (state.limitedAt) { state.limitedAt = null; log('WhatsApp no longer limits group requests'); }
     return true;
   } catch (err) {
     if (/rate-overlimit/i.test(err.message) && !state.limitedAt) state.limitedAt = new Date().toISOString();
     log(`groups fetch failed: ${err.message} — retry in ${Math.round(groupsRetryMs / 1000)} s`);
+    nextFetchAt = Date.now() + groupsRetryMs;
     scheduleGroups(groupsRetryMs);
     groupsRetryMs = Math.min(groupsRetryMs * 2, 30 * 60000);
     return false;
@@ -542,9 +557,24 @@ async function start() {
   });
 
   current.ev.on('groups.upsert', (list) => { for (const g of list || []) if (g?.id) groupCache.set(g.id, g); scheduleGroups(); });
+  // Сюда же приходит эхо нашего запроса списка групп (Baileys шлёт groups.update после
+  // groupFetchAllParticipating) — новый запрос отсюда давал бесконечный круг раз в ~10 с,
+  // и WhatsApp отвечал «rate-overlimit». Поэтому здесь только обновляем кэш и названия.
   current.ev.on('groups.update', (list) => {
-    for (const u of list || []) if (u?.id && groupCache.has(u.id)) groupCache.set(u.id, { ...groupCache.get(u.id), ...u });
-    scheduleGroups();
+    let renamed = false;
+    for (const u of list || []) {
+      if (!u?.id) continue;
+      if (groupCache.has(u.id)) groupCache.set(u.id, { ...groupCache.get(u.id), ...u });
+      const g = state.groups.find((x) => x.id === u.id);
+      if (g && u.subject && u.subject !== g.subject) { g.subject = u.subject; renamed = true; }
+    }
+    if (renamed) {
+      const work = state.groups.find((g) => g.id === config.groupId);
+      if (work) config.groupSubject = work.subject;
+      config.groups = state.groups;
+      saveConfig();
+      reportStatus();
+    }
   });
   // Состав группы поменялся — данные из кэша устарели
   current.ev.on('group-participants.update', ({ id }) => { if (id) groupCache.delete(id); scheduleGroups(); });
@@ -631,7 +661,12 @@ http.createServer(async (req, res) => {
         }
         log(`joined group «${info?.subject || id}» by invite`);
       }
-      await refreshGroups();
+      if (!state.groups.some((g) => g.id === id)) {
+        state.groups = [...state.groups, { id, subject: info?.subject || id, size: info?.participants?.length || info?.size || 0 }].sort((a, b) => a.subject.localeCompare(b.subject));
+        config.groups = state.groups;
+        saveConfig();
+      }
+      scheduleGroups(10000);
       reportStatus();
       return send(res, 200, { id, subject: info?.subject || state.groups.find((g) => g.id === id)?.subject || '' });
     }

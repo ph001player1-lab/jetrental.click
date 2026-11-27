@@ -294,7 +294,17 @@ async function handleMessage(msg) {
 
 /* ---------------------------------------------------------- Группы */
 
+let refreshTimer = null;
+// И раз в 30 минут — на случай пропущенных событий
+setInterval(() => { if (state.status === 'connected') scheduleRefresh(); }, 30 * 60000).unref();
+let lastRefreshAt = 0;
+function scheduleRefresh() {
+  if (refreshTimer) return;
+  refreshTimer = setTimeout(() => { refreshTimer = null; refreshGroups(); }, Math.max(5000, lastRefreshAt + 2 * 60000 - Date.now()));
+}
+
 async function refreshGroups() {
+  lastRefreshAt = Date.now();
   try {
     const all = await sock.groupFetchAllParticipating();
     const watched = [];
@@ -394,8 +404,20 @@ async function start() {
     }
   });
 
-  current.ev.on('groups.upsert', () => refreshGroups());
-  current.ev.on('groups.update', () => refreshGroups());
+  // Добавили в новую группу — список групп спросим, но не чаще раза в 2 минуты
+  current.ev.on('groups.upsert', () => scheduleRefresh());
+  // Новые участники — их внутренние номера (LID) → телефоны; тоже не чаще раза в 2 минуты
+  current.ev.on('group-participants.update', () => scheduleRefresh());
+  // groups.update приходит и как эхо нашего же запроса списка групп (Baileys шлёт его после
+  // groupFetchAllParticipating): запрос отсюда шёл по кругу без остановки, и WhatsApp
+  // отвечал «rate-overlimit». Здесь только обновляем названия групп.
+  current.ev.on('groups.update', (list) => {
+    for (const u of list || []) {
+      const g = state.groups.find((x) => x.id === u?.id);
+      if (g && u.subject) g.subject = u.subject;
+      if (u?.id === config.groupId && u.subject && u.subject !== config.groupSubject) { config.groupSubject = u.subject; saveConfig(); }
+    }
+  });
 }
 
 /* ----------------------------------------------- HTTP для бота (внутри) */

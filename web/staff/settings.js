@@ -43,6 +43,14 @@
     const dmy = (iso) => (iso ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}` : '—');
     const phoneText = (id) => (id ? `+${String(id).split(/[:@]/)[0]}` : '—');
     const errText = (err) => ERR[err?.code] || 'Не получилось. Попробуйте ещё раз.';
+    /** Пункты выбора группы; выбранная видна всегда — даже если WhatsApp пока не отдал список групп */
+    const groupOptions = (list, selected, selectedName, mark = () => '') => {
+      const items = (list || []).map((g) => `<option value="${esc(g.id)}"${g.id === selected ? ' selected' : ''}>${esc(`${g.subject} (${g.size})`)}${mark(g)}</option>`);
+      if (selected && !(list || []).some((g) => g.id === selected)) items.unshift(`<option value="${esc(selected)}" selected>${esc(selectedName || 'текущая группа')}</option>`);
+      return items.join('');
+    };
+    const groupName = (list, id) => (list || []).find((g) => g.id === id)?.subject || null;
+    const staleNote = (w) => (w?.groupsStale ? '<p class="note">⏳ WhatsApp временно не отдаёт список групп (так бывает после перезапуска). Показан последний известный список — настройки на месте, список обновится сам.</p>' : '');
 
     async function load() {
       try {
@@ -115,7 +123,37 @@
     /* ------------------------------------------------------------ Связь */
 
     function renderLinks() {
-      return `${renderTelegram()}${renderWabot()}${renderObserver()}${status(st.linkMsg)}`;
+      return `${renderMap()}${renderTelegram()}${renderWabot()}${renderObserver()}${status(st.linkMsg)}`;
+    }
+
+    /** Все связи на одном экране: что и куда пишется, где это настроить */
+    function renderMap() {
+      const tg = st.data.telegram;
+      const d = st.data.discounts || {};
+      const w = st.wabot && st.wabot.reachable !== false && st.wabot.status === 'connected' ? st.wabot : null;
+      const set = w?.settings || {};
+      const o = st.wa && st.wa.reachable && st.wa.status === 'connected' ? st.wa : null;
+      const q = (name) => `«${esc(name)}»`;
+      const off = '<span class="muted">никуда</span>';
+      const list = (parts) => { const p = parts.filter(Boolean); return p.length ? p.join(' + ') : off; };
+      const tgGroup = tg.groupBound ? `Telegram ${q(tg.groupTitle || 'рабочая группа')}` : null;
+      const waName = (id, name) => (id ? `WhatsApp ${q(name || groupName(w?.groups, id) || 'группа')}` : null);
+      // Заявки: в группу WhatsApp (если выбрана) и/или в Telegram (без группы WhatsApp — всегда)
+      const reqWa = w ? waName(w.groupId, w.groupSubject) : null;
+      const reqTg = tgGroup && (!reqWa || set.telegramCopy) ? tgGroup : null;
+      const discTg = (d.channels === 'tg' || d.channels === 'both') && d.tgChat ? `Telegram ${q(d.tgTitle || 'группа')}` : null;
+      const discWa = (d.channels === 'wa' || d.channels === 'both') && d.waGroup ? waName(d.waGroup) : null;
+      const rows = [
+        ['📨 Заявки клиентов (сайт, боты)', list([reqWa, reqTg]), 'set-wabot'],
+        ['🚗 События парка (выдача, возврат, бронь, ремонт)', list([w ? waName(set.eventsGroup) : null]), 'set-wabot'],
+        ['💸 Скидки: запросы на одобрение и большие скидки', list([discTg, discWa]), 'disc'],
+        ['☀️ Утренняя сводка', list([tgGroup]), 'set-tg'],
+        ['🔔 Оповещения админам (сервер, оплаты, сроки)', tg.alertsTo.length ? `Telegram, лично: ${tg.alertsTo.map(esc).join(', ')}` : off, 'set-tg'],
+        ['👀 Журнал: наблюдатель читает', list([o?.groupId ? `WhatsApp ${q(o.groupSubject || 'группа')}` : null]), 'set-observer']
+      ];
+      return `<section class="card set-sec"><h3>🗺 Куда что пишется</h3>
+        <div class="table-wrap"><table class="set-map"><tbody>${rows.map(([what, where, go]) => `<tr><td>${esc(what)}</td><td>${where}</td>
+          <td><button type="button" class="link jr-small" ${go === 'disc' ? 'data-set-view="disc"' : `data-set-go="${go}"`}>настроить ${go === 'disc' ? '→' : '↓'}</button></td></tr>`).join('')}</tbody></table></div></section>`;
     }
 
     function renderTelegram() {
@@ -131,7 +169,7 @@
         ? `<li>🔔 Оповещения админам (сервер, оплаты, сроки): ${tg.alertsTo.map((n) => `<b>${esc(n)}</b>`).join(', ')}</li>`
         : '<li>⚠️ Оповещения админам получать некому: ни у одного админа нет Telegram ID.</li>');
       if (tg.adminsWithoutTelegram.length) rows.push(`<li class="muted">Без Telegram ID (оповещения не придут): ${tg.adminsWithoutTelegram.map(esc).join(', ')} — укажите ID во вкладке «Доступы» и нажмите «Старт» у бота.</li>`);
-      return `<section class="card set-sec"><h3>✈️ Telegram</h3><ul class="set-list">${rows.join('')}</ul>
+      return `<section class="card set-sec" id="set-tg"><h3>✈️ Telegram</h3><ul class="set-list">${rows.join('')}</ul>
         <p class="mk-tip">Перепривязать группу — написать <code>/bind</code> в новой группе. Утренняя сводка и заявки (если включено) — в эту группу.</p></section>`;
     }
 
@@ -141,12 +179,13 @@
       if (!w || w.reachable === false) body = '<p class="warn">Бот не отвечает на сервере. Если сервер только что обновили — подождите минуту и обновите страницу.</p>';
       else if (w.status === 'connected') {
         const set = w.settings || { mode: 'off', testNumbers: [] };
-        const groups = (w.groups || []).map((g) => `<option value="${esc(g.id)}"${g.id === w.groupId ? ' selected' : ''}>${esc(`${g.subject} (${g.size})`)}</option>`).join('');
+        const groups = groupOptions(w.groups, w.groupId, w.groupSubject);
         const obs = w.observerGroup || {};
-        const events = (w.groups || []).map((g) => `<option value="${esc(g.id)}"${g.id === set.eventsGroup ? ' selected' : ''}>${esc(`${g.subject} (${g.size})`)}${g.id === obs.id ? ' — читает наблюдатель' : ''}</option>`).join('');
+        const events = groupOptions(w.groups, set.eventsGroup, null, (g) => (g.id === obs.id ? ' — читает наблюдатель' : ''));
         const botInObserver = obs.id && (w.groups || []).some((g) => g.id === obs.id);
         body = `
           <p>✅ Подключён номер <b>${esc(phoneText(w.me?.id))}</b>${w.me?.name ? ` (${esc(w.me.name)})` : ''}${w.today?.date ? ` · сегодня написали ${num(w.today.received)}, бот ответил ${num(w.today.sent)}` : ''}</p>
+          ${staleNote(w)}
           <form class="mk-form" data-set-wabot-mode>
             <div class="mk-label">Кому отвечает бот</div>
             <label class="mk-radio"><input type="radio" name="mode" value="off"${set.mode === 'off' ? ' checked' : ''}> Никому — клиентам отвечают люди с телефона</label>
@@ -177,7 +216,7 @@
           </form>
           ${w.pairingCode ? `<p class="jr-code">${esc(w.pairingCode)}</p><p class="mk-tip">На телефоне: «Связанные устройства» → «Привязать устройство» → «Связать по номеру телефона».</p>` : ''}`;
       } else body = `<p class="mk-text">Состояние: ${esc(w.status || '—')}</p>`;
-      return `<section class="card set-sec"><h3>💬 WhatsApp-бот для клиентов</h3>${body}</section>`;
+      return `<section class="card set-sec" id="set-wabot"><h3>💬 WhatsApp-бот для клиентов</h3>${body}</section>`;
     }
 
     function renderObserver() {
@@ -205,7 +244,7 @@
           </form>
           ${w.pairingCode ? `<p class="jr-code">${esc(w.pairingCode)}</p>` : ''}`;
       } else body = `<p class="mk-text">Состояние: ${esc(w.status || '—')}</p>`;
-      return `<section class="card set-sec"><h3>👀 Наблюдатель рабочей группы WhatsApp</h3>${body}
+      return `<section class="card set-sec" id="set-observer"><h3>👀 Наблюдатель рабочей группы WhatsApp</h3>${body}
         <p class="mk-tip">Загрузка истории группы из файла — во вкладке «Журнал» → WhatsApp.</p></section>`;
     }
 
@@ -394,9 +433,9 @@ bash /opt/kokon/app/deploy/update.sh</pre>
         </div>`;
       }
       const waConnected = w && w.status === 'connected';
-      const groups = waConnected ? (w.groups || []).map((g) => `<option value="${esc(g.id)}"${g.id === s.waGroup ? ' selected' : ''}>${esc(`${g.subject} (${g.size})`)}</option>`).join('') : '';
+      const groups = waConnected ? groupOptions(w.groups, s.waGroup) : '';
       const waField = waConnected
-        ? `<label class="field"><span>Группа WhatsApp для скидок</span><select class="search" name="waGroup"><option value="">— не выбрана —</option>${groups}</select></label>
+        ? `${staleNote(w)}<label class="field"><span>Группа WhatsApp для скидок</span><select class="search" name="waGroup"><option value="">— не выбрана —</option>${groups}</select></label>
            <p class="mk-tip">Пишет номер клиентского бота ${esc(phoneText(w.me?.id))}. Одобрить — ответить на сообщение «+», отклонить — «-».</p>`
         : '<p class="warn">WhatsApp-бот не подключён (вкладка «Связь») — группу WhatsApp выбрать нельзя.</p>';
       const waJoin = waConnected ? `<form class="mk-form set-disc-join" data-set-disc-join>
@@ -489,6 +528,8 @@ bash /opt/kokon/app/deploy/update.sh</pre>
           .finally(() => { st.checking = false; ctx.rerender(); });
         return true;
       }
+      const go = el.closest('[data-set-go]');
+      if (go) { document.getElementById(go.dataset.setGo)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); return true; }
       if (el.closest('[data-set-disc-staff]')) { saveDisc({ tgUseStaff: true }, 'Запросы на скидки — в рабочую группу Telegram.'); return true; }
       if (el.closest('[data-set-disc-tglink]')) { saveDisc({ tgLink: true }, null); return true; }
       if (el.matches('[data-set-copy]')) { el.select(); return true; }
