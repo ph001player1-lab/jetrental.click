@@ -253,6 +253,8 @@ function groupCashNotes(rates) {
     if (!value.thb) continue;
     notes.push({
       id: row.id, at: row.at, type, author: row.author, author_name: row.author_name, thb: value.thb,
+      // Текст расхода — для кабинета инвестора («что сделали»)
+      text: body.replace(/\s+/g, ' ').slice(0, 200),
       inCash: type === 'handover' || /\bcash\b|наличн/i.test(body),
       plate: /#\s?(\d{2,5})\b/.exec(body)?.[1] || null,
       category: type === 'expense' ? categoryOfText(`${first.replace(EXPENSE_RE, '')} ${body}`) : null,
@@ -279,10 +281,12 @@ function expensesFor(a, b, cashMeta, notes) {
   };
   // Расходы по машине: ремонт отдельно, остальное (топливо, мойка, страховка, налог, такси, владельцу) — «прочие»
   const byPlate = new Map();
-  const plateCost = (plate, key, sum) => {
+  // item — строка расхода для кабинета инвестора: { at, text, source }
+  const plateCost = (plate, key, sum, item = null) => {
     if (!plate || NOT_OPERATING.has(key) || key === 'salary' || key === 'office' || key === 'ads') return;
-    const p = byPlate.get(plate) || byPlate.set(plate, { repair: 0, other: 0 }).get(plate);
+    const p = byPlate.get(plate) || byPlate.set(plate, { repair: 0, other: 0, items: [] }).get(plate);
     p[key === 'repair' ? 'repair' : 'other'] += sum;
+    if (item && p.items.length < 100) p.items.push({ ...item, sum: round(sum), kind: key === 'repair' ? 'repair' : 'other', category: key });
   };
   const ws = { income: 0, depositsIn: 0, depositsOut: 0, transfers: 0, salaryPaid: 0, officeIn: 0, officeOut: 0, officeToOwner: 0, officeFromOwner: 0 };
   if (hasCash) {
@@ -300,7 +304,7 @@ function expensesFor(a, b, cashMeta, notes) {
       const key = PURPOSE_CATEGORY[r.purpose] || 'other';
       add(key, r.expense, 'ws');
       if (key === 'salary') ws.salaryPaid += r.expense;
-      plateCost(r.plate, key, r.expense);
+      plateCost(r.plate, key, r.expense, { at: r.ts, text: String(r.description || r.purpose || '').slice(0, 200), source: 'ws' });
     }
   }
   let groupReports = 0;
@@ -308,7 +312,7 @@ function expensesFor(a, b, cashMeta, notes) {
     if (n.type !== 'expense' || n.at < a || n.at >= b || (hasCash && n.at >= cashA && n.at < cashB)) continue;
     groupReports++;
     add(n.category, n.thb, 'group');
-    plateCost(n.plate, n.category, n.thb);
+    plateCost(n.plate, n.category, n.thb, { at: isoOf(n.at), text: n.text || '', source: 'group' });
   }
   const list = [...cats.values()].map((c) => ({ ...c, sum: round(c.sum), ws: round(c.ws), group: round(c.group) })).sort((x, y) => y.sum - x.sum);
   const categories = list.filter((c) => !NOT_OPERATING.has(c.key));
@@ -728,7 +732,7 @@ export async function financeReport({ from, to }, now = Date.now(), { clientsVis
       cursor = Math.max(cursor, b);
     }
     const rentedDays = Math.round(rented / DAY_MS);
-    const costs = expenses.byPlate.get(v.plate) || { repair: 0, other: 0 };
+    const costs = expenses.byPlate.get(v.plate) || { repair: 0, other: 0, items: [] };
     const sold = soldMap.get(v.plate) || null;
     // Кредит проданной машины не начисляем
     const loanMonthly = sold ? 0 : loanMap[v.plate] || 0;
@@ -737,6 +741,7 @@ export async function financeReport({ from, to }, now = Date.now(), { clientsVis
     return {
       ...v, revenue, rentedDays, utilization: Math.min(100, Math.round((rentedDays / days) * 100)),
       repair: round(costs.repair), otherCosts: round(costs.other), loanMonthly, loan,
+      costItems: (costs.items || []).sort((x, y) => String(x.at).localeCompare(String(y.at))),
       result: revenue - round(costs.repair) - round(costs.other) - loan,
       sold: sold ? { soldOn: sold.soldOn, price: sold.price } : null
     };

@@ -69,7 +69,7 @@ async function loadAdmins() {
     if (s.roleId !== ADMIN_ROLE) continue;
     if (s.telegramId) adminChats.add(String(s.telegramId));
     if (s.email && !admins.has(s.email)) {
-      admins.set(s.email, { email: s.email, name: s.name || s.email, role: ADMIN_ROLE, telegramId: s.telegramId || '', staffId: s.id, sourceId: s.sourceId });
+      admins.set(s.email, { email: s.email, name: s.name || s.email, role: ADMIN_ROLE, telegramId: s.telegramId || '', staffId: s.id, sourceId: s.sourceId, investorPercent: s.investorPercent });
     }
   }
   // Пока перенос не удался, прошлый список не теряем (админы из таблицы ещё могут войти)
@@ -84,7 +84,10 @@ export async function findStaff(email) {
   const admin = (await loadAdmins()).admins.get(key);
   if (admin) return admin;
   const staff = staffByEmail(key);
-  return staff ? { email: staff.email, name: staff.name, role: staff.roleId, telegramId: staff.telegramId, staffId: staff.id, sourceId: staff.sourceId } : null;
+  return staff ? {
+    email: staff.email, name: staff.name, role: staff.roleId, telegramId: staff.telegramId, staffId: staff.id, sourceId: staff.sourceId,
+    investorPercent: staff.investorPercent
+  } : null;
 }
 
 /** Имена сотрудников по номеру WhatsApp (только цифры) */

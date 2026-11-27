@@ -33,6 +33,7 @@ import { startWsSync, wsSyncStatus } from './ws/sync.js';
 import { startMorningSummary } from './morning.js';
 import { startServerStats, recordRequest, version } from './serverStats.js';
 import { startAgents } from './agent.js';
+import { startInvestors } from './investor.js';
 import { startJournal } from './journal/start.js';
 import { whatsappEnabled, knownPhoneNumberId } from './whatsapp/api.js';
 import { verifySignature, processWebhook, whatsappStatus } from './whatsapp/webhook.js';
@@ -172,6 +173,7 @@ server.listen(config.port, () => {
   startMorningSummary();
   startServerStats();
   startAgents();
+  startInvestors();
   startJournal();
 
   if (telegramEnabled) {

@@ -23,6 +23,7 @@
  *   /api/staff/wa…                            — подключение наблюдателя (Admin)
  *   /api/staff/tickets…                       — «Ошибки и предложения» (tickets.js)
  *   /api/staff/agent…                         — кабинет агента, выплаты (agent.js)
+ *   /api/staff/investor…                      — кабинет инвестора, выплаты (investor.js)
  * Права ролей — в roles.js.
  *
  * В базе храним только хэши кодов и сессий.
@@ -57,6 +58,7 @@ import { importCashbook } from './cashbook.js';
 import { serverReport, serverStatusRoute, saveServerSettings, alertAdminsOnce } from './serverStats.js';
 import { listTickets, ticketsBadge, createTicket, uploadShot, getShot, setTicketStatus, markSeen, deleteTicket } from './tickets.js';
 import { agentCabinet, agentRequest, agentPayout, agentPayoutDelete } from './agent.js';
+import { investorCabinet, investorPayout, investorPayoutDelete, investorList } from './investor.js';
 import { g } from './groupTexts.js';
 import { escapeHtml } from './format.js';
 import { getJournal, fixEvent, getTimesheet, getReconcile, getMedia, importHistory } from './journal/api.js';
@@ -208,7 +210,9 @@ function publicUser(staff) {
     email: staff.email, name: staff.name, role: roleOf(staff), roleName: roleNameOf(staff),
     permissions: permissionsOf(staff), canEdit: canEdit(staff),
     // Агент: к какому источнику привязан его «Кабинет»
-    sourceId: staff.sourceId || null
+    sourceId: staff.sourceId || null,
+    // Инвестор: есть ли у него кабинет инвестора
+    investor: staff.investorPercent !== null && staff.investorPercent !== undefined
   };
 }
 
@@ -347,7 +351,8 @@ async function fleet(req, res) {
     // Карточки техники из портала (первоисточник) — тем, кому открыт «Парк»
     ...(fleetView ? { vehicles } : {}),
     // Архив (продана, списана, другое) — тем, кто правит парк: поправить или вернуть в парк
-    ...(editFleet ? { sold: soldList(), fleetLog: fleetLog(20) } : {}),
+    // Инвесторы — для поля «Инвестор» в карточке и просмотра их кабинетов
+    ...(editFleet ? { sold: soldList(), fleetLog: fleetLog(20), investors: investorList() } : {}),
     // Статус по рабочей группе WhatsApp: госномер → последний отчёт (сверка в «Журнале»)
     group: Object.fromEntries([...groupStatusByPlate()].map(([plate, g]) => [plate, { status: g.status, at: g.at, kind: g.kind }])),
     ...prices
@@ -814,7 +819,10 @@ const ROUTES = {
   'GET /api/staff/agent': signedIn(agentCabinet),
   'POST /api/staff/agent/request': signedIn(agentRequest),
   'POST /api/staff/agent/payout': signedIn(agentPayout),
-  'POST /api/staff/agent/payout/delete': signedIn(agentPayoutDelete)
+  'POST /api/staff/agent/payout/delete': signedIn(agentPayoutDelete),
+  'GET /api/staff/investor': signedIn(investorCabinet),
+  'POST /api/staff/investor/payout': signedIn(investorPayout),
+  'POST /api/staff/investor/payout/delete': signedIn(investorPayoutDelete)
 };
 
 /** Обработчик для пути /api/staff/*; null — такого маршрута нет */

@@ -100,7 +100,8 @@
   ICONS.cabinet = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M20 6h-4V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2zm-6 0h-4V4h4v2z"/></svg>';
   // «Кабинет» — первым: у агента это главная вкладка
   // «Сайт» (фото и описания моделей) переехал в карточку техники во вкладке «Парк»
-  const ALL_TABS = ['cabinet', 'overview', 'fleet', 'price', 'journal', 'calendar', 'requests', 'crm', 'marketing', 'finance', 'server', 'access', 'tickets'];
+  ICONS.invest = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6h-6z"/></svg>';
+  const ALL_TABS = ['cabinet', 'invest', 'overview', 'fleet', 'price', 'journal', 'calendar', 'requests', 'crm', 'marketing', 'finance', 'server', 'access', 'tickets'];
   // Внизу на телефоне помещается 6 кнопок; если вкладок больше — последние уходят в «Ещё»
   const BOTTOM_MAX = 6;
   // Вкладка видна, если у роли есть хотя бы одно из этих прав (настраивает админ на вкладке «Доступы»)
@@ -110,12 +111,15 @@
     crm: ['crm.view'], marketing: ['marketing.view'], finance: ['finance.view'], site: ['site.view'], server: ['server.view'], access: ['access.admin'],
     tickets: ['tickets.view'],
     // «Кабинет» — по привязке к источнику агента (не по роли) или просмотр из «Маркетинга»
-    cabinet: []
+    cabinet: [],
+    // «Инвестор» — у кого в «Доступах» есть доля, или просмотр владельцем/админом
+    invest: []
   };
   const can = (perm) => Boolean(state.user?.permissions?.includes(perm));
   /** Вкладки, доступные роли вошедшего сотрудника */
   const cabinetVisible = () => Boolean(state.user?.sourceId || state.cabinetPreview);
-  const tabs = () => ALL_TABS.filter((id) => (id === 'cabinet' ? cabinetVisible() : TAB_PERMISSION[id].some(can)))
+  const investVisible = () => Boolean(state.user?.investor || state.investorPreview);
+  const tabs = () => ALL_TABS.filter((id) => (id === 'cabinet' ? cabinetVisible() : id === 'invest' ? investVisible() : TAB_PERMISSION[id].some(can)))
     .map((id) => ({ id, title: t(`tab.${id}`) }));
 
   const state = {
@@ -421,6 +425,7 @@
     if (state.tab === 'price') price.load();
     if (state.tab === 'tickets') tickets.load();
     if (state.tab === 'cabinet') cabinet.load();
+    if (state.tab === 'invest') investor.load();
     clearInterval(state.timer);
     state.timer = setInterval(() => { if (!document.hidden) loadData(); }, REFRESH_MS);
     loadServerAlert();
@@ -677,7 +682,10 @@
     if (tab === 'price') price.load();
     if (tab === 'tickets') tickets.load();
     if (tab === 'cabinet') cabinet.load(state.cabinetPreview);
+    if (tab === 'invest') investor.load(state.investorPreview);
     if (tab === 'site' && !state.models) loadModels();
+    // «Парк»: свежие данные при входе (новый инвестор, правки на другой вкладке) — не ждём таймера
+    if (tab === 'fleet') loadData();
     if (tab === 'server') startServerPolling();
     else stopServerPolling();
     history.replaceState(null, '', `#${tab}`);
@@ -712,6 +720,7 @@
     // Тикеты: пока сотрудник пишет, фоновое обновление вкладку не трогает
     if (state.tab === 'tickets' && (!view.querySelector('.tk') || tickets.canRefresh())) view.innerHTML = tickets.render();
     if (state.tab === 'cabinet' && (!view.querySelector('.cab') || cabinet.canRefresh())) view.innerHTML = cabinet.render();
+    if (state.tab === 'invest' && (!view.querySelector('.inv') || investor.canRefresh())) view.innerHTML = investor.render();
     // Роли не открыт ни один раздел — подсказка вместо пустого экрана
     if (!tabs().length) view.innerHTML = `<div class="empty">${esc(t('app.noSections'))}</div>`;
   }
@@ -756,6 +765,25 @@
     rerender: () => { if (state.tab === 'cabinet') $('#view').innerHTML = cabinet.render(); }
   });
 
+  /* ------------------------------------------------- Вкладка «Инвестор» */
+
+  const investor = window.STAFF_INVESTOR.create({
+    api, t, esc, money, dateTime,
+    lang: () => lang,
+    locale: () => LOCALES[lang],
+    statusName: (status) => STATUS[status] || status,
+    today: () => new Date(Date.now() + TZ_OFFSET_MS).toISOString().slice(0, 10),
+    closePreview: () => { state.investorPreview = null; investor.reset(); setTab(state.user?.investor ? 'invest' : 'access'); },
+    rerender: () => { if (state.tab === 'invest') $('#view').innerHTML = investor.render(); }
+  });
+
+  /** Из «Доступов» или «Парка»: открыть кабинет инвестора (как его видит инвестор) */
+  function openInvestor(staffId) {
+    state.investorPreview = staffId;
+    investor.reset();
+    setTab('invest');
+  }
+
   /** Из «Маркетинга»: открыть кабинет источника (как его видит агент) */
   function openCabinet(sourceId) {
     state.cabinetPreview = sourceId;
@@ -792,6 +820,7 @@
 
   const access = window.STAFF_ACCESS.create({
     api, t, esc,
+    openInvestor: (id) => openInvestor(id),
     dateTime,
     errorText: (err) => ERRORS[err.code] || t('md.saveFailed'),
     rerender: () => { if (state.tab === 'access') $('#view').innerHTML = access.render(); }
@@ -1197,6 +1226,7 @@
       $('#model-dialog').addEventListener('close', () => { if (state.tab === 'fleet') loadData(); }, { once: true });
     },
     rerender: () => render(),
+    openInvestor: (id) => openInvestor(id),
     reload: async () => { await loadData(); render(); }
   });
 
@@ -1932,6 +1962,7 @@
       if (state.tab === 'price' && price.onClick(event)) return;
       if (state.tab === 'tickets' && tickets.onClick(event)) return;
       if (state.tab === 'cabinet' && cabinet.onClick(event)) return;
+      if (state.tab === 'invest' && investor.onClick(event)) return;
       if (event.target.closest('[data-more]')) {
         state.moreOpen = !state.moreOpen;
         return renderTabs();
@@ -2067,6 +2098,7 @@
       if (state.tab === 'price' && price.onSubmit(event)) return;
       if (state.tab === 'tickets' && tickets.onSubmit(event)) return;
       if (state.tab === 'cabinet' && cabinet.onSubmit(event)) return;
+      if (state.tab === 'invest' && investor.onSubmit(event)) return;
       // Окно карточки техники («Парк»)
       if (vehicles.onSubmit(event)) return;
       if (event.target.id !== 'srv-settings') return;

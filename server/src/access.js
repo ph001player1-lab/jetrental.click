@@ -55,6 +55,8 @@ const preset = (overview, fleet, calendar, requests, journal, clients, timesheet
 // и агентом: у него свои вкладки и ещё кабинет. Роль «Агент» — для тех, кто только агент:
 // ни парка, ни чужих заявок, только кабинет и свои тикеты
 const AGENT_ROLE = ['agent', 'Агент', preset(N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, V)];
+// Инвестор: только свой кабинет (машины, загрузка, доход, доля) и свои тикеты
+const INVESTOR_ROLE = ['investor', 'Инвестор', preset(N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, V)];
 const DEFAULT_ROLES = [
   // CRM по умолчанию — только у владельца (и админа); остальным админ открывает сам
   // Прайс меняют только владелец и админ, менеджеры смотрят (называть цены клиентам)
@@ -66,7 +68,8 @@ const DEFAULT_ROLES = [
   ['courier', 'Курьер', preset(N, V, V, N, V, V, N, N, N, N, N, N)],
   // «Просмотр» — роль по умолчанию (и для прежней роли Viewer из таблицы)
   ['viewer', 'Просмотр', preset(V, V, V, V, V, N, N, V, N, V, N, N, N, N, V)],
-  AGENT_ROLE
+  AGENT_ROLE,
+  INVESTOR_ROLE
 ];
 export const DEFAULT_ROLE = 'viewer';
 
@@ -107,6 +110,10 @@ if (!db.raw.prepare('PRAGMA table_info(access_staff)').all().some((c) => c.name 
 if (!db.raw.prepare('PRAGMA table_info(access_staff)').all().some((c) => c.name === 'source_id')) {
   db.raw.exec('ALTER TABLE access_staff ADD COLUMN source_id INTEGER');
 }
+// Инвестор: доля, % от прибыли его машин (null — не инвестор) и с какого месяца считаем
+for (const [col, type] of [['investor_percent', 'REAL'], ['investor_since', 'TEXT']]) {
+  if (!db.raw.prepare('PRAGMA table_info(access_staff)').all().some((c) => c.name === col)) db.raw.exec(`ALTER TABLE access_staff ADD COLUMN ${col} ${type}`);
+}
 
 const now = () => new Date().toISOString();
 
@@ -126,6 +133,7 @@ const q = {
     WHERE id = ?`),
   setRate: db.raw.prepare('UPDATE access_staff SET rate = ? WHERE id = ?'),
   setSource: db.raw.prepare('UPDATE access_staff SET source_id = ? WHERE id = ?'),
+  setInvestor: db.raw.prepare('UPDATE access_staff SET investor_percent = ?, investor_since = COALESCE(investor_since, ?) WHERE id = ?'),
   bySource: db.raw.prepare('SELECT * FROM access_staff WHERE source_id = ? AND active = 1'),
   deleteStaff: db.raw.prepare('DELETE FROM access_staff WHERE id = ?'),
   log: db.raw.prepare('INSERT INTO access_log (at, by, action, details) VALUES (?, ?, ?, ?)'),
@@ -159,6 +167,12 @@ if (db.getSetting('access_price_section') !== '1') {
     if (!perms.price) q.updateRole.run(role.name, JSON.stringify({ ...perms, price: level }), now(), role.id);
   }
   db.setSetting('access_price_section', '1');
+}
+
+// Роль «Инвестор» появилась позже — добавляем один раз
+if (db.getSetting('access_investor_role') !== '1') {
+  if (!q.role.get(INVESTOR_ROLE[0])) q.addRole.run(INVESTOR_ROLE[0], INVESTOR_ROLE[1], JSON.stringify(INVESTOR_ROLE[2]), 51, now(), now());
+  db.setSetting('access_investor_role', '1');
 }
 
 // Правка парка в портале появилась позже: один раз открываем её владельцу
@@ -233,8 +247,16 @@ const digitsOnly = (value) => String(value || '').replace(/\D/g, '');
 const publicStaff = (row) => ({
   id: row.id, name: row.name, email: row.email || '', telegramId: row.telegram_id || '', whatsapp: row.whatsapp || '',
   roleId: row.role_id, active: Boolean(row.active), connected: Boolean(row.email), rate: row.rate || 0,
-  sourceId: row.source_id || null
+  sourceId: row.source_id || null,
+  // Инвестор: доля, % от прибыли машины (null — не инвестор)
+  investorPercent: row.investor_percent ?? null, investorSince: row.investor_since || null
 });
+
+/** Сотрудник по id (кабинет инвестора, уведомления) или null */
+export const staffById = (id) => { const r = q.staffById.get(Number(id) || 0); return r ? publicStaff(r) : null; };
+
+/** Инвесторы (для выбора в карточке техники и начислений): активные, с долей */
+export const investors = () => q.staff.all().filter((r) => r.active && r.investor_percent !== null && r.investor_percent !== undefined).map(publicStaff);
 
 /** Кабинеты источника: активные агенты, привязанные к нему (для уведомлений) */
 export const agentsOfSource = (sourceId) => q.bySource.all(Number(sourceId) || 0).map(publicStaff);
@@ -253,7 +275,7 @@ export function staffByEmail(email) {
 
 // Роль из таблицы при переезде: код, русское название или прежнее Editor
 const ROLE_ALIASES = {
-  editor: 'manager', admin: 'admin', 'админ': 'admin', 'менеджер': 'manager', 'владелец': 'owner', 'агент': 'agent', 'партнёр': 'agent', 'партнер': 'agent', 'финансист': 'finance', 'курьер': 'courier',
+  editor: 'manager', admin: 'admin', 'админ': 'admin', 'инвестор': 'investor', 'менеджер': 'manager', 'владелец': 'owner', 'агент': 'agent', 'партнёр': 'agent', 'партнер': 'agent', 'финансист': 'finance', 'курьер': 'courier',
   'сервис': 'service', 'работник сервиса': 'service', 'просмотр': 'viewer'
 };
 
@@ -382,6 +404,11 @@ export function saveStaff(input, by, { isAdminEmail }) {
   const rate = input.rate === undefined ? undefined : Math.max(0, Math.min(100000, Math.round(Number(input.rate) || 0)));
   // Кабинет агента — источник из «Маркетинга» (не передан — прежний остаётся)
   const sourceId = input.sourceId === undefined ? undefined : (Number(input.sourceId) > 0 ? Math.round(Number(input.sourceId)) : null);
+  // Кабинет инвестора — доля, % от прибыли машин (пусто — не инвестор; не передан — прежняя)
+  const rawPct = input.investorPercent === undefined ? undefined : String(input.investorPercent ?? '').replace(',', '.').trim();
+  const investorPercent = rawPct === undefined ? undefined : rawPct === '' ? null : Number(rawPct);
+  if (investorPercent !== undefined && investorPercent !== null && !(investorPercent >= 0 && investorPercent <= 100)) throw new AccessError('bad_percent');
+  const month = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 7);
   if (input.id) {
     const old = q.staffById.get(Number(input.id));
     if (!old) throw new AccessError('unknown_staff');
@@ -391,8 +418,10 @@ export function saveStaff(input, by, { isAdminEmail }) {
     q.updateStaff.run(name, email, telegramId, whatsapp, role.id, active, now(), old.id);
     if (rate !== undefined) q.setRate.run(rate || null, old.id);
     if (sourceId !== undefined) q.setSource.run(sourceId, old.id);
+    if (investorPercent !== undefined) q.setInvestor.run(investorPercent, investorPercent === null ? null : month, old.id);
     const changes = {};
     if (sourceId !== undefined && (old.source_id || null) !== sourceId) changes.source = `${old.source_id || '—'} → ${sourceId || '—'}`;
+    if (investorPercent !== undefined && (old.investor_percent ?? null) !== investorPercent) changes.investor = `${old.investor_percent ?? '—'} → ${investorPercent ?? '—'}%`;
     if (rate !== undefined && (old.rate || 0) !== rate) changes.rate = `${old.rate || 0} → ${rate}`;
     if (old.name !== name) changes.name = `${old.name} → ${name}`;
     if ((old.email || null) !== email) changes.email = `${old.email || '—'} → ${email || '—'}`;
@@ -406,6 +435,7 @@ export function saveStaff(input, by, { isAdminEmail }) {
   const info = q.addStaff.run(name, email, telegramId, whatsapp, role.id, active, now(), now());
   if (rate) q.setRate.run(rate, Number(info.lastInsertRowid));
   if (sourceId) q.setSource.run(sourceId, Number(info.lastInsertRowid));
+  if (investorPercent !== undefined && investorPercent !== null) q.setInvestor.run(investorPercent, month, Number(info.lastInsertRowid));
   logChange(by, 'staff.create', { staff: name, role: role.name });
   return publicStaff(q.staffById.get(Number(info.lastInsertRowid)));
 }

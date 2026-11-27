@@ -75,7 +75,13 @@ db.raw.exec(`
   );
 `);
 
+// Чья машина (кабинет инвестора) и особая доля для этой машины (пусто — доля инвестора)
+for (const [col, type] of [['investor_id', 'INTEGER'], ['investor_percent', 'REAL']]) {
+  if (!db.raw.prepare('PRAGMA table_info(fleet_vehicles)').all().some((c) => c.name === col)) db.raw.exec(`ALTER TABLE fleet_vehicles ADD COLUMN ${col} ${type}`);
+}
+
 const q = {
+  setInvestor: db.raw.prepare('UPDATE fleet_vehicles SET investor_id = ?, investor_percent = ? WHERE id = ?'),
   vehicles: db.raw.prepare('SELECT * FROM fleet_vehicles ORDER BY type, client_model, plate'),
   vehicle: db.raw.prepare('SELECT * FROM fleet_vehicles WHERE id = ?'),
   byKey: db.raw.prepare('SELECT * FROM fleet_vehicles WHERE plate_key = ?'),
@@ -125,6 +131,7 @@ const publicVehicle = (v) => ({
   serviceDate: v.service_date || '', serviceKm: v.service_km ?? null, nextServiceKm: v.next_service_km ?? null,
   nextServiceDate: v.next_service_date || '', repair: v.repair || 'ok', responsible: v.responsible || '',
   inventoryDate: v.inventory_date || '', photo: v.photo || '', comment: v.comment || '',
+  investorId: v.investor_id || null, investorPercent: v.investor_percent ?? null,
   updatedAt: v.updated_at, updatedBy: v.updated_by || ''
 });
 
@@ -218,12 +225,25 @@ export function saveVehicle(input, by) {
     inventory_date: dateOrNull(input.inventoryDate), photo: text(input.photo, 300), comment: text(input.comment, 2000),
     at: nowIso(), by
   };
+  // Инвестор машины (кабинет инвестора) и особая доля (пусто — доля инвестора); не переданы — прежние
+  const investorId = input.investorId === undefined ? undefined : (Number(input.investorId) > 0 ? Math.round(Number(input.investorId)) : null);
+  const pctRaw = input.investorPercent === undefined ? undefined : String(input.investorPercent ?? '').replace(',', '.').trim();
+  const investorPct = pctRaw === undefined || pctRaw === '' ? (pctRaw === '' ? null : undefined) : Number(pctRaw);
+  if (investorPct !== undefined && investorPct !== null && !(investorPct >= 0 && investorPct <= 100)) throw new FleetError('bad_percent');
   const same = q.byKey.get(plateKey);
   if (input.id) {
     const old = q.vehicle.get(Number(input.id));
     if (!old) throw new FleetError('not_found');
     if (same && same.id !== old.id) throw new FleetError('plate_taken');
     q.update.run({ ...row, id: old.id });
+    if (investorId !== undefined || investorPct !== undefined) {
+      const nextId = investorId !== undefined ? investorId : old.investor_id;
+      const nextPct = investorPct !== undefined ? investorPct : old.investor_percent;
+      q.setInvestor.run(nextId, nextPct, old.id);
+      if ((old.investor_id || null) !== (nextId || null) || (old.investor_percent ?? null) !== (nextPct ?? null)) {
+        q.log.run(row.at, by, plate, 'investor', JSON.stringify({ investor: `${old.investor_id || '—'} → ${nextId || '—'}`, percent: `${old.investor_percent ?? '—'} → ${nextPct ?? '—'}` }));
+      }
+    }
     const changed = Object.keys(row).filter((k) => !['at', 'by', 'plate_key'].includes(k) && String(old[k] ?? '') !== String(row[k] ?? ''));
     q.log.run(row.at, by, plate, 'update', JSON.stringify(Object.fromEntries(changed.map((k) => [k, `${old[k] ?? '—'} → ${row[k] ?? '—'}`]))));
     ensureCatalogModel(clientModel, type);
@@ -232,6 +252,7 @@ export function saveVehicle(input, by) {
   }
   if (same) throw new FleetError('plate_taken');
   const info = q.insert.run({ ...row, sheet_id: null });
+  if (investorId || investorPct !== undefined) q.setInvestor.run(investorId || null, investorPct ?? null, Number(info.lastInsertRowid));
   q.log.run(row.at, by, plate, 'create', JSON.stringify({ model: clientModel, type }));
   ensureCatalogModel(clientModel, type);
   console.log(`Fleet: ${plate} (${clientModel}) added by ${by}`);

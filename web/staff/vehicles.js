@@ -50,6 +50,12 @@
       return `<div class="vh-block">${details(v)}${actions(v)}</div>`;
     }
 
+    /** Инвестор машины — видят только владелец и админ (у них есть список инвесторов) */
+    function investorName(v) {
+      const p = (fleet().investors || []).find((x) => x.id === v.investorId);
+      return p ? `${p.name} · ${v.investorPercent ?? p.percent}%` : '';
+    }
+
     function details(v) {
       const rows = [
         [t('vh.f.brandModel'), `${v.brand} ${v.model}`.trim()],
@@ -58,6 +64,7 @@
         [t('vh.f.service'), [v.serviceDate && ctx.shortDate(v.serviceDate), v.serviceKm !== null && `${num(v.serviceKm)} ${t('vh.km')}`].filter(Boolean).join(' · ')],
         [t('vh.f.nextService'), [v.nextServiceDate && ctx.shortDate(v.nextServiceDate), v.nextServiceKm !== null && `${num(v.nextServiceKm)} ${t('vh.km')}`].filter(Boolean).join(' · ')],
         [t('vh.f.responsible'), v.responsible], [t('vh.f.inventoryDate'), v.inventoryDate && ctx.shortDate(v.inventoryDate)],
+        [t('vh.f.investor'), investorName(v)],
         [t('vh.f.comment'), v.comment]
       ].filter(([, value]) => value);
       return `
@@ -181,6 +188,16 @@
       return `<label class="field">${label}<input class="search" type="${type}" name="${name}" value="${esc(value === null ? '' : String(value))}"${extra}${list} autocomplete="off"></label>`;
     }
 
+    /** Чья машина (кабинет инвестора) и особая доля для неё — владелец и админ */
+    function investorFields(v) {
+      const list = fleet().investors || [];
+      if (!list.length) return '';
+      const options = list.map((p) => `<option value="${p.id}"${p.id === v.investorId ? ' selected' : ''}>${esc(p.name)} (${p.percent}%)</option>`).join('');
+      return `
+        <label class="field"><span>${esc(t('vh.f.investor'))}</span><select class="search" name="investorId"><option value="">${esc(t('vh.f.investorNone'))}</option>${options}</select></label>
+        <label class="field"><span>${esc(t('vh.f.investorPercent'))}</span><input class="search" name="investorPercent" inputmode="decimal" value="${esc(v.investorPercent ?? '')}" placeholder="${esc(t('vh.f.investorPercentPh'))}"></label>`;
+    }
+
     function vehicleForm(d) {
       const v = d.vehicle || {};
       const models = [...new Set(vehicles().map(nameOf).concat(ctx.catalogModels()))].filter(Boolean).sort();
@@ -192,7 +209,7 @@
             <button type="button" class="icon-btn icon-btn--plain" data-vh-close aria-label="${esc(t('vh.close'))}">×</button>
           </div>
           <p class="muted jr-small">${esc(t('vh.formTip'))}</p>
-          <div class="vh-grid">${FIELDS.map((f) => field(f, v)).join('')}</div>
+          <div class="vh-grid">${FIELDS.map((f) => field(f, v)).join('')}${investorFields(v)}</div>
           <datalist id="vh-models">${models.map((m) => `<option value="${esc(m)}"></option>`).join('')}</datalist>
           <datalist id="vh-brands">${brands.map((m) => `<option value="${esc(m)}"></option>`).join('')}</datalist>
           <div data-vh-dmsg></div>
@@ -455,7 +472,7 @@
 
     const ERR = {
       plate_required: 'vh.err.plate', type_required: 'vh.err.type', model_required: 'vh.err.model', plate_taken: 'vh.err.taken',
-      bad_number: 'vh.err.number', bad_date: 'vh.err.date', invalid_price: 'vh.err.price', invalid_date: 'vh.err.date'
+      bad_number: 'vh.err.number', bad_date: 'vh.err.date', invalid_price: 'vh.err.price', invalid_date: 'vh.err.date', bad_percent: 'vh.err.percent'
     };
     const errText = (err) => t(ERR[err.code] || 'vh.err.failed');
 

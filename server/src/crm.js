@@ -774,6 +774,26 @@ export function blacklistReports(now = Date.now()) {
  * Аренда клиента относится к его последней заявке, сделанной не раньше чем
  * за 60 дней до начала аренды (и не позже дня начала), — без двойного счёта.
  */
+/**
+ * Аренды по госномеру (для кабинета инвестора): plate → [{ from, to, sum, active }] —
+ * только даты и суммы, без клиентов.
+ */
+export async function rentalsByPlate(now = Date.now()) {
+  const { clients } = await buildIndex(now);
+  const out = new Map();
+  for (const c of clients.values()) {
+    for (const r of c.rentals) {
+      const sum = r.ws ? r.ws.sum : Math.round(r.revenue);
+      for (const plate of r.plates) {
+        if (!out.has(plate)) out.set(plate, []);
+        out.get(plate).push({ from: r.from || bangkokIso(Date.parse(r.startTs)), to: r.to || null, sum, active: Boolean(r.active) });
+      }
+    }
+  }
+  for (const list of out.values()) list.sort((a, b) => String(b.from).localeCompare(String(a.from)));
+  return out;
+}
+
 export async function requestOutcomes(now = Date.now()) {
   const out = new Map();
   for (const [id, x] of await requestRentals(now)) {

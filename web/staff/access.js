@@ -67,6 +67,7 @@
             <label class="field"><span>${esc(t('ac.f.telegram'))}</span><input name="telegramId" class="search" inputmode="numeric" value="${esc(s.telegramId || '')}" placeholder="123456789"></label>
             <label class="field"><span>${esc(t('ac.f.source'))}</span>
               <select name="sourceId" class="search"><option value="">${esc(t('ac.f.sourceNone'))}</option>${sources}</select></label>
+            <label class="field"><span>${esc(t('ac.f.investor'))}</span><input name="investorPercent" class="search" inputmode="decimal" value="${esc(s.investorPercent ?? '')}" placeholder="${esc(t('ac.f.investorPh'))}"></label>
           </div>
           <p class="muted jr-small">${esc(t('ac.f.hint'))}</p>
           <div class="ac-form__buttons">
@@ -83,6 +84,7 @@
       if (s.waName && s.waName !== s.name) parts.push(t('ac.waName', { name: s.waName }));
       const source = s.sourceId && (st.data.sources || []).find((x) => x.id === s.sourceId);
       if (source) parts.push(t('ac.cabinetOf', { name: source.name }));
+      if (s.investorPercent !== null && s.investorPercent !== undefined) parts.push(t('ac.investorOf', { n: s.investorPercent }));
       return parts.length ? `<div class="muted jr-small">${esc(parts.join(' · '))}</div>` : '';
     }
 
@@ -101,6 +103,7 @@
           <td><select class="search ac-select" data-ac-role="${s.id}" aria-label="${esc(t('ac.f.role'))}">${roleOptions(s.roleId)}</select></td>
           <td><label class="ac-switch"><input type="checkbox" data-ac-active="${s.id}"${s.active ? ' checked' : ''}> ${esc(t(s.active ? 'ac.active' : 'ac.inactive'))}</label></td>
           <td class="ac-actions">
+            ${s.investorPercent !== null && s.investorPercent !== undefined ? `<button type="button" class="link" data-ac-invest="${s.id}">📈 ${esc(t('ac.investCabinet'))}</button>` : ''}
             <button type="button" class="link" data-ac-edit="${s.id}">${esc(t('ac.edit'))}</button>
             <button type="button" class="link ac-danger" data-ac-del="${s.id}">${esc(t('ac.delete'))}</button>
           </td>
@@ -248,6 +251,9 @@
       const el = event.target;
       if (!el.closest('.ac')) return false;
       if (el.closest('[data-ac-add]')) { st.editing = 'new'; ctx.rerender(); return true; }
+      // Кабинет инвестора — посмотреть, как его видит инвестор, и записать выплату
+      const invest = el.closest('[data-ac-invest]');
+      if (invest) { ctx.openInvestor?.(Number(invest.dataset.acInvest)); return true; }
       if (el.closest('[data-ac-cancel]')) { st.editing = null; ctx.rerender(); return true; }
       const edit = el.closest('[data-ac-edit]');
       if (edit) { st.editing = Number(edit.dataset.acEdit); ctx.rerender(); return true; }
