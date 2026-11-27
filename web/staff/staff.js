@@ -723,7 +723,7 @@
     // Во время правки источника фоновое обновление вкладку не трогает (не теряем введённое)
     if (state.tab === 'marketing' && (!view.querySelector('.mk') || marketing.canRefresh())) { view.innerHTML = marketing.render(); marketing.mount(); }
     // Прайс: пока есть несохранённые правки цен, фоновое обновление вкладку не трогает
-    if (state.tab === 'price' && (!view.querySelector('.pr') || price.canRefresh())) view.innerHTML = price.render();
+    if (state.tab === 'price' && (!view.querySelector('.pr') || price.canRefresh())) { view.innerHTML = price.render(); price.afterRender(); }
     // Тикеты: пока сотрудник пишет, фоновое обновление вкладку не трогает
     if (state.tab === 'tickets' && (!view.querySelector('.tk') || tickets.canRefresh())) view.innerHTML = tickets.render();
     if (state.tab === 'cabinet' && (!view.querySelector('.cab') || cabinet.canRefresh())) view.innerHTML = cabinet.render();
@@ -911,7 +911,7 @@
     api, t, esc, can, money, dateTime,
     locale: () => LOCALES[lang],
     seasonName: (name) => (I18N.en[`season.${name}`] ? t(`season.${name}`) : name),
-    rerender: () => { if (state.tab === 'price') $('#view').innerHTML = price.render(); }
+    rerender: () => { if (state.tab === 'price') { $('#view').innerHTML = price.render(); price.afterRender(); } }
   });
 
   /* ---------------------------------------------- Вкладка «Кабинет» агента */

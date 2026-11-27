@@ -1152,10 +1152,17 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
 .pr-table { border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
 .pr-table table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 860px; }
 .pr-table th, .pr-table td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.pr-table thead th { position: sticky; top: 0; z-index: 2; background: var(--surface-2); font-size: 12px; color: var(--muted); font-weight: 600; }
+.pr-table thead th { position: sticky; top: var(--pr-head-top, 60px); z-index: 2; background: var(--surface-2); font-size: 12px; color: var(--muted); font-weight: 600; box-shadow: 0 1px 0 var(--line); }
+.pr-table thead th:first-child { border-top-left-radius: 14px; }
+.pr-table thead th:last-child { border-top-right-radius: 14px; }
+/* Шире экрана — таблица прокручивается в своей рамке (вбок и вниз), подписи закреплены в ней */
+.pr-table--scroll { overflow: auto; max-height: calc(100vh - var(--pr-head-top, 60px) - 100px); max-height: calc(100dvh - var(--pr-head-top, 60px) - 100px - var(--safe-bottom)); }
+.pr-table--scroll thead th { top: 0; }
 .pr-table th.pr-model { text-align: left; position: sticky; left: 0; z-index: 1; background: var(--surface); min-width: 200px; white-space: normal; font-weight: 600; }
 .pr-table thead th.pr-model { z-index: 3; background: var(--surface-2); }
-.pr-group th { text-align: left; background: var(--surface-2); font-size: 13px; color: var(--muted); position: sticky; left: 0; }
+.pr-group th { text-align: left; background: var(--surface-2); font-size: 13px; color: var(--muted); }
+/* Подпись группы видна и при прокрутке таблицы вбок */
+.pr-group th span { position: sticky; left: 8px; }
 .pr-model__name { margin-right: 6px; }
 .pr-check { margin-right: 6px; vertical-align: -2px; }
 .pr-units { border: 0; background: none; padding: 0; font: inherit; font-size: 12px; font-weight: 500; color: var(--muted); cursor: pointer; }

@@ -179,9 +179,9 @@
       const body = TYPES.concat([null]).map((type) => {
         const rows = list.filter((m) => (type ? m.type === type : !TYPES.includes(m.type)));
         if (!rows.length) return '';
-        return `<tr class="pr-group"><th colspan="8">${type ? `${TYPE_ICON[type]} ${esc(t(`pr.type.${type}`))}` : esc(t('pr.type.other'))}</th></tr>${rows.map(modelRows).join('')}`;
+        return `<tr class="pr-group"><th colspan="8"><span>${type ? `${TYPE_ICON[type]} ${esc(t(`pr.type.${type}`))}` : esc(t('pr.type.other'))}</span></th></tr>${rows.map(modelRows).join('')}`;
       }).join('');
-      return `<div class="table-wrap pr-table"><table>${head}<tbody>${body}</tbody></table></div>`;
+      return `<div class="pr-table"><table>${head}<tbody>${body}</tbody></table></div>`;
     }
 
     function toolsHtml() {
@@ -457,6 +457,23 @@
       dlg.innerHTML = dialogHtml();
     }
 
+    /**
+     * Подписи столбцов всегда видны: закреплены под верхней панелью портала (её высоту
+     * меряем — на телефоне и компьютере она разная). Если таблица шире экрана, она
+     * прокручивается внутри своей рамки и вбок, и вниз — подписи закреплены в ней.
+     */
+    function afterRender() {
+      const wrap = document.querySelector('#view .pr-table');
+      if (!wrap) return;
+      const bar = document.querySelector('.topbar');
+      wrap.style.setProperty('--pr-head-top', `${bar ? bar.offsetHeight : 60}px`);
+      wrap.classList.remove('pr-table--scroll');
+      const table = wrap.querySelector('table');
+      wrap.classList.toggle('pr-table--scroll', table.scrollWidth > wrap.clientWidth + 1);
+    }
+    let fitTimer = null;
+    window.addEventListener('resize', () => { clearTimeout(fitTimer); fitTimer = setTimeout(afterRender, 100); });
+
     /** Перерисовать вкладку, сохранив фокус и прокрутку */
     function rerender() {
       const y = window.scrollY;
@@ -697,7 +714,7 @@
       return !st.edits.size && !st.confirm && !st.imp && !document.activeElement?.closest?.('.pr input, .pr select');
     }
 
-    return { load, render, onClick, onInput, onChange, onSubmit, show, canRefresh };
+    return { load, render, afterRender, onClick, onInput, onChange, onSubmit, show, canRefresh };
   }
 
   window.STAFF_PRICE = { create };
