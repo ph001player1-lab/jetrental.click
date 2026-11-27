@@ -1697,6 +1697,7 @@
                 : `<div class="muted">${esc(t('fleet.nothing30'))}</div>`}
             </div>
             ${vehicles.historyBlock(car)}
+            ${vehicles.mediaBlock(car)}
             ${vehicles.cardBlock(car)}
           </div>` : ''}
       </article>`;
@@ -2446,8 +2447,8 @@
       const edit = event.target.closest('[data-edit-model]');
       if (edit) return openModel(edit.dataset.editModel);
       if (state.tab === 'fleet' && vehicles.onClick(event)) return;
-      // Формы внутри карточки машины не сворачивают её
-      if (event.target.closest('.vh-actions')) return;
+      // Формы и раскрывающиеся блоки (история, архив фото) внутри карточки машины не сворачивают её
+      if (event.target.closest('.vh-actions, .car details')) return;
       const car = event.target.closest('[data-car]');
       if (car && !event.target.closest('a')) {
         const id = Number(car.dataset.car);

@@ -60,6 +60,7 @@ import { marketingReport, marketingDetails, saveSource, deleteSource, placeSourc
 import { crmList, crmClient, saveClient, setTags, addNote, mergeClients, importClients, CrmError } from './crm.js';
 import { recognizeContractPhotos, AiError } from './ai/recognize.js';
 import { renterOf, parsePhotos, contractProposal } from './ai/proposal.js';
+import { mediaCounts, fleetMediaList, fleetMediaFile } from './vehicleMedia.js';
 import { opDrafts, opDraftCreate, opDraftGet, opDraftPhotoAdd, opDraftPhotoGet, opDraftPhotoDelete, opDraftUpdate, opDraftCancel, opDraftRecognize, opDraftManual,
   opDraftApply, opDraftAttach, opVehicle, expensesList, expensePhoto, expenseDelete } from './operations.js';
 import { importCashbook } from './cashbook.js';
@@ -75,7 +76,7 @@ import { wabotPortalStatus, wabotPortalSettings, wabotPortalConfig, wabotPortalP
 import { groupStatusByPlate } from './journal/reconcile.js';
 import { discountsReport, discountsDecide, discountsSettingsRoute } from './discounts.js';
 import { settingsRoute, settingsService, settingsServiceDelete, settingsPaid, settingsPaymentDelete, settingsAi, settingsDomainsCheck } from './itSettings.js';
-import { docsList, docsOne, docsPrefill, docsSave, docsDelete, docsPdf, docsSign, docsUnsign, docsLink, docsSend, docsPhotoUpload, docsPhotoGet, docsPhotoDelete, contractFor, contractsOfClient, docsIssue, docsUnissue, contractRenters } from './documents.js';
+import { docsList, docsOne, docsPrefill, docsSave, docsDelete, docsPdf, docsSign, docsUnsign, docsLink, docsSend, docsPhotoUpload, docsPhotoGet, docsPhotoDelete, contractFor, contractsOfClient, docsIssue, docsUnissue, contractRenters, docsPendingPhoto } from './documents.js';
 
 const COOKIE = 'jr_staff';
 const MAX_ATTEMPTS = 5;
@@ -342,8 +343,10 @@ async function fleet(req, res) {
   // Арендатор (текущая аренда или бронь): договор → клиент в событии портала → клиент отчёта группы (CRM)
   const contacts = can(staff, 'clients.view');
   const renters = fleetView ? await Promise.all(cars.map((car) => renterOf(car).catch(() => null))) : [];
+  const media = fleetView ? mediaCounts() : new Map();
   cars = cars.map((car, i) => ({
     ...car,
+    media: media.get(car.vehicleId) || 0,
     renter: renters[i] ? { ...renters[i], phone: contacts ? renters[i].phone : null } : null,
     problems: fleetView ? vehicleIssues(car, { vehicle: vehicleById.get(car.vehicleId), entry: catalog.get(car.model), tariff: prices.tariffs?.[car.id], wsOn, today }) : []
   }));
@@ -928,6 +931,9 @@ const ROUTES = {
   'POST /api/staff/docs/unissue': signedIn(docsUnissue),
   'POST /api/staff/docs/recognize': signedIn(docsRecognizeRoute),
   'GET /api/staff/clients/pick': signedIn(clientsPickRoute),
+  'GET /api/staff/fleet/media': signedIn(fleetMediaList),
+  'GET /api/staff/fleet/media/file': signedIn(fleetMediaFile),
+  'POST /api/staff/docs/pending-photo': signedIn(docsPendingPhoto),
   'GET /api/staff/op/drafts': signedIn(opDrafts),
   'POST /api/staff/op/draft': signedIn(opDraftCreate),
   'GET /api/staff/op/draft': signedIn(opDraftGet),

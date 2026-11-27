@@ -50,12 +50,16 @@ import { wabotSendDocument, wabotSend, wabotStatus, postFleetEvent } from './wab
 import { addStatusEvent, undoEvent, eventReport, setEventWa, getEvent, StatusError } from './vehicleStatus.js';
 import { invalidateFleet } from './fleet.js';
 import { isSold } from './sold.js';
+import { archivePhotos } from './vehicleMedia.js';
 import { computeDiscount, syncContractDiscount, activeDiscount, dropDocDiscounts, setDecisionHandler, discountSettings, canApprove, DiscountError, KINDS as DISCOUNT_KINDS, OTHER as OTHER_REASON } from './discounts.js';
 
 const DOCS_DIR = path.join(config.dataDir, 'docs');
 const KINDS = ['contract', 'photos', 'return', 'receipt', 'addendum'];
 const SIGN_DAYS = 3;
 const MAX_PHOTOS = 9;
+// Фото документов клиента для отчёта о выдаче в WhatsApp: лежат только до «Выдать технику» (не дольше 3 дней)
+const PENDING_DIR = path.join(config.dataDir, 'pending-wa');
+const PENDING_DAYS = 3;
 const BANGKOK_MS = 7 * 3600000;
 
 db.raw.exec(`
@@ -626,12 +630,63 @@ export function addDocPhotos(docId, photos, staff) {
     n++;
   }
   if (n) {
+    // Фото техники — и в архив её служебной карточки
+    const contract = getDoc(doc.contract_id);
+    const vehicle = contract ? getVehicle(rowData(contract).vehicleId) : null;
+    if (vehicle) archivePhotos(vehicle, photos.filter((p) => p?.buffer).slice(0, n), { kind: doc.kind === 'return' ? 'return' : 'issue', ref: contract.number, staff });
     // Новое фото — подписи снимаем (подписывали без него)
     const signed = Object.keys(signaturesOf(doc)).length > 0;
     if (signed) removeSignatureFiles(doc.id);
     q.update.run(doc.lang, JSON.stringify(data), signed ? '{}' : (doc.signatures || '{}'), now(), by(staff), doc.id);
   }
   return n;
+}
+
+/** Фото документов клиента — до отчёта о выдаче в WhatsApp (потом удаляются) */
+export function savePendingPhotos(contractId, buffers) {
+  const dir = path.join(PENDING_DIR, String(Number(contractId) || 0));
+  let n = 0;
+  for (const b of buffers) {
+    if (!Buffer.isBuffer(b) || b.length < 1000 || b[0] !== 0xff || b[1] !== 0xd8) continue;
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, `${Date.now()}-${crypto.randomBytes(4).toString('hex')}.jpg`), b);
+    n++;
+  }
+  return n;
+}
+function takePendingPhotos(contractId) {
+  const dir = path.join(PENDING_DIR, String(contractId));
+  let files = [];
+  try { files = fs.readdirSync(dir).sort(); } catch { return []; }
+  const out = files.map((f) => { try { return fs.readFileSync(path.join(dir, f)); } catch { return null; } }).filter(Boolean);
+  fs.rmSync(dir, { recursive: true, force: true });
+  return out;
+}
+/** Невыданные дольше 3 дней — фото документов удаляем */
+function cleanupPending() {
+  let dirs = [];
+  try { dirs = fs.readdirSync(PENDING_DIR); } catch { return; }
+  for (const d of dirs) {
+    const full = path.join(PENDING_DIR, d);
+    try { if (Date.now() - fs.statSync(full).mtimeMs > PENDING_DAYS * 86400000) fs.rmSync(full, { recursive: true, force: true }); } catch { /* дальше */ }
+  }
+}
+setInterval(cleanupPending, 3600000).unref();
+
+/** Фото «при выдаче» договора (файлы) — к отчёту о выдаче */
+function contractPhotoBuffers(contractId) {
+  const doc = q.children.all(contractId).find((r) => r.kind === 'photos');
+  if (!doc) return [];
+  return (rowData(doc).photos || []).map((p) => { try { return fs.readFileSync(path.join(DOCS_DIR, String(doc.id), p.file)); } catch { return null; } }).filter(Boolean);
+}
+
+/** POST /api/staff/docs/pending-photo?contract= — фото документа (JPEG) для отчёта о выдаче в WhatsApp */
+export async function docsPendingPhoto(staff, req, res, url) {
+  needEdit(staff);
+  const contract = getDoc(url.searchParams.get('contract'));
+  if (!contract || contract.kind !== 'contract') throw new HttpError(404, 'unknown_contract');
+  const buffer = await readBody(req, 6 * 1024 * 1024);
+  sendJson(res, 200, { saved: savePendingPhotos(contract.id, [buffer]) });
 }
 
 /** Документ по id: { id, kind, number, contractId } или null */
@@ -880,7 +935,8 @@ export async function docsIssue(staff, req, res) {
   q.setEvent.run(event.id, doc.id);
   invalidateFleet();
   const name = vehicle.clientModel || `${vehicle.brand} ${vehicle.model}`.trim();
-  const wa = await postFleetEvent(eventReport(event, name));
+  // В группу — отчёт и фото: техника при выдаче и документы клиента (документы потом удаляются)
+  const wa = await postFleetEvent(eventReport(event, name), [...contractPhotoBuffers(doc.id), ...takePendingPhotos(doc.id)]);
   setEventWa(event.id, wa.status, wa.error || null);
   console.log(`Contract ${doc.number}: ${vehicle.plate} set «${kind}» by ${staff.email}`);
   sendJson(res, 200, { ok: true, kind, wa: wa.status });
@@ -921,6 +977,8 @@ export async function docsPhotoUpload(staff, req, res, url) {
   fs.mkdirSync(path.join(DOCS_DIR, String(doc.id)), { recursive: true });
   fs.writeFileSync(path.join(DOCS_DIR, String(doc.id), file), buffer);
   data.photos.push({ file, caption, at: bangkokNow().slice(0, 16) });
+  const vehicle = getVehicle(rowData(contract).vehicleId);
+  if (vehicle) archivePhotos(vehicle, [{ buffer, caption }], { kind: 'issue', ref: contract.number, staff });
   // Новое фото — подписи приложения снимаем (подписывали без него)
   if (Object.keys(signaturesOf(doc)).length) removeSignatureFiles(doc.id);
   q.update.run(doc.lang, JSON.stringify(data), '{}', now(), by(staff), doc.id);

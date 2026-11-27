@@ -43,7 +43,8 @@ import { isSold } from './sold.js';
 import { invalidateFleet, getPortalSnapshot } from './fleet.js';
 import { addStatusEvent, eventReport, setEventWa, invalidateStatuses, addCheck, StatusError } from './vehicleStatus.js';
 import { postFleetEvent } from './wabot.js';
-import { saveDocument, contractFor, contractById, addDocPhotos, docBrief, DocError } from './documents.js';
+import { saveDocument, contractFor, contractById, addDocPhotos, docBrief, savePendingPhotos, DocError } from './documents.js';
+import { archivePhotos } from './vehicleMedia.js';
 import { currentRates } from './finance.js';
 import { recognizeOperation, OP_KINDS, SERVICE_ACTIONS, EXPENSE_CATEGORIES, PAY_METHODS } from './ai/operation.js';
 import { AiError } from './ai/claude.js';
@@ -383,7 +384,7 @@ export async function opDraftManual(staff, req, res) {
 /* --------------------------------------------------------- Применить */
 
 /** Статус техники — как из «Парка»: событие, ремонт в карточке, отчёт в группу */
-async function setStatus(vehicle, input, staff) {
+async function setStatus(vehicle, input, staff, images = []) {
   let event;
   try {
     event = addStatusEvent(vehicle, input, staff);
@@ -397,9 +398,9 @@ async function setStatus(vehicle, input, staff) {
   invalidateStatuses();
   const after = (await getPortalSnapshot().catch(() => null))?.cars.find((c) => c.vehicleId === vehicle.id);
   if (after?.needsCheck) addCheck(after, 'portal', staff, 'статус поставлен из «＋ Операция»');
-  const wa = await postFleetEvent(eventReport(event, vehicle.clientModel || vehicleName(vehicle)));
+  const wa = await postFleetEvent(eventReport(event, vehicle.clientModel || vehicleName(vehicle)), images);
   setEventWa(event.id, wa.status, wa.error || null);
-  return { type: 'status', kind: input.kind, plate: vehicle.plate, wa: wa.status };
+  return { type: 'status', kind: input.kind, plate: vehicle.plate, wa: wa.status, photos: wa.status === 'sent' ? images.length : 0 };
 }
 
 const docCall = (fn) => {
@@ -433,7 +434,8 @@ async function addExpense(e, staff, receipt = null) {
   const fmt = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(amount);
   const line = [`Expense: ${fmt} ${currency}`, CATEGORY_EN[category], vehicle ? `${vehicle.clientModel || vehicleName(vehicle)} #${vehicle.plate}` : null].filter(Boolean).join(' — ')
     + (method ? ` (${method})` : '');
-  const wa = await postFleetEvent([line, text(e.note, 200) || null, `[portal expense #${id} · ${staff.name || staff.email}]`].filter(Boolean).join('\n'));
+  const wa = await postFleetEvent([line, text(e.note, 200) || null, `[portal expense #${id} · ${staff.name || staff.email}]`].filter(Boolean).join('\n'), receipt ? [receipt] : []);
+  if (vehicle && receipt) archivePhotos(vehicle, [{ buffer: receipt, caption: 'receipt' }], { kind: 'expense', ref: `${fmt} ${currency}`, staff });
   console.log(`Expense #${id}: ${fmt} ${currency} (${thb} THB) ${category}${vehicle ? ` #${vehicle.plate}` : ''} by ${staff.email}`);
   return { type: 'expense', id, thb, category, wa: wa.status };
 }
@@ -445,12 +447,19 @@ function needVehicle(id) {
 }
 
 const VEHICLE_KINDS = new Set(Object.keys(VEHICLE_CAPTION));
+// Фото документов клиента: в группу WhatsApp — да, в архив техники и на сервер — нет
+const DOC_KINDS = new Set(['passport', 'licence', 'id_card', 'booking']);
 
 /** Выполнить операцию по форме; buffers — фото черновика по порядку, kinds — что на каждом (от ИИ) */
 async function applyOp(kind, f, buffers, kinds, staff) {
   const done = [];
   const today = todayIso();
   const receiptOf = () => (Number.isInteger(f.receipt) && buffers[f.receipt] ? buffers[f.receipt] : null);
+  const all = buffers.filter(Boolean);
+  // Фото техники (и прочее, кроме документов и чека) — для архива карточки
+  const vehiclePhotos = buffers.map((buffer, i) => ({ buffer, kind: kinds[i], i }))
+    .filter((p) => p.buffer && !DOC_KINDS.has(p.kind) && p.kind !== 'receipt' && p.i !== f.receipt)
+    .map((p) => ({ buffer: p.buffer, caption: VEHICLE_CAPTION[p.kind] || 'other' }));
 
   if (kind === 'return') {
     const vehicle = needVehicle(f.vehicleId);
@@ -465,14 +474,13 @@ async function applyOp(kind, f, buffers, kinds, staff) {
           damages: money(f.damages), deductions: money(f.deductions), refundMethod: text(f.refundMethod, 120)
         }
       }, staff));
-      // К акту — фото техники (документы клиента и чеки — нет)
-      const photos = buffers.map((buffer, i) => ({ buffer, kind: kinds[i] })).filter((p) => p.buffer && (!p.kind || VEHICLE_KINDS.has(p.kind) || p.kind === 'other'))
-        .map((p) => ({ buffer: p.buffer, caption: VEHICLE_CAPTION[p.kind] || 'other' }));
-      const added = addDocPhotos(id, photos, staff);
+      // К акту — фото техники (документы клиента и чеки — нет); из акта они же — в архив техники
+      const added = addDocPhotos(id, vehiclePhotos, staff);
       done.push({ type: 'doc', kind: 'return', ...docBrief(id), photos: added });
     }
+    if (!contract) archivePhotos(vehicle, vehiclePhotos, { kind: 'return', staff });
     const { holder } = await carNow(vehicle.id);
-    if (holder || vehicle.repair !== 'ok') done.push(await setStatus(vehicle, { kind: 'free', note: contract ? contract.number : 'Return' }, staff));
+    if (holder || vehicle.repair !== 'ok') done.push(await setStatus(vehicle, { kind: 'free', note: contract ? contract.number : 'Return' }, staff, all));
     if (updateVehicleStats(vehicle.id, { mileage: int(f.mileage) }, staff.email)) done.push({ type: 'mileage', plate: vehicle.plate, mileage: int(f.mileage) });
   }
 
@@ -490,7 +498,9 @@ async function applyOp(kind, f, buffers, kinds, staff) {
     }, staff));
     const add = docBrief(id);
     done.push({ type: 'doc', kind: 'addendum', ...add });
-    done.push(await setStatus(oldV, { kind: 'free', note: `${contract.number} · ${add.number}` }, staff));
+    archivePhotos(oldV, vehiclePhotos, { kind: 'swap', ref: add.number, staff });
+    archivePhotos(newV, vehiclePhotos, { kind: 'swap', ref: add.number, staff });
+    done.push(await setStatus(oldV, { kind: 'free', note: `${contract.number} · ${add.number}` }, staff, all));
     done.push(await setStatus(newV, { kind: 'rent', to, clientName: contract.data.renter?.name, clientPhone: contract.data.renter?.phone, note: `${contract.number} · ${add.number}`, docId: contract.id }, staff));
     updateVehicleStats(oldV.id, { mileage: int(f.mileage) }, staff.email);
     updateVehicleStats(newV.id, { mileage: int(f.newMileage) }, staff.email);
@@ -501,8 +511,10 @@ async function applyOp(kind, f, buffers, kinds, staff) {
     const action = SERVICE_ACTIONS.includes(f.action) ? f.action : null;
     if (!action) throw new HttpError(400, 'bad_action');
     const note = text(f.note, 300);
-    if (action === 'to_repair') done.push(await setStatus(vehicle, { kind: 'service', note }, staff));
-    if (action === 'from_repair') done.push(await setStatus(vehicle, { kind: 'free', note: note || 'Из ремонта' }, staff));
+    archivePhotos(vehicle, vehiclePhotos, { kind: 'service', ref: note || null, staff });
+    const statusPhotos = all.filter((b) => b !== receiptOf());
+    if (action === 'to_repair') done.push(await setStatus(vehicle, { kind: 'service', note }, staff, statusPhotos));
+    if (action === 'from_repair') done.push(await setStatus(vehicle, { kind: 'free', note: note || 'Из ремонта' }, staff, statusPhotos));
     const stats = updateVehicleStats(vehicle.id, action === 'maintenance'
       ? { mileage: int(f.mileage), serviceDate: today, serviceKm: int(f.mileage) }
       : { mileage: int(f.mileage) }, staff.email);
@@ -555,6 +567,9 @@ export async function opDraftAttach(staff, req, res) {
     const docId = docCall(() => saveDocument({ kind: 'photos', contractId: contract.id, lang: contract.lang, data: {} }, staff));
     added = addDocPhotos(docId, list, staff);
   }
+  // Остальные фото (паспорт, права…) — только в отчёт о выдаче в группе, потом удаляются
+  const used = new Set(list.map((p) => p.buffer));
+  savePendingPhotos(contract.id, buffers.filter((b) => b && !used.has(b)));
   removeDraftFiles(row.id);
   saveDraft(row, { status: 'done', result: JSON.stringify([{ type: 'doc', kind: 'contract', id: contract.id, number: contract.number, photos: added }]), photos: '[]' });
   sendJson(res, 200, { ok: true, photos: added });

@@ -88,11 +88,14 @@ export function saveWabotSettings(input) {
  * Событие парка (ручной статус в портале) — в рабочую группу текстом отчёта.
  * { status: 'sent' | 'off' | 'failed', id?, error? }
  */
-export async function postFleetEvent(text) {
+export async function postFleetEvent(text, images = []) {
   const group = wabotSettings().eventsGroup;
   if (!group) return { status: 'off' };
   try {
-    return { status: 'sent', id: (await wabotCall('POST', '/send', { to: group, text })).id };
+    const id = (await wabotCall('POST', '/send', { to: group, text })).id;
+    // Фото операции — следом за отчётом, как присылают менеджеры (не ждём: их может быть много)
+    if (images.length) sendImagesTo(group, images).catch(() => null);
+    return { status: 'sent', id, images: images.length };
   } catch (err) {
     console.error('Fleet event to the work group failed:', err.code || err.message);
     return { status: 'failed', error: err.code || err.message };
@@ -157,6 +160,17 @@ export function syncWatch(current = null) {
 /** Бот вступает в группу по ссылке-приглашению → { id, subject } */
 export async function wabotJoinGroup(invite) {
   return wabotCall('POST', '/join', { invite: String(invite || '').slice(0, 200) });
+}
+
+/** Фото (JPEG-буферы) по одному в группу; ошибка с одним фото не мешает остальным */
+async function sendImagesTo(group, images) {
+  for (const buffer of images.slice(0, 12)) {
+    try {
+      await wabotCall('POST', '/send-image', { to: group, data: Buffer.from(buffer).toString('base64') });
+    } catch (err) {
+      console.error('Photo to the work group failed:', err.code || err.message);
+    }
+  }
 }
 
 /* --------------------------------------------------- Запросы к wabot */

@@ -401,6 +401,19 @@ async function sendDocument(to, fileName, mimetype, data, caption) {
   return messageId;
 }
 
+/** Фото (JPEG, base64) — в группу вместе с отчётом бота: так, как присылают менеджеры */
+async function sendImage(to, data, caption) {
+  if (state.status !== 'connected' || !sock) throw Object.assign(new Error('not connected'), { code: 'not_connected' });
+  const buffer = Buffer.from(String(data || ''), 'base64');
+  if (!buffer.length || buffer.length > 8 * 1024 * 1024) throw Object.assign(new Error('bad file'), { code: 'bad_file' });
+  await rateLimit();
+  const messageId = generateMessageIDV2(sock.user?.id);
+  rememberSent(messageId);
+  await sock.sendMessage(toJid(to), { image: buffer, mimetype: 'image/jpeg', caption: String(caption || '').slice(0, 1000) || undefined }, { messageId });
+  countToday('sent');
+  return messageId;
+}
+
 /** Переслать сообщение клиента (фото, видео, голосовое, файл…) — в рабочую группу */
 async function forward(id, to) {
   if (state.status !== 'connected' || !sock) throw Object.assign(new Error('not connected'), { code: 'not_connected' });
@@ -621,6 +634,11 @@ http.createServer(async (req, res) => {
       const { to, fileName, mimetype, data, caption } = await readJson(req, 12 * 1024 * 1024);
       if (!to || !data) return send(res, 400, { error: 'bad_document' });
       return send(res, 200, { id: await sendDocument(String(to), fileName, mimetype, data, caption) });
+    }
+    if (req.method === 'POST' && url.pathname === '/send-image') {
+      const { to, data, caption } = await readJson(req, 12 * 1024 * 1024);
+      if (!to || !data) return send(res, 400, { error: 'bad_file' });
+      return send(res, 200, { id: await sendImage(String(to), data, caption) });
     }
     if (req.method === 'POST' && url.pathname === '/forward') {
       const { id, to } = await readJson(req);

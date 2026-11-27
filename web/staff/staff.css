@@ -1710,3 +1710,8 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
 .lb-prev { left: 12px; top: 50%; transform: translateY(-50%); }
 .lb-next { right: 12px; top: 50%; transform: translateY(-50%); }
 .lb-count { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); padding: 4px 10px; border-radius: 12px; background: rgba(0, 0, 0, .55); font-size: 14px; }
+
+/* Архив фото техники в карточке */
+.vh-media .vm-group { display: grid; gap: 6px; padding: 8px 0; border-top: 1px dashed var(--line); }
+.vh-media .vm-group:first-child { border-top: 0; }
+.vm-thumbs { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); }

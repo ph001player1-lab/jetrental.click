@@ -365,6 +365,43 @@
       }).join('')}</ol></details>`;
     }
 
+    /** Архив фото техники (служебный, не сайт): выдачи, возвраты, замены, ремонт, чеки — по действиям */
+    const media = new Map();
+    function mediaBlock(car) {
+      if (!car.vehicleId || !car.media) return '';
+      return `<details class="vh-hist vh-media" data-vh-media="${car.vehicleId}"${media.get(car.vehicleId)?.open ? ' open' : ''}>
+        <summary>📷 ${esc(t('vm.title', { n: car.media }))}</summary>
+        <div data-vh-medialist>${mediaList(car.vehicleId)}</div></details>`;
+    }
+    function mediaList(id) {
+      const m = media.get(id);
+      if (!m?.groups) return `<p class="muted jr-small">${esc(t('app.loading'))}</p>`;
+      if (!m.groups.length) return `<p class="muted jr-small">${esc(t('vm.empty'))}</p>`;
+      return m.groups.map((g) => `<div class="vm-group">
+        <div class="jr-small"><b>${esc(t(`vm.kind.${g.kind}`))}</b>${g.ref ? ` · ${esc(g.ref)}` : ''} · <span class="muted">${esc(ctx.dateTime(g.at))}${g.by ? ` · ${esc(g.by)}` : ''}</span></div>
+        <div class="dc-thumbs vm-thumbs" data-zoom-group>${g.photos.map((p) => `<figure class="dc-thumb"><img src="/api/staff/fleet/media/file?id=${p.id}" alt="" loading="lazy" data-zoom></figure>`).join('')}</div>
+      </div>`).join('');
+    }
+    async function loadMedia(box) {
+      const id = Number(box.dataset.vhMedia);
+      const m = media.get(id) || {};
+      m.open = box.open;
+      media.set(id, m);
+      if (!box.open || m.groups) return;
+      try {
+        m.groups = (await api(`/fleet/media?vehicleId=${id}`)).groups;
+      } catch {
+        m.groups = [];
+      }
+      // Пока грузили, карточку могли перерисовать — пишем в ту, что сейчас на экране
+      for (const list of document.querySelectorAll(`[data-vh-media="${id}"] [data-vh-medialist]`)) list.innerHTML = mediaList(id);
+    }
+    // Раскрыли архив — подгружаем фото (toggle не всплывает — ловим на погружении)
+    document.addEventListener('toggle', (event) => {
+      const box = event.target.closest?.('[data-vh-media]');
+      if (box) loadMedia(box);
+    }, true);
+
     /** Последнее событие по технике: «Выдача · 12 Nov, 12:44 · группа» */
     function lastLine(car) {
       const l = car.last;
@@ -705,7 +742,7 @@
     }
 
     return {
-      cardBlock, toolbar, renderNotInWs, renderArchive, renderTable, problemBadges, wsLine, investorLine, lastLine, historyBlock, statusText, filterProblems, view, afterRender,
+      cardBlock, toolbar, renderNotInWs, renderArchive, renderTable, problemBadges, wsLine, investorLine, lastLine, historyBlock, mediaBlock, statusText, filterProblems, view, afterRender,
       renterLine: (car) => renterHtml(car),
       onClick, onSubmit, onChange, canEdit, dialogOpen: () => Boolean(st.dialog),
       /** Смена статуса из другой вкладки (CRM, договор): вид, даты, клиент заполнены; onSaved — после сохранения */

@@ -504,6 +504,11 @@
       const list = r ? (r.photos || []).filter((p) => p.caption && st.ai.files[p.index]).slice(0, 9) : [];
       let n = 0;
       const fromDraft = [];
+      // Фото документов (свои, не из «＋ Операция») — только в отчёт о выдаче в WhatsApp, потом удаляются
+      for (const p of (r?.photos || []).filter((x) => ['passport', 'licence', 'id_card', 'booking'].includes(x.kind))) {
+        const f = st.ai.files[p.index];
+        if (f?.blob) await ctx.uploadImage(`/docs/pending-photo?contract=${contractId}`, f.blob).catch(() => null);
+      }
       for (const p of list) {
         const f = st.ai.files[p.index];
         if (f.draftIndex !== undefined) { fromDraft.push({ index: f.draftIndex, caption: p.caption }); continue; }
