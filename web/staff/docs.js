@@ -46,8 +46,14 @@
       if (rerender) ctx.rerender();
     }
 
+    function backToList() {
+      st.view = 'list'; st.id = null; st.one = null; st.sub = null; st.msg = null;
+      refreshList().then(() => ctx.rerender());
+    }
+
     /** Новый договор; prefill — из «Парка» (техника, даты) или из карточки клиента (клиент) */
     function openNew(prefill = {}) {
+      if (st.view !== 'edit') ctx.pushStep?.();
       const now = new Date(Date.now() + 7 * 3600000).toISOString();
       st.view = 'edit';
       st.id = null;
@@ -902,8 +908,8 @@
       if (!el.closest('.dc')) return false;
       if (el.closest('[data-dc-new]')) { openNew(); return true; }
       const open = el.closest('[data-dc-open]');
-      if (open) { st.view = 'edit'; st.sub = null; st.msg = null; st.quoteNote = null; loadOne(open.dataset.dcOpen).catch(() => { st.msg = { kind: 'error', text: t('app.loadFailed') }; ctx.rerender(); }); return true; }
-      if (el.closest('[data-dc-back]')) { st.view = 'list'; st.id = null; st.one = null; st.sub = null; st.msg = null; refreshList().then(() => ctx.rerender()); return true; }
+      if (open) { ctx.pushStep?.(); st.view = 'edit'; st.sub = null; st.msg = null; st.quoteNote = null; loadOne(open.dataset.dcOpen).catch(() => { st.msg = { kind: 'error', text: t('app.loadFailed') }; ctx.rerender(); }); return true; }
+      if (el.closest('[data-dc-back]')) { ctx.popStep?.(); backToList(); return true; }
       const pdf = el.closest('[data-dc-pdf]');
       if (pdf) { window.open(`/api/staff/docs/pdf?id=${pdf.dataset.dcPdf}`, '_blank', 'noopener'); return true; }
       const sign = el.closest('[data-dc-sign]');
@@ -1077,7 +1083,9 @@
 
     return {
       load, render, onClick, onChange, onInput, onSubmit, canRefresh, openNew, openNewFromDraft,
-      openContract: (id) => { st.view = 'edit'; st.sub = null; st.msg = null; loadOne(id).catch(() => null); }
+      openContract: (id) => { if (st.view !== 'edit') ctx.pushStep?.(); st.view = 'edit'; st.sub = null; st.msg = null; loadOne(id).catch(() => null); },
+      // «Назад» телефона: из договора — к списку
+      back: () => { if (st.view !== 'edit') return false; backToList(); return true; }
     };
   }
 

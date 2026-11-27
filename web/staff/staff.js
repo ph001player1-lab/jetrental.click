@@ -420,6 +420,7 @@
     if (!tabs().some((tab) => tab.id === state.tab)) state.tab = tabs()[0]?.id || 'overview';
     renderTabs();
     render();
+    history.replaceState({ jm: 1, tab: state.tab }, '', `#${state.tab}`);
     loadData();
     if (state.tab === 'site') loadModels();
     if (state.tab === 'server') startServerPolling();
@@ -679,8 +680,63 @@
     if (state.user) renderTabs();
   });
 
-  function setTab(tab) {
+  /* ------------------------------------ Кнопка «Назад» как в приложении */
+  // Вкладки, карточки и окна — шаги истории: «Назад» закрывает окно, выходит из карточки,
+  // возвращает на прошлую вкладку (а не уходит из портала)
+  let ignorePop = false;
+  const pendingPush = [];
+  let closingByPop = false;
+  function historyPush(step) {
+    const entry = { jm: 1, tab: state.tab, ...step };
+    // Только что ушли «назад» из окна — запишем шаг, когда браузер закончит
+    if (ignorePop) { pendingPush.push(entry); return; }
+    history.pushState(entry, '', `#${entry.tab}`);
+  }
+  const pushStep = () => historyPush({ sub: true });
+  const popStep = () => { if (history.state?.sub) { ignorePop = true; history.back(); } };
+  const showModalNative = HTMLDialogElement.prototype.showModal;
+  HTMLDialogElement.prototype.showModal = function showModalWithBack() {
+    showModalNative.call(this);
+    if (!state.user) return;
+    historyPush({ modal: true });
+    this.addEventListener('close', () => {
+      if (closingByPop || !history.state?.modal) return;
+      ignorePop = true;
+      history.back();
+    }, { once: true });
+  };
+  /** Карточка внутри вкладки: вкладка сама решает, что значит «назад» */
+  function tabBack(tab) {
+    if (tab === 'docs') return docs.back();
+    if (tab === 'crm') return crm.back();
+    return false;
+  }
+  window.addEventListener('popstate', (event) => {
+    if (ignorePop) {
+      ignorePop = false;
+      for (const entry of pendingPush.splice(0)) history.pushState(entry, '', `#${entry.tab}`);
+      return;
+    }
+    if (!state.user) return;
+    // 1. Открыто окно (фото, операция, статус…) — закрываем его
+    const dialogs = [...document.querySelectorAll('dialog[open]')];
+    if (dialogs.length) {
+      closingByPop = true;
+      dialogs[dialogs.length - 1].close();
+      closingByPop = false;
+      return;
+    }
+    const s = event.state || {};
+    const tab = (s.tab || location.hash.slice(1)) || state.tab;
+    // 2. Карточка (договор, клиент) — назад к списку
+    if (tab === state.tab && !s.sub && tabBack(state.tab)) return;
+    // 3. Другая вкладка
+    if (tab !== state.tab && tabs().some((x) => x.id === tab)) setTab(tab, { fromHistory: true });
+  });
+
+  function setTab(tab, { fromHistory = false, replace = false } = {}) {
     if (!tabs().some((x) => x.id === tab)) tab = tabs()[0]?.id || 'overview';
+    const changed = tab !== state.tab;
     // Для тикета запоминаем, на какой вкладке был сотрудник
     if (tab === 'tickets' && state.tab !== 'tickets') state.prevTab = state.tab;
     state.tab = tab;
@@ -701,7 +757,8 @@
     if (tab === 'fleet') loadData();
     if (tab === 'server') startServerPolling();
     else stopServerPolling();
-    history.replaceState(null, '', `#${tab}`);
+    if (fromHistory) { /* шаг уже в истории */ } else if (changed && !replace) historyPush({ tab });
+    else history.replaceState({ jm: 1, tab }, '', `#${tab}`);
     renderTabs();
     render();
     window.scrollTo(0, 0);
@@ -981,6 +1038,58 @@
     rerender: () => { if (state.tab === 'tickets') $('#view').innerHTML = tickets.render(); }
   });
 
+  /* -------------------------------------------- Просмотр фото крупно */
+
+  // Любая миниатюра (договор, операция, архив техники): нажал — фото на весь экран;
+  // нажал на фото — в натуральную величину (рассмотреть номер, царапину); ‹ › и свайп — соседние
+  function openLightbox(img) {
+    const group = img.closest('[data-zoom-group], .dc-thumbs');
+    const list = group ? [...group.querySelectorAll('img')] : [img];
+    let i = Math.max(0, list.indexOf(img));
+    let dlg = document.getElementById('lightbox');
+    if (!dlg) {
+      dlg = document.createElement('dialog');
+      dlg.id = 'lightbox';
+      dlg.className = 'lightbox';
+      document.body.appendChild(dlg);
+    }
+    dlg.innerHTML = `<div class="lb-stage"><img class="lb-img" alt=""></div>
+      <button type="button" class="lb-btn lb-close" aria-label="${esc(t('vh.close'))}">×</button>
+      ${list.length > 1 ? '<button type="button" class="lb-btn lb-prev" aria-label="‹">‹</button><button type="button" class="lb-btn lb-next" aria-label="›">›</button>' : ''}
+      <div class="lb-count"></div>`;
+    const stage = dlg.querySelector('.lb-stage');
+    const big = dlg.querySelector('.lb-img');
+    const show = () => {
+      big.src = list[i].currentSrc || list[i].src;
+      stage.classList.remove('is-zoomed');
+      dlg.querySelector('.lb-count').textContent = list.length > 1 ? `${i + 1} / ${list.length}` : '';
+    };
+    const step = (d) => { i = (i + d + list.length) % list.length; show(); };
+    dlg.onclick = (e) => {
+      if (e.target.closest('.lb-close') || e.target === stage || e.target === dlg) { dlg.close(); return; }
+      if (e.target.closest('.lb-prev')) { step(-1); return; }
+      if (e.target.closest('.lb-next')) { step(1); return; }
+      if (e.target === big) stage.classList.toggle('is-zoomed');
+    };
+    dlg.onkeydown = (e) => { if (e.key === 'ArrowLeft') step(-1); if (e.key === 'ArrowRight') step(1); };
+    let x0 = null;
+    stage.ontouchstart = (e) => { x0 = e.touches.length === 1 && !stage.classList.contains('is-zoomed') ? e.touches[0].clientX : null; };
+    stage.ontouchend = (e) => {
+      if (x0 === null || list.length < 2) return;
+      const dx = e.changedTouches[0].clientX - x0;
+      if (Math.abs(dx) > 50) step(dx < 0 ? 1 : -1);
+    };
+    show();
+    dlg.showModal();
+  }
+  document.addEventListener('click', (event) => {
+    const img = event.target.closest?.('.dc-thumb img, img[data-zoom]');
+    if (!img || img.closest('#lightbox')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    openLightbox(img);
+  }, true);
+
   /* ------------------------------------ Быстрый выбор клиента из базы */
 
   const pick = window.STAFF_PICK.create({ api, t, esc });
@@ -1034,7 +1143,7 @@
   /* -------------------------------------------------- Вкладка «Документы» */
 
   const docs = window.STAFF_DOCS.create({
-    api, t, esc, money, dateTime, pick,
+    api, t, esc, money, dateTime, pick, pushStep, popStep,
     freeVehicles: (from, to, type) => freeVehicles(from, to, type),
     lang: () => lang,
     requests: () => state.requests,
@@ -1056,7 +1165,7 @@
   /* ---------------------------------------------------------- Вкладка «CRM» */
 
   const crm = window.STAFF_CRM.create({
-    api, esc, can,
+    api, esc, can, pushStep, popStep,
     today: () => bkkToday(),
     canSetStatus: () => Boolean(state.fleet?.canSetStatus),
     canDocsEdit: () => can('docs.edit'),
@@ -2366,7 +2475,7 @@
     // Ссылка вида …/#journal или кнопки «назад/вперёд» — открыть эту вкладку
     window.addEventListener('hashchange', () => {
       const id = location.hash.slice(1);
-      if (state.user && id !== state.tab && tabs().some((tab) => tab.id === id)) setTab(id);
+      if (state.user && id !== state.tab && tabs().some((tab) => tab.id === id)) setTab(id, { replace: true });
     });
     setInterval(() => { if (state.tab === 'journal') journal.tick(); if (state.tab === 'settings' && !document.hidden) settings.tick(); }, 5000);
     document.addEventListener('input', (event) => {

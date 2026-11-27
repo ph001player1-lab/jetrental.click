@@ -388,7 +388,7 @@
         return true;
       }
       const open = el.closest('[data-crm-open]');
-      if (open) { st.msg = null; st.issue = null; openCard(open.dataset.crmOpen); return true; }
+      if (open) { ctx.pushStep?.(); st.msg = null; st.issue = null; openCard(open.dataset.crmOpen); return true; }
       const veh = el.closest('[data-crm-vehicle]');
       if (veh) { ctx.openVehicle(veh.dataset.crmVehicle); return true; }
       const doc = el.closest('[data-crm-doc]');
@@ -414,6 +414,7 @@
         return true;
       }
       if (el.closest('[data-crm-back]')) {
+        ctx.popStep?.();
         st.openId = null;
         st.card = null;
         st.msg = null;
@@ -483,7 +484,18 @@
       return false;
     }
 
-    return { load, render, onClick, onInput, onChange, onSubmit, open: (id) => { st.issue = null; st.msg = null; openCard(id); } };
+    return {
+      load, render, onClick, onInput, onChange, onSubmit,
+      open: (id) => { if (!st.openId) ctx.pushStep?.(); st.issue = null; st.msg = null; openCard(id); },
+      // «Назад» телефона: из карточки клиента — к списку
+      back: () => {
+        if (!st.openId) return false;
+        st.openId = null; st.card = null; st.msg = null; st.editing = false;
+        ctx.rerender();
+        if (!st.data) load();
+        return true;
+      }
+    };
   }
 
   window.STAFF_CRM = { create };
