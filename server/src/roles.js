@@ -28,9 +28,11 @@ export function roleNameOf(staff) {
 /** Список прав сотрудника */
 export function permissionsOf(staff) {
   const role = roleOf(staff);
-  if (role === ADMIN_ROLE) return adminPermissions();
+  // «Игра» (режим наблюдателя) — владелец и админ
+  if (role === ADMIN_ROLE) return [...adminPermissions(), 'game.view'];
   const found = getRole(role);
-  return found ? permissionsFromLevels(found.perms) : [];
+  const list = found ? permissionsFromLevels(found.perms) : [];
+  return role === 'owner' ? [...list, 'game.view'] : list;
 }
 
 /** Есть ли у сотрудника право perm */

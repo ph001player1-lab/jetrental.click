@@ -20,6 +20,7 @@ import { findAvailableModels, sheetsEnabled } from './fleet.js';
 import { publishRequest } from './staff.js';
 import { rememberChatRef, chatRefOf, chatSourceKnown, heardOptions, resolveHeard, rememberHeard } from './marketing.js';
 import { LANGUAGES, LANGUAGE_PROMPT, LANGUAGE_LIST_BUTTON, normalizeLanguage, t } from './i18n.js';
+import { noteBotChat } from './gameLive.js';
 
 // В списке WhatsApp максимум 10 строк: 9 моделей + «Помогите выбрать»
 const MAX_MODEL_OPTIONS = 9;
@@ -251,6 +252,7 @@ async function finishRequest(chat, lang, session, phone, name = chat.name) {
  * номер» в Telegram: { phone, name }.
  */
 export async function handleClientText(chat, text, contact = null) {
+  noteBotChat(chat);
   // Код источника из ссылки на бота («/start ref_КОД», «[ref:КОД]») — для вкладки «Маркетинг»
   try { rememberChatRef(chat.key, text); } catch (err) { console.error('Chat ref failed:', err.message); }
   const word = firstWord(text);
@@ -342,6 +344,7 @@ async function chooseModel(chat, lang, value) {
 
 /** Нажатие кнопки или выбор в списке: lang:<код>, type:<тип>, model:<номер|any>, heard:<ответ>, manager:1, back:1 */
 export async function handleClientChoice(chat, action, value) {
+  noteBotChat(chat);
   if (action === 'lang') return chooseLanguage(chat, value);
 
   const lang = chatLanguage(chat);

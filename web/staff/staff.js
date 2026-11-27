@@ -103,7 +103,8 @@
   ICONS.invest = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6h-6z"/></svg>';
   ICONS.settings = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19.14 12.94a7.07 7.07 0 0 0 .05-.94 7.07 7.07 0 0 0-.05-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.61-.22l-2.39.96a7.03 7.03 0 0 0-1.62-.94l-.36-2.54A.5.5 0 0 0 13.9 2h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96a.5.5 0 0 0-.61.22L2.71 8.48a.5.5 0 0 0 .12.64l2.03 1.58a7.07 7.07 0 0 0 0 1.88l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.3.61.22l2.39-.96c.49.38 1.03.7 1.62.94l.36 2.54c.05.24.25.42.49.42h3.8c.24 0 .45-.18.49-.42l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.48 0 .61-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z"/></svg>';
   ICONS.docs = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 7V3.5L18.5 9H13zM8 13h8v2H8v-2zm0 4h8v2H8v-2zm0-8h3v2H8V9z"/></svg>';
-  const ALL_TABS = ['cabinet', 'invest', 'overview', 'fleet', 'price', 'journal', 'calendar', 'requests', 'docs', 'crm', 'marketing', 'finance', 'server', 'settings', 'access', 'tickets'];
+  ICONS.game = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M21 6H3a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2zm-10 7H8v3H6v-3H3v-2h3V8h2v3h3v2zm4.5 2a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm4-3a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg>';
+  const ALL_TABS = ['cabinet', 'invest', 'overview', 'fleet', 'price', 'journal', 'calendar', 'requests', 'docs', 'crm', 'marketing', 'game', 'finance', 'server', 'settings', 'access', 'tickets'];
   // Внизу на телефоне помещается 6 кнопок; если вкладок больше — последние уходят в «Ещё»
   const BOTTOM_MAX = 6;
   // Вкладка видна, если у роли есть хотя бы одно из этих прав (настраивает админ на вкладке «Доступы»)
@@ -116,6 +117,8 @@
     // «Документы»: договоры, акты, квитанции
     docs: ['docs.view', 'docs.edit'],
     tickets: ['tickets.view'],
+    // «Игра» — режим наблюдателя (владелец и админ)
+    game: ['game.view'],
     // «Кабинет» — по привязке к источнику агента (не по роли) или просмотр из «Маркетинга»
     cabinet: [],
     // «Инвестор» — у кого в «Доступах» есть доля, или просмотр владельцем/админом
@@ -764,6 +767,20 @@
     window.scrollTo(0, 0);
   }
 
+  /** «Игра»: модуль большой, грузим только когда открыли вкладку */
+  let gameLoading = false;
+  function mountGame(view) {
+    if (window.STAFF_GAME) { window.STAFF_GAME.mount(view); return; }
+    view.innerHTML = loadingBox();
+    if (gameLoading) return;
+    gameLoading = true;
+    const script = document.createElement('script');
+    script.src = 'game.js?v=1';
+    script.onload = () => { gameLoading = false; if (state.tab === 'game' && window.STAFF_GAME) window.STAFF_GAME.mount($('#view')); };
+    script.onerror = () => { gameLoading = false; if (state.tab === 'game') $('#view').innerHTML = `<div class="empty">${esc(t('app.loadFailed'))}</div>`; };
+    document.head.append(script);
+  }
+
   /** background — фоновое обновление данных (таймер, возврат на вкладку браузера) */
   function render({ background = false } = {}) {
     const fleet = state.fleet;
@@ -796,6 +813,8 @@
     if (state.tab === 'invest' && (!view.querySelector('.inv') || investor.canRefresh())) view.innerHTML = investor.render();
     if (state.tab === 'settings' && (!view.querySelector('.set') || settings.canRefresh())) view.innerHTML = settings.render();
     if (state.tab === 'docs' && (!view.querySelector('.dc') || docs.canRefresh())) view.innerHTML = docs.render();
+    // «Игра» живёт своей жизнью: подключаем один раз, фоновые обновления её не трогают
+    if (state.tab === 'game' && !view.querySelector('.gm')) mountGame(view);
     // Роли не открыт ни один раздел — подсказка вместо пустого экрана
     if (!tabs().length) view.innerHTML = `<div class="empty">${esc(t('app.noSections'))}</div>`;
   }

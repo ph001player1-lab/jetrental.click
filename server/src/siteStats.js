@@ -16,6 +16,7 @@
 
 import crypto from 'node:crypto';
 import * as db from './db.js';
+import { noteSiteHit } from './gameLive.js';
 
 export const SITE_HOSTS = ['jetmobility.org', 'kokoncar.com'];
 const BOT_UA = /bot|crawl|spider|slurp|preview|scan|python|curl|wget|httpclient|go-http|java\/|headless|lighthouse/i;
@@ -95,6 +96,10 @@ export function addEntry(acc, entry, day) {
   const ip = request.client_ip || request.remote_ip || '';
   const hash = crypto.createHash('sha1').update(`${day}|${site}|${ip}|${ua}`).digest('hex').slice(0, 16);
   acc.visitors.set(`${day}|${site}|${hash}`, deviceOf(ua));
+  // «Сейчас на сайте» для вкладки «Игра» — только в памяти, без адреса и браузера
+  const code = params.get('ref');
+  const at = Number(entry.ts) > 0 ? Math.round(Number(entry.ts) * 1000) : Date.now();
+  noteSiteHit({ key: hash, site, device: deviceOf(ua), at, source: utm ? `utm:${utm.toLowerCase().slice(0, 40)}` : code ? `ref:${code.slice(0, 40)}` : ref });
 }
 
 /** Записать накопленное; устройство считаем по новым за день посетителям */

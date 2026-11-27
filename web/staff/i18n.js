@@ -247,6 +247,7 @@ window.STAFF_I18N = {
     'tab.finance': "Финансы",
     'tab.crm': "CRM",
     'tab.marketing': "Маркетинг",
+    'tab.game': "Game",
     'tab.overview': 'Overview', 'tab.fleet': 'Fleet', 'tab.calendar': 'Calendar', 'tab.requests': 'Requests', 'tab.site': 'Website',
 
     'err.invalid_email': 'Please enter a valid email.',
@@ -1619,6 +1620,7 @@ window.STAFF_I18N = {
     'tab.finance': "Финансы",
     'tab.crm': "CRM",
     'tab.marketing': "Маркетинг",
+    'tab.game': "Игра",
     'tab.overview': 'Обзор', 'tab.fleet': 'Парк', 'tab.calendar': 'Календарь', 'tab.requests': 'Заявки', 'tab.site': 'Сайт',
 
     'err.invalid_email': 'Введите правильную почту.',
@@ -2992,6 +2994,7 @@ window.STAFF_I18N = {
     'tab.finance': "Финансы",
     'tab.crm': "CRM",
     'tab.marketing': "Маркетинг",
+    'tab.game': "เกม",
     'tab.overview': 'ภาพรวม', 'tab.fleet': 'รถทั้งหมด', 'tab.calendar': 'ปฏิทิน', 'tab.requests': 'คำขอ', 'tab.site': 'เว็บไซต์',
 
     'err.invalid_email': 'กรุณากรอกอีเมลให้ถูกต้อง',
@@ -4341,6 +4344,7 @@ window.STAFF_I18N = {
     'tab.finance': "Финансы",
     'tab.crm': "CRM",
     'tab.marketing': "Маркетинг",
+    'tab.game': "ဂိမ်း",
     'tab.overview': "အကျဉ်းချုပ်",
     'tab.fleet': "ယာဉ်များ",
     'tab.calendar': "ပြက္ခဒိန်",
