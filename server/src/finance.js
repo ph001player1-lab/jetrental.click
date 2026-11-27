@@ -24,6 +24,7 @@ import { groupStatusByPlate } from './journal/reconcile.js';
 import { getFleet, plateKey } from './fleet.js';
 import { staffPhones } from './staffUsers.js';
 import { cashbookMeta, cashbookRows, PURPOSE_GROUP } from './cashbook.js';
+import { itPaymentsBetween } from './itSettings.js';
 
 const DAY_MS = 86400000;
 const BANGKOK_MS = 7 * 3600000;
@@ -216,6 +217,7 @@ const CATEGORIES = [
   ['delivery', 'Доставка и такси', /taxi|grab|bolt|delivery|доставк|такси/i],
   ['repair', 'Ремонт и мастерская', /repair|workshop|mechanic|spare|parts?\b|tyres?\b|tires?\b|\boil\b|battery|brake|service|ремонт|запчаст|мастерск/i],
   ['owners', 'Выплаты владельцам машин', /owner|владел/i],
+  ['it', 'IT и подписки', /hosting|domain|subscription|\bvps\b|хостинг|домен|подписк/i],
   ['refunds', 'Возвраты за аренду', /refund|возврат за аренду/i],
   ['vehicles', 'Покупка машин и взносы', /vehicle buy|purchase|down ?payment|покупк/i],
   ['personal', 'Личные (Алексей)', /personal|личн/i],
@@ -274,7 +276,7 @@ function expensesFor(a, b, cashMeta, notes) {
   const hasCash = Boolean(cashMeta) && cashB > cashA;
   const cats = new Map();
   const add = (key, sum, source) => {
-    const c = cats.get(key) || cats.set(key, { key, label: CATEGORY_LABEL[key], sum: 0, count: 0, ws: 0, group: 0 }).get(key);
+    const c = cats.get(key) || cats.set(key, { key, label: CATEGORY_LABEL[key], sum: 0, count: 0, ws: 0, group: 0, portal: 0 }).get(key);
     c.sum += sum;
     c.count++;
     c[source] += sum;
@@ -283,7 +285,7 @@ function expensesFor(a, b, cashMeta, notes) {
   const byPlate = new Map();
   // item — строка расхода для кабинета инвестора: { at, text, source }
   const plateCost = (plate, key, sum, item = null) => {
-    if (!plate || NOT_OPERATING.has(key) || key === 'salary' || key === 'office' || key === 'ads') return;
+    if (!plate || NOT_OPERATING.has(key) || key === 'salary' || key === 'office' || key === 'ads' || key === 'it') return;
     const p = byPlate.get(plate) || byPlate.set(plate, { repair: 0, other: 0, items: [] }).get(plate);
     p[key === 'repair' ? 'repair' : 'other'] += sum;
     if (item && p.items.length < 100) p.items.push({ ...item, sum: round(sum), kind: key === 'repair' ? 'repair' : 'other', category: key });
@@ -314,7 +316,13 @@ function expensesFor(a, b, cashMeta, notes) {
     add(n.category, n.thb, 'group');
     plateCost(n.plate, n.category, n.thb, { at: isoOf(n.at), text: n.text || '', source: 'group' });
   }
-  const list = [...cats.values()].map((c) => ({ ...c, sum: round(c.sum), ws: round(c.ws), group: round(c.group) })).sort((x, y) => y.sum - x.sum);
+  // Оплаты сервисов из «Настроек» (сервер, домены, подписки) — статья «IT и подписки»
+  let portalPayments = 0;
+  for (const p of itPaymentsBetween(a, b)) {
+    portalPayments++;
+    add('it', p.thb, 'portal');
+  }
+  const list = [...cats.values()].map((c) => ({ ...c, sum: round(c.sum), ws: round(c.ws), group: round(c.group), portal: round(c.portal) })).sort((x, y) => y.sum - x.sum);
   const categories = list.filter((c) => !NOT_OPERATING.has(c.key));
   return {
     cashFrom: hasCash ? isoOf(cashA) : null,
@@ -323,6 +331,7 @@ function expensesFor(a, b, cashMeta, notes) {
     notOperating: list.filter((c) => NOT_OPERATING.has(c.key)),
     total: categories.reduce((s, c) => s + c.sum, 0),
     groupReports,
+    portalPayments,
     ws: hasCash ? Object.fromEntries(Object.entries(ws).map(([k, v]) => [k, round(v)])) : null,
     byPlate
   };

@@ -24,6 +24,8 @@
  *   /api/staff/tickets…                       — «Ошибки и предложения» (tickets.js)
  *   /api/staff/agent…                         — кабинет агента, выплаты (agent.js)
  *   /api/staff/investor…                      — кабинет инвестора, выплаты (investor.js)
+ *   /api/staff/settings…                      — «Настройки» (админ): связь, домены, ключи,
+ *                                               сервисы и оплаты, модель ИИ (itSettings.js)
  * Права ролей — в roles.js.
  *
  * В базе храним только хэши кодов и сессий.
@@ -65,6 +67,7 @@ import { getJournal, fixEvent, getTimesheet, getReconcile, getMedia, importHisto
 import { waStatus, waConfig, waPair, waLogout } from './journal/observer.js';
 import { wabotPortalStatus, wabotPortalSettings, wabotPortalConfig, wabotPortalPair, wabotPortalLogout, wabotSettings, postFleetEvent } from './wabot.js';
 import { groupStatusByPlate } from './journal/reconcile.js';
+import { settingsRoute, settingsService, settingsServiceDelete, settingsPaid, settingsPaymentDelete, settingsAi, settingsDomainsCheck } from './itSettings.js';
 
 const COOKIE = 'jr_staff';
 const MAX_ATTEMPTS = 5;
@@ -822,7 +825,14 @@ const ROUTES = {
   'POST /api/staff/agent/payout/delete': signedIn(agentPayoutDelete),
   'GET /api/staff/investor': signedIn(investorCabinet),
   'POST /api/staff/investor/payout': signedIn(investorPayout),
-  'POST /api/staff/investor/payout/delete': signedIn(investorPayoutDelete)
+  'POST /api/staff/investor/payout/delete': signedIn(investorPayoutDelete),
+  'GET /api/staff/settings': signedIn(settingsRoute),
+  'POST /api/staff/settings/service': signedIn(settingsService),
+  'POST /api/staff/settings/service/delete': signedIn(settingsServiceDelete),
+  'POST /api/staff/settings/service/paid': signedIn(settingsPaid),
+  'POST /api/staff/settings/payment/delete': signedIn(settingsPaymentDelete),
+  'POST /api/staff/settings/ai': signedIn(settingsAi),
+  'POST /api/staff/settings/domains/check': signedIn(settingsDomainsCheck)
 };
 
 /** Обработчик для пути /api/staff/*; null — такого маршрута нет */

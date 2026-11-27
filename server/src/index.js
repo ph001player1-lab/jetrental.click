@@ -34,6 +34,7 @@ import { startMorningSummary } from './morning.js';
 import { startServerStats, recordRequest, version } from './serverStats.js';
 import { startAgents } from './agent.js';
 import { startInvestors } from './investor.js';
+import { startItSettings } from './itSettings.js';
 import { startJournal } from './journal/start.js';
 import { whatsappEnabled, knownPhoneNumberId } from './whatsapp/api.js';
 import { verifySignature, processWebhook, whatsappStatus } from './whatsapp/webhook.js';
@@ -174,6 +175,7 @@ server.listen(config.port, () => {
   startServerStats();
   startAgents();
   startInvestors();
+  startItSettings();
   startJournal();
 
   if (telegramEnabled) {

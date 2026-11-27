@@ -50,6 +50,8 @@ export function displayName(user) {
 }
 
 let botUsername = '';
+/** Имя бота в Telegram (после запуска сервера) — для вкладки «Настройки» */
+export const telegramBotUsername = () => botUsername;
 
 /**
  * '/bind@JetRental_bot extra' → 'bind'. Команды, адресованные другому боту

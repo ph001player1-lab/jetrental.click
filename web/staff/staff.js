@@ -101,7 +101,8 @@
   // «Кабинет» — первым: у агента это главная вкладка
   // «Сайт» (фото и описания моделей) переехал в карточку техники во вкладке «Парк»
   ICONS.invest = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6h-6z"/></svg>';
-  const ALL_TABS = ['cabinet', 'invest', 'overview', 'fleet', 'price', 'journal', 'calendar', 'requests', 'crm', 'marketing', 'finance', 'server', 'access', 'tickets'];
+  ICONS.settings = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19.14 12.94a7.07 7.07 0 0 0 .05-.94 7.07 7.07 0 0 0-.05-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.61-.22l-2.39.96a7.03 7.03 0 0 0-1.62-.94l-.36-2.54A.5.5 0 0 0 13.9 2h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96a.5.5 0 0 0-.61.22L2.71 8.48a.5.5 0 0 0 .12.64l2.03 1.58a7.07 7.07 0 0 0 0 1.88l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.3.61.22l2.39-.96c.49.38 1.03.7 1.62.94l.36 2.54c.05.24.25.42.49.42h3.8c.24 0 .45-.18.49-.42l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.48 0 .61-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z"/></svg>';
+  const ALL_TABS = ['cabinet', 'invest', 'overview', 'fleet', 'price', 'journal', 'calendar', 'requests', 'crm', 'marketing', 'finance', 'server', 'settings', 'access', 'tickets'];
   // Внизу на телефоне помещается 6 кнопок; если вкладок больше — последние уходят в «Ещё»
   const BOTTOM_MAX = 6;
   // Вкладка видна, если у роли есть хотя бы одно из этих прав (настраивает админ на вкладке «Доступы»)
@@ -109,6 +110,8 @@
     overview: ['overview.view'], fleet: ['fleet.view'], price: ['price.view'], calendar: ['calendar.view'], requests: ['requests.view'],
     journal: ['journal.view', 'timesheet.view', 'reconcile.view', 'whatsapp.view'],
     crm: ['crm.view'], marketing: ['marketing.view'], finance: ['finance.view'], site: ['site.view'], server: ['server.view'], access: ['access.admin'],
+    // «Настройки» (связь, домены, ключи, оплаты сервисов, модель ИИ) — только админ
+    settings: ['access.admin'],
     tickets: ['tickets.view'],
     // «Кабинет» — по привязке к источнику агента (не по роли) или просмотр из «Маркетинга»
     cabinet: [],
@@ -681,6 +684,7 @@
     if (tab === 'marketing') marketing.load();
     if (tab === 'price') price.load();
     if (tab === 'tickets') tickets.load();
+    if (tab === 'settings') settings.load();
     if (tab === 'cabinet') cabinet.load(state.cabinetPreview);
     if (tab === 'invest') investor.load(state.investorPreview);
     if (tab === 'site' && !state.models) loadModels();
@@ -721,6 +725,7 @@
     if (state.tab === 'tickets' && (!view.querySelector('.tk') || tickets.canRefresh())) view.innerHTML = tickets.render();
     if (state.tab === 'cabinet' && (!view.querySelector('.cab') || cabinet.canRefresh())) view.innerHTML = cabinet.render();
     if (state.tab === 'invest' && (!view.querySelector('.inv') || investor.canRefresh())) view.innerHTML = investor.render();
+    if (state.tab === 'settings' && (!view.querySelector('.set') || settings.canRefresh())) view.innerHTML = settings.render();
     // Роли не открыт ни один раздел — подсказка вместо пустого экрана
     if (!tabs().length) view.innerHTML = `<div class="empty">${esc(t('app.noSections'))}</div>`;
   }
@@ -807,6 +812,13 @@
     },
     onBadge: (count, handler) => setTicketsBadge(count, handler),
     rerender: () => { if (state.tab === 'tickets') $('#view').innerHTML = tickets.render(); }
+  });
+
+  /* ----------------------------------------------- Вкладка «Настройки» (админ) */
+
+  const settings = window.STAFF_SETTINGS.create({
+    api, esc, dateTime,
+    rerender: () => { if (state.tab === 'settings') $('#view').innerHTML = settings.render(); }
   });
 
   /* ---------------------------------------------------------- Вкладка «CRM» */
@@ -1964,6 +1976,7 @@
       if (state.tab === 'tickets' && tickets.onClick(event)) return;
       if (state.tab === 'cabinet' && cabinet.onClick(event)) return;
       if (state.tab === 'invest' && investor.onClick(event)) return;
+      if (state.tab === 'settings' && settings.onClick(event)) return;
       if (event.target.closest('[data-more]')) {
         state.moreOpen = !state.moreOpen;
         return renderTabs();
@@ -2068,7 +2081,7 @@
       const id = location.hash.slice(1);
       if (state.user && id !== state.tab && tabs().some((tab) => tab.id === id)) setTab(id);
     });
-    setInterval(() => { if (state.tab === 'journal') journal.tick(); }, 5000);
+    setInterval(() => { if (state.tab === 'journal') journal.tick(); if (state.tab === 'settings' && !document.hidden) settings.tick(); }, 5000);
     document.addEventListener('input', (event) => {
       if (state.tab === 'journal' && journal.onInput(event)) return;
       if (state.tab === 'crm' && crm.onInput(event)) return;
@@ -2100,6 +2113,7 @@
       if (state.tab === 'tickets' && tickets.onSubmit(event)) return;
       if (state.tab === 'cabinet' && cabinet.onSubmit(event)) return;
       if (state.tab === 'invest' && investor.onSubmit(event)) return;
+      if (state.tab === 'settings' && settings.onSubmit(event)) return;
       // Окно карточки техники («Парк»)
       if (vehicles.onSubmit(event)) return;
       if (event.target.id !== 'srv-settings') return;

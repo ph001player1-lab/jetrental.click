@@ -349,7 +349,9 @@
       else if (e.groupReports) sources = `сообщения «Expense:» в группе (${e.groupReports})`;
       const rows = e.categories.map((c) => {
         let src = '';
-        if (c.ws && c.group) src = `<div class="muted jr-small">касса ${esc(num(c.ws))} · группа ${esc(num(c.group))}</div>`;
+        if (c.portal && (c.ws || c.group)) src = `<div class="muted jr-small">«Настройки» ${esc(num(c.portal))} · касса и группа ${esc(num(c.ws + c.group))}</div>`;
+        else if (c.portal) src = '<div class="muted jr-small">оплаты сервисов из «Настроек»</div>';
+        else if (c.ws && c.group) src = `<div class="muted jr-small">касса ${esc(num(c.ws))} · группа ${esc(num(c.group))}</div>`;
         else if (c.group) src = '<div class="muted jr-small">из группы</div>';
         return `<tr><td><b>${esc(c.label)}</b>${src}</td><td class="fin-num">${esc(baht(c.sum))}</td><td class="fin-num muted">${esc(num(c.count))}</td></tr>`;
       }).join('');

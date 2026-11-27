@@ -1121,7 +1121,7 @@
     function wabotBlock() {
       return `<div class="mk-wa"><div class="mk-label">WhatsApp-бот (номер компании)</div>
         <p class="mk-text">${esc(wabotLine(st.wabot))}</p>
-        <button type="button" class="btn btn--small" data-mk-wabot>${canEdit() ? 'Настроить' : 'Подробнее'}</button></div>`;
+        <button type="button" class="btn btn--small" data-mk-wabot>Подробнее</button></div>`;
     }
     function wabotHtml() {
       const w = st.wabot;
@@ -1138,50 +1138,20 @@
       if (w.reachable === false) {
         return `<p class="warn">Бот не отвечает на сервере. Если сервер только что обновили — подождите минуту и откройте окно снова.</p>${how}`;
       }
+      // Управление номером, группами и режимом — во вкладке «Настройки» → «Связь» (только админ)
+      const goSettings = ctx.can('access.admin')
+        ? '<p><button type="button" class="btn btn--small btn--primary" data-mk-settings-link>⚙️ Настроить — «Настройки» → Связь</button></p>'
+        : '<p class="mk-tip">Номер, группы и кому отвечает бот настраивает админ во вкладке «Настройки».</p>';
       if (w.status === 'connected') {
-        const set = w.settings || { mode: 'off', testNumbers: [] };
-        const groups = (w.groups || []).map((g) => `<option value="${esc(g.id)}"${g.id === w.groupId ? ' selected' : ''}>${esc(`${g.subject} (${g.size})`)}</option>`).join('');
         const today = w.today?.date ? `Сегодня: написали ${num(w.today.received)}, бот ответил ${num(w.today.sent)} раз.` : '';
-        if (!w.canEdit) return `<p>✅ Подключён номер ${esc(phoneText(w.me?.id))}</p><p class="mk-text">${esc(wabotLine(w))}</p><p class="mk-tip">${esc(today)}</p>${how}`;
-        return `
-          <p>✅ Подключён номер <b>${esc(phoneText(w.me?.id))}</b>${w.me?.name ? ` (${esc(w.me.name)})` : ''}</p>
+        const events = w.settings?.eventsGroup ? (w.groups || []).find((g) => g.id === w.settings.eventsGroup)?.subject : null;
+        return `<p>✅ Подключён номер <b>${esc(phoneText(w.me?.id))}</b>${w.me?.name ? ` (${esc(w.me.name)})` : ''}</p>
+          <p class="mk-text">${esc(wabotLine(w))}</p>
+          ${events ? `<p class="mk-tip">События парка → «${esc(events)}»</p>` : ''}
           ${today ? `<p class="mk-tip">${esc(today)}</p>` : ''}
-          <form class="mk-form" data-mk-wabot-mode>
-            <div class="mk-label">Кому отвечает бот</div>
-            <label class="mk-radio"><input type="radio" name="mode" value="off"${set.mode === 'off' ? ' checked' : ''}> Никому — клиентам отвечают люди с телефона</label>
-            <label class="mk-radio"><input type="radio" name="mode" value="test"${set.mode === 'test' ? ' checked' : ''}> Только тестовым номерам — проверить перед запуском</label>
-            <label class="field"><span>Тестовые номера (через запятую)</span><input class="search" name="testNumbers" inputmode="tel" value="${esc(set.testNumbers.map((n) => `+${n}`).join(', '))}" placeholder="+66 81 234 5678, +7 900 000 0000"></label>
-            <label class="mk-radio"><input type="radio" name="mode" value="on"${set.mode === 'on' ? ' checked' : ''}> Всем, кто пишет (сотрудникам тоже)</label>
-            <button type="submit" class="btn btn--primary btn--small">Сохранить</button>
-          </form>
-          <form class="mk-form" data-mk-wabot-group>
-            <label class="field"><span>Рабочая группа WhatsApp для заявок</span>
-              <select class="search" name="groupId"><option value="">— не присылать —</option>${groups}</select></label>
-            <p class="mk-tip">Нет нужной группы — добавьте номер бота ${esc(phoneText(w.me?.id))} в рабочую группу на телефоне, через минуту она появится здесь.</p>
-            <label class="mk-check"><input type="checkbox" name="telegramCopy"${set.telegramCopy ? ' checked' : ''}> Дублировать заявки в Telegram-группу</label>
-            <p class="mk-tip">Выключено — заявки только в этой группе WhatsApp, брать их можно в одном месте. Утренняя сводка и оповещения в Telegram остаются. Если бот не на связи, заявка всё равно придёт в Telegram.</p>
-            <button type="submit" class="btn btn--small">Сохранить</button>
-          </form>
-          ${eventsForm(w, set)}
-          ${msg}
-          ${how}
-          <button type="button" class="btn btn--small mk-danger" data-mk-wabot-logout>Отвязать номер</button>`;
+          ${goSettings}${how}`;
       }
-      if ((w.status === 'qr' || w.status === 'logged_out') && w.canEdit) {
-        return `
-          <ol class="jr-steps">
-            <li>Возьмите телефон с номером компании (+66 98 227 6467), откройте WhatsApp.</li>
-            <li>Настройки (или ⋮) → «Связанные устройства» → «Привязать устройство».</li>
-            <li>Наведите камеру на QR-код ниже. Код обновляется сам.</li>
-          </ol>
-          ${w.qr ? `<img class="jr-qr" src="${esc(w.qr)}" alt="QR-код для привязки WhatsApp">` : '<p class="mk-tip">QR-код готовится…</p>'}
-          <form class="mk-form" data-mk-wabot-pair>
-            <label class="field"><span>Или вход по коду: номер компании</span><input class="search" name="phone" inputmode="tel" placeholder="+66 98 227 6467"></label>
-            <button type="submit" class="btn btn--small">Получить код</button>
-          </form>
-          ${w.pairingCode ? `<p class="jr-code">${esc(w.pairingCode)}</p><p class="mk-tip">На телефоне: «Связанные устройства» → «Привязать устройство» → «Связать по номеру телефона» и введите этот код.</p>` : ''}
-          ${msg}${how}`;
-      }
+      if (w.status === 'qr' || w.status === 'logged_out') return `<p class="warn">Номер компании не привязан к боту.</p>${goSettings}${how}`;
       return `<p class="mk-text">${esc(wabotLine(w))}</p>${msg}${how}`;
     }
     async function refreshWabot() {
@@ -1189,15 +1159,6 @@
       if (st.detail?.metric === 'wabot') refreshDetail();
       const panel = document.querySelector('#mk-panel .mk-wa');
       if (panel && !st.editing && !st.placing) refreshPanel();
-    }
-    async function wabotAction(path, body, okText) {
-      try {
-        await api(path, { body });
-        st.wabotMsg = okText ? { kind: 'ok', text: okText } : null;
-      } catch (err) {
-        st.wabotMsg = { kind: 'error', text: { read_only: ERRORS.read_only, not_waiting_for_link: 'Код можно получить, только пока показывается QR-код.', unknown_group: 'Группа не найдена — обновите окно.', wabot_unreachable: 'Бот не отвечает на сервере.' }[err.code] || 'Не получилось. Попробуйте ещё раз.' };
-      }
-      await refreshWabot();
     }
     // Пока номер не привязан, QR-код обновляется — подтягиваем его каждые 5 секунд
     setInterval(() => {
@@ -1393,10 +1354,7 @@
       const dlg = el.closest('#mk-detail');
       if (dlg && (el === dlg || el.closest('[data-mk-close]'))) { closeDetail(); return true; }
       if (el.closest('[data-mk-wabot]')) { openDetail('wabot'); return true; }
-      if (el.closest('[data-mk-wabot-logout]')) {
-        if (window.confirm('Отвязать номер компании от бота? Бот перестанет отвечать клиентам, пока номер не привяжут снова.')) wabotAction('/wabot/logout', {}, 'Номер отвязан.');
-        return true;
-      }
+      if (el.closest('[data-mk-settings-link]')) { closeDetail(); location.hash = 'settings'; return true; }
       const metric = el.closest('[data-mk-metric]');
       if (metric) { openDetail(metric.dataset.mkMetric); return true; }
       const per = el.closest('[data-mk-period]');
@@ -1437,54 +1395,11 @@
       return false;
     }
 
-    /**
-     * События парка (ручной статус в «Парке») → рабочая группа, которую читает наблюдатель.
-     * Пишет этот же номер; отдельный номер — позже (свой бот, см. планы).
-     */
-    function eventsForm(w, set) {
-      const obs = w.observerGroup || {};
-      const list = w.groups || [];
-      const botInObserver = obs.id && list.some((g) => g.id === obs.id);
-      const options = list.map((g) => `<option value="${esc(g.id)}"${g.id === set.eventsGroup ? ' selected' : ''}>${esc(`${g.subject} (${g.size})`)}${g.id === obs.id ? ' — читает наблюдатель' : ''}</option>`).join('');
-      return `
-        <form class="mk-form" data-mk-wabot-events>
-          <label class="field"><span>События парка → рабочая группа (номер этого бота)</span>
-            <select class="search" name="eventsGroup"><option value="">— не писать —</option>${options}</select></label>
-          <p class="mk-tip">Когда в «Парке» меняют статус вручную (выдача, возврат, бронь, ремонт), бот пишет это в группу тем же текстом, что отчёт, — его видят все и читает наблюдатель.
-            ${obs.id ? (botInObserver ? '' : `Наблюдатель читает группу «${esc(obs.subject || '')}» — добавьте туда номер бота ${esc(phoneText(w.me?.id))}, и она появится в списке.`) : 'Наблюдатель ещё не выбрал рабочую группу (вкладка «Журнал» → WhatsApp).'}
-            Писать с отдельного номера — подключим позже отдельным ботом.</p>
-          <button type="submit" class="btn btn--small">Сохранить</button>
-        </form>`;
-    }
-
     function onSubmit(event) {
       const form = event.target;
       if (!form.closest?.('.mk')) return false;
       event.preventDefault();
       const f = new FormData(form);
-      if (form.matches('[data-mk-wabot-mode]')) {
-        const mode = f.get('mode');
-        wabotAction('/wabot/settings', { mode, testNumbers: f.get('testNumbers') || '' },
-          mode === 'on' ? 'Бот отвечает всем клиентам.' : mode === 'test' ? 'Бот отвечает только тестовым номерам.' : 'Бот никому не отвечает.').then(load);
-        return true;
-      }
-      if (form.matches('[data-mk-wabot-group]')) {
-        const telegramCopy = f.get('telegramCopy') === 'on';
-        api('/wabot/settings', { body: { telegramCopy } }).catch(() => null)
-          .then(() => wabotAction('/wabot/config', { groupId: f.get('groupId') },
-            f.get('groupId') ? `Заявки будут приходить в эту группу${telegramCopy ? ' и копией в Telegram' : ''}.` : 'Заявки в WhatsApp-группу не приходят — только в Telegram.'));
-        return true;
-      }
-      if (form.matches('[data-mk-wabot-events]')) {
-        const group = f.get('eventsGroup') || null;
-        wabotAction('/wabot/settings', { eventsGroup: group },
-          group ? 'События парка будут приходить в эту группу.' : 'События парка в группу не пишем.').then(load);
-        return true;
-      }
-      if (form.matches('[data-mk-wabot-pair]')) {
-        wabotAction('/wabot/pair', { phone: f.get('phone') });
-        return true;
-      }
       if (form.matches('[data-mk-settings]')) {
         call('/marketing/settings', {
           bots: Object.fromEntries(FORM_BOT_CH.map((c) => [c, f.get(`bot_${c}`) === 'on'])),

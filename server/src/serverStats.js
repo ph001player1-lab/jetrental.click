@@ -369,20 +369,24 @@ export async function saveServerSettings(staff, req, res) {
 
 /* ------------------------------------------------ Оповещения в Telegram */
 
-async function notifyAdmins(text) {
-  if (!telegramEnabled) return;
+/** Личное сообщение всем админам с Telegram ID; возвращает, скольким дошло */
+export async function notifyAdmins(text) {
+  if (!telegramEnabled) return 0;
   let chats = [];
   try {
     chats = await adminTelegramIds();
   } catch (err) {
     console.error('Admin list for alerts failed:', err.message);
-    return;
+    return 0;
   }
+  let delivered = 0;
   for (const chatId of chats) {
     // Бот может написать только тому, кто хотя бы раз нажал у него «Старт»
     await sendMessage(chatId, text, { disable_web_page_preview: true })
+      .then(() => { delivered++; })
       .catch((err) => console.error(`Admin alert to ${chatId} failed:`, err.message));
   }
+  return delivered;
 }
 
 /**

@@ -361,31 +361,14 @@
       if (!w.reachable) {
         body = `<p class="warn">${esc(t(w.error === 'observer_not_configured' ? 'jr.wa.noSecret' : 'jr.wa.unreachable'))}</p>`;
       } else if (w.status === 'connected') {
-        const groups = (w.groups || []).map((g) => `<option value="${esc(g.id)}"${g.id === w.groupId ? ' selected' : ''}>${esc(`${g.subject} (${g.size})`)}</option>`).join('');
         body = `
           <p>✅ ${esc(t('jr.wa.connected', { me: w.me?.id ? `+${w.me.id}` : '—' }))}</p>
-          ${manage ? `<form class="jr-wa__group" data-jr-group>
-            <label class="field"><span>${esc(t('jr.wa.group'))}</span>
-              <select name="groupId" class="search"><option value="">${esc(t('jr.wa.chooseGroup'))}</option>${groups}</select></label>
-            <button type="submit" class="btn btn--primary">${esc(t('jr.wa.watch'))}</button>
-          </form>` : ''}
           ${w.groupId ? `<p class="note">👀 ${esc(t('jr.wa.watching', { group: w.groupSubject || '—' }))}${w.lastMessageAt ? ` · ${esc(t('jr.wa.lastMsg', { time: ctx.dateTime(w.lastMessageAt) }))}` : ''}</p>
           <p class="muted jr-small">${esc(t('jr.wa.today', { n: w.today?.date === bangkokToday() ? w.today.received : 0 }))}</p>` : `<p class="warn">${esc(t('jr.wa.pickGroup'))}</p>`}
           ${w.unreadable?.length ? `<p class="warn">⚠️ ${esc(t('jr.wa.unreadable', { n: w.unreadable.length, times: w.unreadable.slice(-5).map((u) => ctx.dateTime(u.ts)).join(', ') }))}</p>` : ''}
-          <p class="muted jr-small">${esc(t('jr.wa.readOnly'))}</p>
-          ${manage ? `<button type="button" class="btn btn--small" data-jr-logout>${esc(t('jr.wa.logout'))}</button>` : ''}`;
-      } else if (w.status === 'qr' && !manage) {
-        body = `<p class="warn">${esc(t('jr.wa.notLinked'))}</p>`;
+          <p class="muted jr-small">${esc(t('jr.wa.readOnly'))}</p>`;
       } else if (w.status === 'qr') {
-        body = `
-          <ol class="jr-steps"><li>${esc(t('jr.wa.step1'))}</li><li>${esc(t('jr.wa.step2'))}</li><li>${esc(t('jr.wa.step3'))}</li></ol>
-          ${w.qr ? `<img class="jr-qr" src="${esc(w.qr)}" alt="QR">` : ''}
-          <p class="muted jr-small">${esc(t('jr.wa.qrRefresh'))}</p>
-          <form class="jr-wa__pair" data-jr-pair>
-            <label class="field"><span>${esc(t('jr.wa.pairLabel'))}</span><input name="phone" inputmode="tel" placeholder="+66 6x xxx xxxx"></label>
-            <button type="submit" class="btn">${esc(t('jr.wa.pair'))}</button>
-          </form>
-          ${w.pairingCode ? `<p class="jr-code">${esc(w.pairingCode)}</p><p class="muted jr-small">${esc(t('jr.wa.pairHow'))}</p>` : ''}`;
+        body = `<p class="warn">${esc(t('jr.wa.notLinked'))}</p>`;
       } else {
         body = `<p>${esc(t(`jr.wa.st.${w.status}`) === `jr.wa.st.${w.status}` ? w.status : t(`jr.wa.st.${w.status}`))}</p>`;
       }
@@ -393,6 +376,7 @@
         <section class="card jr-wa">
           <h3>${esc(t('jr.wa.title'))}</h3>
           ${body}
+          ${ctx.can('access.admin') ? `<p><a class="btn btn--small" href="#settings">⚙️ ${esc(t('jr.wa.toSettings'))}</a></p>` : `<p class="muted jr-small">${esc(t('jr.wa.adminSettings'))}</p>`}
           ${st.waNote ? `<p class="md-status is-${st.waNote.kind}" role="status">${esc(st.waNote.text)}</p>` : ''}
         </section>
         ${importBlock}`;
@@ -436,10 +420,6 @@
       if (recAll) { st.recAll = recAll.dataset.jrRecall === '1'; ctx.rerender(); return true; }
       const fixOpen = el.closest('[data-jr-fixopen]');
       if (fixOpen) { st.fixing = fixOpen.dataset.jrFixopen; ctx.rerender(); return true; }
-      if (el.closest('[data-jr-logout]')) {
-        if (window.confirm(t('jr.wa.logoutConfirm'))) waAction('/wa/logout', {});
-        return true;
-      }
       const raw = el.closest('[data-jr-raw] summary');
       if (raw) {
         const id = raw.parentElement.dataset.jrRaw;
@@ -458,18 +438,6 @@
       return true;
     }
 
-    async function waAction(path, body, okText) {
-      st.waNote = null;
-      try {
-        await ctx.api(path, { body });
-        if (okText) st.waNote = { kind: 'ok', text: okText };
-      } catch (err) {
-        st.waNote = { kind: 'error', text: ctx.errorText(err) };
-      }
-      st.wa = await ctx.api('/wa').catch(() => st.wa);
-      ctx.rerender();
-    }
-
     function onSubmit(event) {
       const form = event.target;
       if (!form.closest('#journal')) return false;
@@ -480,14 +448,6 @@
         for (const name of ['plate', 'plateFrom', 'plateTo']) if (form.elements[name]) body[name] = form.elements[name].value;
         ctx.api('/journal/fix', { body }).then(() => { st.fixing = null; load(); })
           .catch((err) => window.alert(ctx.errorText(err)));
-        return true;
-      }
-      if (form.matches('[data-jr-group]')) {
-        if (form.elements.groupId.value) waAction('/wa/config', { groupId: form.elements.groupId.value }, t('jr.wa.saved'));
-        return true;
-      }
-      if (form.matches('[data-jr-pair]')) {
-        waAction('/wa/pair', { phone: form.elements.phone.value });
         return true;
       }
       return true;

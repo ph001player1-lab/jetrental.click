@@ -1483,3 +1483,50 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
 .vh-inv-hint { margin: 0; align-self: end; }
 /* Поля инвестора в окне правки — отдельной полосой во всю ширину, чтобы не терялись среди остальных */
 .vh-grid .vh-inv, .vh-grid .vh-inv-hint { grid-column: 1 / -1; }
+
+/* ------------------------------------------------ «Настройки» (админ) */
+.set { display: grid; gap: 12px; min-width: 0; }
+.set-views { flex-wrap: wrap; }
+.set-sec { padding: 14px 16px; display: grid; gap: 10px; min-width: 0; }
+.set-sec h3 { margin: 0; font-size: 17px; }
+.set-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.set-list li { overflow-wrap: anywhere; }
+.set-dot { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; font-size: 11px; font-weight: 700; }
+.set-dot--bad { background: var(--rent); color: #fff; }
+.set-dot--warn { background: var(--reserve); color: #1a1000; }
+.set-badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.set-badge--overdue { background: var(--rent-bg); color: var(--rent); }
+.set-badge--today { background: var(--rent-bg); color: var(--rent); }
+.set-badge--soon { background: var(--reserve-bg); color: var(--warn); }
+.set-badge--nodate, .set-badge--off { background: var(--surface-2); color: var(--muted); }
+.set-summary { grid-template-columns: 1fr auto; align-items: center; }
+.set-summary > div:first-child { display: grid; gap: 2px; }
+.set-summary > div:first-child b { font-size: 22px; }
+.set-summary .mk-tip, .set-summary .md-status { grid-column: 1 / -1; margin: 0; }
+.set-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.set-svc { padding: 12px 14px; display: grid; gap: 6px; min-width: 0; border-left: 4px solid transparent; }
+.set-svc--overdue, .set-svc--today { border-left-color: var(--rent); }
+.set-svc--soon { border-left-color: var(--reserve); }
+.set-svc--off { opacity: .7; }
+.set-svc__head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; align-items: baseline; }
+.set-svc__due { display: flex; gap: 8px; align-items: center; font-weight: 600; }
+.set-svc__cost { font-size: 15px; }
+.set-svc__facts { overflow-wrap: anywhere; }
+.set-form, .set-paid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px 12px; align-items: end; }
+.set-form { padding: 14px 16px; }
+.set-form h3 { margin: 0; grid-column: 1 / -1; font-size: 17px; }
+.set-form .mk-check, .set-form .md-status, .set-wide { grid-column: 1 / -1; }
+.set-paid { padding-top: 6px; border-top: 1px dashed var(--line); }
+.set-paid .mk-tip { margin: 0; }
+.set-code { margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--surface-2); font-size: 13px; overflow-x: auto; white-space: pre; }
+.set-meter { height: 10px; border-radius: 5px; background: var(--surface-2); overflow: hidden; }
+.set-meter__bar { height: 100%; background: var(--free); }
+.set-meter__bar.is-warn { background: var(--reserve); }
+.set-meter__bar.is-over { background: var(--rent); }
+@media (max-width: 560px) {
+  .set-summary { grid-template-columns: 1fr; }
+}
+/* В «Настройках» формы на всю ширину карточки, но кнопки — по размеру текста */
+.set .mk-form { max-width: 680px; }
+.set .mk-form > .btn, .set-sec > .btn { justify-self: start; width: auto; }
+.set-sec > p { margin: 0; }
