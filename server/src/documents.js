@@ -568,6 +568,35 @@ export function contractsOfClient(phones = [], name = '') {
   return out;
 }
 
+/**
+ * Клиенты из прошлых договоров по имени, телефону или номеру паспорта — данные из последнего
+ * договора каждого (паспорт, права, адрес): чтобы не вписывать их заново
+ */
+export function contractRenters(query, limit = 10) {
+  const text = String(query || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const qd = text.replace(/\D/g, '');
+  const compact = text.replace(/\s/g, '');
+  if (text.length < 2) return [];
+  const seen = new Set();
+  const out = [];
+  for (const { row, d } of contractRows()) {
+    const r = d.renter || {};
+    const name = String(r.name || '').toLowerCase();
+    const hit = (name && name.includes(text)) || (qd.length >= 3 && String(r.phone || '').replace(/\D/g, '').includes(qd))
+      || (compact.length >= 4 && String(r.passport || '').toLowerCase().replace(/\s/g, '').includes(compact));
+    if (!hit) continue;
+    const key = String(r.phone || '').replace(/\D/g, '').slice(-9) || name;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      name: r.name || '', phone: r.phone || '', passport: r.passport || '', nationality: r.nationality || '', license: r.license || '', address: r.address || '',
+      contract: { id: row.id, number: row.number, from: d.from || null }
+    });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
 function contractBrief(row) {
   const d = rowData(row);
   return { id: row.id, number: row.number, name: d.renter?.name || '', phone: d.renter?.phone || '', model: d.model, plate: d.plate, from: d.from, to: d.to, discount: discountBrief(activeDiscount(row.id)) };
@@ -665,7 +694,7 @@ export async function docsOne(staff, req, res, url) {
 /** Подсказка для формы: техника из «Парка», цена на даты из «Прайса», клиент из заявки */
 export async function docsPrefill(staff, req, res, url) {
   needView(staff);
-  const out = { vehicles: listVehicles().map((v) => ({ id: v.id, plate: v.plate, model: v.model, type: v.type, color: v.color, vin: v.vin, mileage: v.mileage })) };
+  const out = { vehicles: listVehicles().map((v) => ({ id: v.id, plate: v.plate, brand: v.brand, model: v.model, type: v.type, color: v.color, vin: v.vin, mileage: v.mileage })) };
   out.equipment = Object.fromEntries(Object.entries(EQUIPMENT_BY_TYPE).map(([t, keys]) => [t, keys.map((k) => ({ key: k, ...EQUIPMENT[k], off: EQUIPMENT_DEFAULT_OFF.has(k) }))]));
   out.photoCaptions = Object.entries(PHOTO_CAPTIONS).map(([key, l]) => ({ key, ...l }));
   const ds = discountSettings();

@@ -97,13 +97,32 @@
     const vehicleById = (id) => st.pre?.vehicles.find((v) => String(v.id) === String(id)) || null;
     const typeOf = (vehicleType) => (vehicleType === 'car' ? 'car' : 'bike');
 
-    function vehicleOptions(selected) {
+    /** Список техники: filter — номер или модель; на даты нового договора — свободна или занята */
+    function vehicleOptions(selected, filter = '', from = st.form?.from, to = st.form?.to) {
+      const fq = String(filter || '').toLowerCase().replace(/\s+/g, ' ').trim();
+      const fd = fq.replace(/\D/g, '');
+      const nameOf = (v) => [v.brand, v.model].filter(Boolean).join(' ');
+      const fits = (v) => !fq || nameOf(v).toLowerCase().includes(fq) || (fd.length >= 2 && String(v.plate).replace(/\D/g, '').includes(fd));
+      // Выбранная остаётся в списке, даже если не подходит под поиск
+      const match = (v) => fits(v) || String(v.id) === String(selected);
+      const okDates = !st.id && from && to && to.slice(0, 10) >= from.slice(0, 10) && ctx.freeVehicles;
+      const free = okDates ? new Set(ctx.freeVehicles(from.slice(0, 10), to.slice(0, 10)).map((x) => x.vehicleId)) : null;
+      const mark = (v) => (!free ? '' : free.has(v.id) ? ' ✓' : ` · ${t('dc.busyOnDates')}`);
       const groups = ['car', 'motorcycle', 'scooter'].map((type) => {
-        const list = st.pre.vehicles.filter((v) => (v.type || 'scooter') === type).sort((a, b) => a.model.localeCompare(b.model));
+        const list = st.pre.vehicles.filter((v) => (v.type || 'scooter') === type && match(v))
+          .sort((a, b) => (free ? Number(free.has(b.id)) - Number(free.has(a.id)) : 0) || nameOf(a).localeCompare(nameOf(b)));
         if (!list.length) return '';
-        return `<optgroup label="${esc(t(`dc.type.${type}`))}">${list.map((v) => `<option value="${v.id}"${String(v.id) === String(selected) ? ' selected' : ''}>${esc(v.model)} · ${esc(v.plate)}</option>`).join('')}</optgroup>`;
+        return `<optgroup label="${esc(t(`dc.type.${type}`))}">${list.map((v) => `<option value="${v.id}"${String(v.id) === String(selected) ? ' selected' : ''}${fits(v) ? '' : ' data-kept'}>${esc(nameOf(v))} · ${esc(v.plate)}${esc(mark(v))}</option>`).join('')}</optgroup>`;
       }).join('');
-      return `<option value="">${esc(t('dc.pickVehicle'))}</option>${groups}`;
+      return `<option value="">${esc(t(fq && !groups ? 'dc.vehicleNoMatch' : 'dc.pickVehicle'))}</option>${groups}`;
+    }
+
+    /** Перестроить список техники в форме (поиск, другие даты) — выбранная остаётся */
+    function rebuildVehicles(form) {
+      const sel = form?.elements.vehicleId;
+      if (!sel) return [];
+      sel.innerHTML = vehicleOptions(sel.value, form.querySelector('[data-dc-vfilter]')?.value || '', form.elements.from.value, form.elements.to.value);
+      return [...sel.options].filter((o) => o.value && !o.hasAttribute('data-kept'));
     }
 
     function equipmentHtml(type, list) {
@@ -135,7 +154,8 @@
         </div>
         <h3>🚗 ${esc(t('dc.vehicle'))}</h3>
         <div class="dc-grid">
-          ${fld(t('dc.vehicle'), `<select class="search" name="vehicleId" data-dc-vehicle>${vehicleOptions(f.vehicleId)}</select>`, 'dc-wide')}
+          ${canEdit() ? fld(`🔎 ${t('dc.vehicleSearch')}`, `<input class="search" type="search" data-dc-vfilter autocomplete="off" enterkeyhint="search" placeholder="${esc(t('dc.vehicleSearchHint'))}">`) : ''}
+          ${fld(t('dc.vehicle'), `<select class="search" name="vehicleId" data-dc-vehicle>${vehicleOptions(f.vehicleId)}</select>`, canEdit() ? 'dc-span2' : 'dc-wide')}
           ${fld(t('dc.model'), inp('model', f.model))}${fld(t('dc.plate'), inp('plate', f.plate))}
           ${fld(t('dc.color'), inp('color', f.color))}${fld('VIN', inp('vin', f.vin))}
         </div>
@@ -145,6 +165,7 @@
           ${fld(t('dc.pickupPlace'), inp('pickupPlace', f.pickupPlace, `placeholder="${esc(t('dc.placeHint'))}"`))}${fld(t('dc.returnPlace'), inp('returnPlace', f.returnPlace, `placeholder="${esc(t('dc.placeHint'))}"`))}
         </div>
         <h3>👤 ${esc(t('dc.client'))}</h3>
+        ${canEdit() && ctx.pick ? ctx.pick.clientBox('dc-client', t('pick.client')) : ''}
         <div class="dc-grid">
           ${fld(t('dc.name'), inp('r_name', f.renter?.name, 'autocomplete="off"'), 'dc-wide')}
           ${fld(t('dc.passport'), inp('r_passport', f.renter?.passport))}${fld(t('dc.nationality'), inp('r_nationality', f.renter?.nationality))}
@@ -257,6 +278,45 @@
       return '';
     }
     const pendingDiscount = () => st.one?.contract.discountFull?.status === 'pending';
+
+    /* ------------------------------------------ Клиент из базы */
+
+    const plateDigits = (p) => String(p || '').replace(/\D/g, '');
+
+    /** Выбрали клиента в поиске: его данные (и последнего договора) — в форму; бронь — техника и даты */
+    async function applyClient(c) {
+      const form = document.querySelector('[data-dc-form]');
+      if (!form) return;
+      const set = (name, value) => {
+        const el = form.elements[name];
+        if (!el) return;
+        el.value = value ?? '';
+        el.classList.remove('dc-ai-unsure');
+        el.classList.toggle('dc-ai-filled', Boolean(value));
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      };
+      // Все поля клиента — заново: данные прежнего клиента не остаются
+      set('r_name', c.name);
+      set('r_phone', c.phone);
+      set('r_passport', c.passport);
+      set('r_nationality', c.nationality);
+      set('r_license', c.license);
+      set('r_address', c.address);
+      // Бронь клиента: техника и даты (если технику ещё не выбрали)
+      const b = c.booking;
+      const v = b?.plates?.length ? st.pre.vehicles.find((x) => plateDigits(x.plate) === plateDigits(b.plates[0])) : null;
+      if (v && (!form.elements.vehicleId.value || form.elements.vehicleId.value === String(v.id))) {
+        const time = (x) => (form.elements[x].value.split('T')[1] || '12:00');
+        if (b.from) set('from', `${b.from.slice(0, 10)}T${time('from')}`);
+        if (b.to) set('to', `${b.to.slice(0, 10)}T${time('to')}`);
+        rebuildVehicles(form);
+        set('vehicleId', String(v.id));
+        await refreshQuote(form, true);
+      }
+      const cur = readContract(form);
+      st.form = { ...st.form, ...cur.data, lang: cur.lang };
+    }
+    if (ctx.pick) ctx.pick.on('dc-client', (c) => { applyClient(c); });
 
     /* ------------------------------------------ ИИ: заполнить договор по фото */
 
@@ -873,7 +933,7 @@
       const el = event.target;
       if (!el.closest?.('.dc')) return false;
       if (el.matches('[data-dc-vehicle]')) { refreshQuote(el.form, true); return true; }
-      if (el.matches('[data-dc-dates]')) { refreshQuote(el.form, false); return true; }
+      if (el.matches('[data-dc-dates]')) { rebuildVehicles(el.form); refreshQuote(el.form, false); return true; }
       if (el.matches('[data-dc-money]')) { recalcMoney(el.form); return true; }
       if (el.matches('[data-dc-request]')) { fillFromRequest(el.form, el.value); return true; }
       if (el.matches('[data-dc-caption]')) { st.photoCaption = el.value; return true; }
@@ -907,6 +967,18 @@
 
     let searchTimer = null;
     function onInput(event) {
+      // Поиск техники: номер или модель; одна подходящая — сразу выбрана
+      if (event.target.matches?.('[data-dc-vfilter]')) {
+        const form = event.target.form;
+        const left = rebuildVehicles(form);
+        const q = event.target.value.trim();
+        if (q.length >= 3 && left.length === 1 && form.elements.vehicleId.value !== left[0].value) {
+          form.elements.vehicleId.value = left[0].value;
+          form.elements.vehicleId.dispatchEvent(new Event('input', { bubbles: true }));
+          refreshQuote(form, true);
+        }
+        return true;
+      }
       // Сотрудник поправил поле, в котором ИИ не был уверен, — подсветку снимаем
       if (event.isTrusted && event.target.classList?.contains('dc-ai-unsure')) event.target.classList.remove('dc-ai-unsure');
       if (event.target.matches?.('[data-dc-money]')) { recalcMoney(event.target.form); return true; }

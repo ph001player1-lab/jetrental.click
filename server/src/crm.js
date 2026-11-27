@@ -586,7 +586,7 @@ function listItem(c) {
     id: c.id, name: c.name, phone, telegram: c.telegram, country: countryOf(phone), source: c.source,
     tags: autoTags(c), rentals: c.stats.rentals, paid: c.stats.paid, lastAt: c.stats.lastAt, debt: c.stats.debt, overdue: c.stats.overdue,
     rent: c.active ? { plates: c.active.plates, model: c.active.model, to: c.active.to } : null,
-    booking: c.upcoming[0] ? { from: c.upcoming[0].from, plates: c.upcoming[0].plates, model: c.upcoming[0].model } : null,
+    booking: c.upcoming[0] ? { from: c.upcoming[0].from, to: c.upcoming[0].to, plates: c.upcoming[0].plates, model: c.upcoming[0].model } : null,
     dupes: c.dupes.length, badPhone: c.flags.badPhone, notes: c.stats.notes
   };
 }

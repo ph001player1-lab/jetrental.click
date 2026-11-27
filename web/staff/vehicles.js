@@ -24,6 +24,25 @@
     const VIEW_KEY = 'jm_fleet_view';
     const savedView = () => { try { return localStorage.getItem(VIEW_KEY) === 'table' ? 'table' : 'cards'; } catch { return 'cards'; } };
     const st = { dialog: null, msg: null, saving: false, archiveOpen: false, archiveMsg: null, view: savedView(), onlyProblems: false, onlyCheck: false };
+    // Клиент из базы в окне смены статуса: имя и телефон; его бронь этой техники — даты
+    ctx.pick?.on('vh-client', (c) => {
+      const form = document.querySelector('#vh-dialog [data-vh-status-form]');
+      if (!form) return;
+      const set = (name, value) => {
+        const el = form.elements[name];
+        if (!el) return;
+        el.value = value ?? '';
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      };
+      set('clientName', c.name);
+      set('clientPhone', c.phone);
+      const digitsOf = (p) => String(p || '').replace(/\D/g, '');
+      const plate = digitsOf(st.dialog?.vehicle?.plate);
+      if (c.booking && plate && (c.booking.plates || []).some((p) => digitsOf(p) === plate)) {
+        if (form.elements.from && c.booking.from) set('from', c.booking.from.slice(0, 10));
+        if (form.elements.to && c.booking.to) set('to', c.booking.to.slice(0, 10));
+      }
+    });
     const STATUS_KINDS = ['free', 'rent', 'reserve', 'service'];
     const dm = (iso) => (iso ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}` : '');
     const fleet = () => ctx.fleet() || {};
@@ -481,6 +500,7 @@
              <label class="field"><span>${esc(t('fs.to'))}</span><input class="search" type="date" name="to" min="${ctx.today()}"${val(p.to)}></label>` : '';
       // Кто берёт технику — для выдачи и брони (виден в «Парке», уходит в отчёт группы строкой Contact)
       const client = k === 'rent' || k === 'reserve' ? `
+            ${ctx.pick ? `<div class="vh-wide">${ctx.pick.clientBox('vh-client', t('pick.client'))}</div>` : ''}
             <label class="field"><span>${esc(t('fs.client'))}</span><input class="search" name="clientName" maxlength="100" autocomplete="off"${val(p.clientName)}></label>
             <label class="field"><span>${esc(t('fs.clientPhone'))}</span><input class="search" name="clientPhone" inputmode="tel" maxlength="40" placeholder="+66 81 234 5678"${val(p.clientPhone)}></label>` : '';
       return `

@@ -979,10 +979,15 @@
     rerender: () => { if (state.tab === 'tickets') $('#view').innerHTML = tickets.render(); }
   });
 
+  /* ------------------------------------ Быстрый выбор клиента из базы */
+
+  const pick = window.STAFF_PICK.create({ api, t, esc });
+
   /* -------------------------------------------------- Вкладка «Документы» */
 
   const docs = window.STAFF_DOCS.create({
-    api, t, esc, money, dateTime,
+    api, t, esc, money, dateTime, pick,
+    freeVehicles: (from, to, type) => freeVehicles(from, to, type),
     lang: () => lang,
     requests: () => state.requests,
     uploadImage: (url, blob) => uploadImage(url, blob),
@@ -1422,7 +1427,7 @@
 
   const bkkToday = () => new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
   const vehicles = window.STAFF_VEHICLES.create({
-    api, t, esc, money, dateTime,
+    api, t, esc, money, dateTime, pick,
     shortDate: (iso) => shortDate(iso),
     today: bkkToday,
     fleet: () => state.fleet,

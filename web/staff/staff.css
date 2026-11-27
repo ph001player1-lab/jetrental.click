@@ -1651,3 +1651,13 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
 .dc-form .dc-ai-unsure { background: var(--reserve-bg); border-color: var(--reserve); box-shadow: 0 0 0 1px var(--reserve); }
 .btn.is-disabled { opacity: .5; pointer-events: none; }
 @media (prefers-reduced-motion: reduce) { .dc-ai-busy { animation: none; } }
+
+/* Быстрый выбор клиента из базы (договор, смена статуса) */
+.pick { display: grid; gap: 6px; margin-bottom: 6px; }
+.pick-list { display: grid; gap: 4px; max-height: 300px; overflow: auto; padding: 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.pick-list > p { margin: 6px; }
+.pick-item { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; align-items: center; width: 100%; padding: 8px 10px; border: 0; border-radius: 8px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.pick-item:hover, .pick-item:focus-visible { background: var(--surface-2); }
+.pick-badges { display: flex; flex-wrap: wrap; gap: 4px; }
+.pick-note { margin: 0; }
+.dc-span2 { grid-column: span 2; }

@@ -72,7 +72,7 @@ import { wabotPortalStatus, wabotPortalSettings, wabotPortalConfig, wabotPortalP
 import { groupStatusByPlate } from './journal/reconcile.js';
 import { discountsReport, discountsDecide, discountsSettingsRoute } from './discounts.js';
 import { settingsRoute, settingsService, settingsServiceDelete, settingsPaid, settingsPaymentDelete, settingsAi, settingsDomainsCheck } from './itSettings.js';
-import { docsList, docsOne, docsPrefill, docsSave, docsDelete, docsPdf, docsSign, docsUnsign, docsLink, docsSend, docsPhotoUpload, docsPhotoGet, docsPhotoDelete, contractFor, contractsOfClient, docsIssue, docsUnissue } from './documents.js';
+import { docsList, docsOne, docsPrefill, docsSave, docsDelete, docsPdf, docsSign, docsUnsign, docsLink, docsSend, docsPhotoUpload, docsPhotoGet, docsPhotoDelete, contractFor, contractsOfClient, docsIssue, docsUnissue, contractRenters } from './documents.js';
 
 const COOKIE = 'jr_staff';
 const MAX_ATTEMPTS = 5;
@@ -389,6 +389,35 @@ async function renterOf(car) {
   };
 }
 
+/* ------------------------------------- Быстрый выбор клиента из базы */
+
+/**
+ * GET /api/staff/clients/pick?q= — клиенты для договора и смены статуса: из CRM и из прошлых
+ * договоров (там паспорт, права, адрес). Нужен доступ к договорам, «Парку» (меняет) или CRM.
+ */
+async function clientsPickRoute(staff, req, res, url) {
+  if (!can(staff, 'docs.edit') && !can(staff, 'fleet.edit') && !can(staff, 'crm.view')) throw new HttpError(403, 'no_section_access');
+  const q = String(url.searchParams.get('q') || '').trim().slice(0, 60);
+  if (q.length < 2) return sendJson(res, 200, { items: [] });
+  const tail = (p) => String(p || '').replace(/\D/g, '').slice(-9);
+  const fromDocs = can(staff, 'docs.edit') || can(staff, 'docs.view') ? contractRenters(q, 10) : [];
+  const crm = (await crmList({ q }).catch(() => ({ items: [] }))).items.slice(0, 15);
+  const items = [];
+  const seen = new Set();
+  // Сначала CRM (там аренды и брони), к нему — данные из последнего договора с тем же телефоном
+  for (const c of crm) {
+    const doc = fromDocs.find((d) => (tail(d.phone) && tail(d.phone) === tail(c.phone)) || d.name.toLowerCase() === String(c.name || '').toLowerCase());
+    if (doc) seen.add(doc);
+    items.push({
+      source: 'crm', clientId: c.id, name: doc?.name || c.name, phone: c.phone || doc?.phone || '',
+      passport: doc?.passport || '', nationality: doc?.nationality || '', license: doc?.license || '', address: doc?.address || '',
+      contract: doc?.contract || null, rent: c.rent, booking: c.booking
+    });
+  }
+  for (const d of fromDocs) if (!seen.has(d)) items.push({ source: 'contract', clientId: null, ...d, rent: null, booking: null });
+  sendJson(res, 200, { items: items.slice(0, 12) });
+}
+
 /* ------------------------------------------- ИИ: договор по фото */
 
 const nameWords = (s) => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(' ').filter((w) => w.length >= 2);
@@ -413,10 +442,10 @@ function vehicleByPhoto(v) {
   const all = listVehicles().filter((x) => !isSold(x.plate));
   let found = all.filter((x) => { const k = plateKey(x.plate); return k === digitsOnly || k === full || k.endsWith(digitsOnly); });
   if (found.length > 1 && v.model) {
-    const byModel = found.filter((x) => sameName(x.model, v.model));
+    const byModel = found.filter((x) => sameName(`${x.brand} ${x.model}`, v.model));
     if (byModel.length) found = byModel;
   }
-  const brief = (x) => ({ id: x.id, plate: x.plate, model: x.model });
+  const brief = (x) => ({ id: x.id, plate: x.plate, model: [x.brand, x.model].filter(Boolean).join(' ') });
   return found.length === 1 ? { vehicle: brief(found[0]), candidates: [] } : { vehicle: null, candidates: found.slice(0, 5).map(brief) };
 }
 
@@ -999,6 +1028,7 @@ const ROUTES = {
   'POST /api/staff/docs/issue': signedIn(docsIssue),
   'POST /api/staff/docs/unissue': signedIn(docsUnissue),
   'POST /api/staff/docs/recognize': signedIn(docsRecognizeRoute),
+  'GET /api/staff/clients/pick': signedIn(clientsPickRoute),
   'GET /api/staff/discounts': signedIn(discountsReport),
   'POST /api/staff/discounts/decide': signedIn(discountsDecide),
   'POST /api/staff/settings/discounts': signedIn(discountsSettingsRoute),
