@@ -41,7 +41,8 @@
       return `<div class="inv">
         ${d.preview ? `<div class="cab-preview" role="status"><span>👁 ${esc(t('inv.preview', { name: d.investor.name }))}</span>
           <button type="button" class="btn btn--small" data-inv-close>✕ ${esc(t('cab.close'))}</button></div>` : ''}
-        <header class="cab-head"><h2>📈 ${esc(d.investor.name)}</h2><span class="pill cab-pct">${esc(t('inv.share', { n: d.investor.percent }))}</span></header>
+        <header class="cab-head"><h2>📈 ${esc(d.investor.name)}</h2><span class="pill cab-pct">${esc(t('inv.share', { n: d.investor.percent }))}</span>
+          <span class="pill inv-rule inv-rule--${d.investor.negative}">${esc(t(`inv.rule.${d.investor.negative || 'carry'}`))}</span></header>
         ${renderStats(d)}
         ${renderFleet(d)}
         ${renderMonth(d)}
@@ -95,6 +96,7 @@
             <div><dt>${esc(t('inv.profit'))}</dt><dd><b>${esc(money(r.profit))}</b></dd></div>
             <div><dt>${esc(t('inv.pct'))}</dt><dd>${r.percent}%</dd></div>
           </dl>
+          ${r.share < 0 ? `<p class="inv-minus">${esc(t('inv.minusShare', { share: money(r.share) }))} — ${esc(t(`inv.rule.${r.rule}`))}${r.ruleFrom === 'vehicle' ? ` (${esc(t('inv.neg.vehicle'))})` : ''}${r.rule === 'zero' ? `: ${esc(t('inv.toAccrue', { amount: money(r.amount) }))}` : ''}</p>` : ''}
           ${open ? `<div class="inv-more"><h4>${esc(t('inv.costs'))}</h4>${costs}<h4>${esc(t('inv.rentals'))}</h4>${rentals}</div>`
             : `<button type="button" class="link" data-inv-toggle="${r.vehicleId}">${esc(t('inv.details'))}</button>`}
         </article>`;
@@ -106,7 +108,7 @@
         <p class="cab-tip">${esc(note)} ${esc(t('inv.formula'))}</p>
         ${d.rows.length ? `<div class="list">${cards}</div>
           <div class="card inv-total"><span>${esc(t('inv.total', { month: monthName(d.month) }))}</span>
-            <span>${esc(t('inv.revenue'))} ${esc(money(tot.revenue))} · ${esc(t('inv.profit'))} ${esc(money(tot.profit))}</span>
+            <span>${esc(t('inv.revenue'))} ${esc(money(tot.revenue))} · ${esc(t('inv.profit'))} ${esc(money(tot.profit))}${tot.share !== tot.amount ? ` · ${esc(t('inv.shareCalc', { share: money(tot.share) }))}` : ''}</span>
             <b>${esc(t('inv.yourShare'))}: ${esc(money(tot.amount))}</b></div>` : `<div class="card empty">${esc(t('inv.noVehicles'))}</div>`}
       </section>`;
     }

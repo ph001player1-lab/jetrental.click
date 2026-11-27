@@ -12,6 +12,9 @@
  *     кредиту (если машина в кредите) — те же цифры, что во вкладке «Финансы»;
  *   - начисляется за закрытый месяц, 1-го числа за прошлый (и запоминается);
  *     текущий месяц — «ожидается»;
+ *   - минус (расходы больше выручки) считаем и показываем всегда; учитывать ли его
+ *     в выплатах или обнулять — условие инвестора («Доступы»), его можно поменять
+ *     для отдельной машины («Парк»). Начисленные месяцы при смене условия не меняются;
  *   - инвестор видит каждый расход (дата, сумма, что сделали) и аренды —
  *     только даты и суммы, без клиентов;
  *   - выплаты записывают владелец и админ; инвестору — уведомление
@@ -73,11 +76,16 @@ db.raw.exec(`
   );
 `);
 
+// Рассчитанная доля (может быть с минусом) и условие, по которому начислили, — для прозрачности
+for (const [col, type] of [['share', 'REAL'], ['rule', 'TEXT']]) {
+  if (!db.raw.prepare('PRAGMA table_info(investor_accruals)').all().some((c) => c.name === col)) db.raw.exec(`ALTER TABLE investor_accruals ADD COLUMN ${col} ${type}`);
+}
+
 const q = {
   accruals: db.raw.prepare('SELECT * FROM investor_accruals WHERE staff_id = ? ORDER BY month DESC, plate'),
   monthRows: db.raw.prepare('SELECT * FROM investor_accruals WHERE staff_id = ? AND month = ?'),
-  addAccrual: db.raw.prepare(`INSERT OR IGNORE INTO investor_accruals (staff_id, month, plate, model, revenue, repair, other, loan, profit, percent, amount, at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+  addAccrual: db.raw.prepare(`INSERT OR IGNORE INTO investor_accruals (staff_id, month, plate, model, revenue, repair, other, loan, profit, percent, amount, at, share, rule)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
   payouts: db.raw.prepare('SELECT * FROM investor_payouts WHERE staff_id = ? ORDER BY paid_on DESC, id DESC'),
   payout: db.raw.prepare('SELECT * FROM investor_payouts WHERE id = ?'),
   addPayout: db.raw.prepare(`INSERT INTO investor_payouts (staff_id, amount, paid_on, method, note, by_email, by_name, created_at)
@@ -97,17 +105,17 @@ const clean = (value, max) => String(value ?? '').replace(/[\u0000-\u001f\u007f]
 
 const TEXTS = {
   ru: {
-    accrued: '💰 <b>Начислено за {month}: {total}</b>', line: '• {car}: прибыль {profit}, ваша доля {pct}% — {amount}',
+    accrued: '💰 <b>Начислено за {month}: {total}</b>', line: '• {car}: прибыль {profit}, ваша доля {pct}% — {amount}', zeroed: ' (минус {share} обнулён по условию)',
     payout: '💸 <b>Записана выплата {amount}</b> ({date}). Остаток к выплате: {balance}.',
     subjectAccrued: 'Начислено за {month}: {total}', subjectPayout: 'Выплата {amount}', link: '👉 Ваш кабинет: {url}'
   },
   en: {
-    accrued: '💰 <b>Accrued for {month}: {total}</b>', line: '• {car}: profit {profit}, your share {pct}% — {amount}',
+    accrued: '💰 <b>Accrued for {month}: {total}</b>', line: '• {car}: profit {profit}, your share {pct}% — {amount}', zeroed: ' (minus {share} set to zero by the terms)',
     payout: '💸 <b>Payout recorded: {amount}</b> ({date}). Balance to pay: {balance}.',
     subjectAccrued: 'Accrued for {month}: {total}', subjectPayout: 'Payout {amount}', link: '👉 Your cabinet: {url}'
   },
   th: {
-    accrued: '💰 <b>ยอดสำหรับ {month}: {total}</b>', line: '• {car}: กำไร {profit}, ส่วนของคุณ {pct}% — {amount}',
+    accrued: '💰 <b>ยอดสำหรับ {month}: {total}</b>', line: '• {car}: กำไร {profit}, ส่วนของคุณ {pct}% — {amount}', zeroed: ' (ติดลบ {share} ตั้งเป็นศูนย์ตามเงื่อนไข)',
     payout: '💸 <b>บันทึกการจ่ายเงิน {amount}</b> ({date}) ยอดคงเหลือ: {balance}',
     subjectAccrued: 'ยอดสำหรับ {month}: {total}', subjectPayout: 'จ่ายเงิน {amount}', link: '👉 หน้าของคุณ: {url}'
   }
@@ -163,9 +171,13 @@ async function monthRows(person, month) {
     const loan = round(r.loan);
     const profit = revenue - repair - other - loan;
     const percent = v.investorPercent ?? person.investorPercent ?? 0;
+    // Доля по расчёту (бывает с минусом) и к начислению — по условию машины, иначе инвестора
+    const share = round((profit * percent) / 100);
+    const rule = v.investorNegative || person.investorNegative || 'carry';
     return {
       vehicleId: v.id, plate: v.plate, model: nameOf(v), type: v.type, sold: isSold(v.plate),
-      revenue, repair, other, loan, profit, percent, amount: round((profit * percent) / 100),
+      revenue, repair, other, loan, profit, percent, share, rule, ruleFrom: v.investorNegative ? 'vehicle' : 'investor',
+      amount: share < 0 && rule === 'zero' ? 0 : share,
       rentedDays: r.rentedDays || 0, utilization: r.utilization || 0,
       costItems: (r.costItems || []).map((x) => ({ at: x.at, sum: x.sum, kind: x.kind, text: x.text }))
     };
@@ -190,7 +202,7 @@ async function doAccrue(now) {
       const rows = await monthRows(person, month);
       const at = new Date().toISOString();
       for (const r of rows) {
-        q.addAccrual.run(person.id, month, plateKey(r.plate), r.model, r.revenue, r.repair, r.other, r.loan, r.profit, r.percent, r.amount, at);
+        q.addAccrual.run(person.id, month, plateKey(r.plate), r.model, r.revenue, r.repair, r.other, r.loan, r.profit, r.percent, r.amount, at, r.share, r.rule);
       }
       db.setSetting(`inv_acc:${person.id}:${month}`, '1');
       count++;
@@ -200,7 +212,7 @@ async function doAccrue(now) {
       await notify(person.id, (lang) => ({
         text: [tx(lang, 'accrued', { month: monthName(month, lang), total: baht(total) }), ...rows.slice(0, 15).map((r) => tx(lang, 'line', {
           car: escapeHtml(`${r.model} #${r.plate}`), profit: baht(r.profit), pct: r.percent, amount: baht(r.amount)
-        }))].join('\n'),
+        }) + (r.share < 0 && r.amount === 0 ? tx(lang, 'zeroed', { share: baht(r.share) }) : ''))].join('\n'),
         subject: tx(lang, 'subjectAccrued', { month: monthName(month, lang), total: baht(total) })
       }));
     }
@@ -260,7 +272,10 @@ export async function investorCabinet(staff, req, res, url) {
   if (closed) {
     rows = rows.map((r) => {
       const s = stored.get(plateKey(r.plate));
-      return s ? { ...r, revenue: s.revenue, repair: s.repair, other: s.other, loan: s.loan, profit: s.profit, percent: s.percent, amount: s.amount } : r;
+      return s ? {
+        ...r, revenue: s.revenue, repair: s.repair, other: s.other, loan: s.loan, profit: s.profit, percent: s.percent, amount: s.amount,
+        share: s.share ?? s.amount, rule: s.rule || r.rule
+      } : r;
     });
   }
   // Аренды за месяц — только даты и суммы
@@ -287,11 +302,11 @@ export async function investorCabinet(staff, req, res, url) {
   for (const a of accruals) byMonth.set(a.month, (byMonth.get(a.month) || 0) + a.amount);
   sendJson(res, 200, {
     preview, canPay: preview && canManage(staff),
-    investor: { id: person.id, name: person.name, percent: person.investorPercent, since },
+    investor: { id: person.id, name: person.name, percent: person.investorPercent, negative: person.investorNegative, since },
     months, month, closed, current,
     fleet: fleetNow,
     rows,
-    totals: ['revenue', 'repair', 'other', 'loan', 'profit', 'amount'].reduce((t, k) => ({ ...t, [k]: rows.reduce((s, r) => s + r[k], 0) }), {}),
+    totals: ['revenue', 'repair', 'other', 'loan', 'profit', 'share', 'amount'].reduce((t, k) => ({ ...t, [k]: rows.reduce((s, r) => s + r[k], 0) }), {}),
     money: { accrued, paid, balance, expected: expected === null ? null : round(expected) },
     history: [...byMonth].map(([m, amount]) => ({ month: m, amount: round(amount) })),
     payouts: payouts.map((p) => ({ id: p.id, amount: p.amount, date: p.paid_on, method: p.method || '', note: p.note || '', by: p.by_name || p.by_email || '' }))
@@ -299,7 +314,7 @@ export async function investorCabinet(staff, req, res, url) {
 }
 
 /** Список инвесторов — владельцу и админу (выбор в карточке техники, просмотр кабинетов) */
-export const investorList = () => investors().map((p) => ({ id: p.id, name: p.name, percent: p.investorPercent }));
+export const investorList = () => investors().map((p) => ({ id: p.id, name: p.name, percent: p.investorPercent, negative: p.investorNegative }));
 
 export async function investorPayout(staff, req, res) {
   if (!canManage(staff)) throw new HttpError(403, 'read_only');

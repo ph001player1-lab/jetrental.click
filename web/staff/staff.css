@@ -1469,3 +1469,8 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
 .inv-other { background: var(--surface); color: var(--muted); }
 .inv-total { padding: 12px 14px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 14px; align-items: center; font-size: 14px; }
 .inv-total b { font-size: 16px; }
+
+/* Условие «минус» у инвестора и отметка о минусе по машине */
+.inv-rule--carry { background: var(--surface-2); color: var(--muted); }
+.inv-rule--zero { background: var(--reserve-bg); color: var(--warn); }
+.inv-minus { margin: 0; padding: 6px 10px; border-radius: 8px; background: var(--rent-bg); color: var(--rent); font-size: 13px; font-weight: 600; }

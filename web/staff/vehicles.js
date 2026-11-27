@@ -53,7 +53,7 @@
     /** Инвестор машины — видят только владелец и админ (у них есть список инвесторов) */
     function investorName(v) {
       const p = (fleet().investors || []).find((x) => x.id === v.investorId);
-      return p ? `${p.name} · ${v.investorPercent ?? p.percent}%` : '';
+      return p ? `${p.name} · ${v.investorPercent ?? p.percent}% · ${t(`ac.neg.${v.investorNegative || p.negative || 'carry'}`)}${v.investorNegative ? ` (${t('inv.neg.vehicle')})` : ''}` : '';
     }
 
     function details(v) {
@@ -195,7 +195,9 @@
       const options = list.map((p) => `<option value="${p.id}"${p.id === v.investorId ? ' selected' : ''}>${esc(p.name)} (${p.percent}%)</option>`).join('');
       return `
         <label class="field"><span>${esc(t('vh.f.investor'))}</span><select class="search" name="investorId"><option value="">${esc(t('vh.f.investorNone'))}</option>${options}</select></label>
-        <label class="field"><span>${esc(t('vh.f.investorPercent'))}</span><input class="search" name="investorPercent" inputmode="decimal" value="${esc(v.investorPercent ?? '')}" placeholder="${esc(t('vh.f.investorPercentPh'))}"></label>`;
+        <label class="field"><span>${esc(t('vh.f.investorPercent'))}</span><input class="search" name="investorPercent" inputmode="decimal" value="${esc(v.investorPercent ?? '')}" placeholder="${esc(t('vh.f.investorPercentPh'))}"></label>
+        <label class="field"><span>${esc(t('vh.f.negative'))}</span><select class="search" name="investorNegative">
+          ${['', 'carry', 'zero'].map((x) => `<option value="${x}"${(v.investorNegative || '') === x ? ' selected' : ''}>${esc(t(x ? `ac.neg.${x}` : 'vh.neg.inherit'))}</option>`).join('')}</select></label>`;
     }
 
     function vehicleForm(d) {

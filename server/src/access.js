@@ -111,7 +111,8 @@ if (!db.raw.prepare('PRAGMA table_info(access_staff)').all().some((c) => c.name 
   db.raw.exec('ALTER TABLE access_staff ADD COLUMN source_id INTEGER');
 }
 // Инвестор: доля, % от прибыли его машин (null — не инвестор) и с какого месяца считаем
-for (const [col, type] of [['investor_percent', 'REAL'], ['investor_since', 'TEXT']]) {
+// investor_negative — минус по машине за месяц: 'carry' — учитывать в выплатах, 'zero' — обнулять
+for (const [col, type] of [['investor_percent', 'REAL'], ['investor_since', 'TEXT'], ['investor_negative', "TEXT NOT NULL DEFAULT 'carry'"]]) {
   if (!db.raw.prepare('PRAGMA table_info(access_staff)').all().some((c) => c.name === col)) db.raw.exec(`ALTER TABLE access_staff ADD COLUMN ${col} ${type}`);
 }
 
@@ -134,6 +135,7 @@ const q = {
   setRate: db.raw.prepare('UPDATE access_staff SET rate = ? WHERE id = ?'),
   setSource: db.raw.prepare('UPDATE access_staff SET source_id = ? WHERE id = ?'),
   setInvestor: db.raw.prepare('UPDATE access_staff SET investor_percent = ?, investor_since = COALESCE(investor_since, ?) WHERE id = ?'),
+  setNegative: db.raw.prepare('UPDATE access_staff SET investor_negative = ? WHERE id = ?'),
   bySource: db.raw.prepare('SELECT * FROM access_staff WHERE source_id = ? AND active = 1'),
   deleteStaff: db.raw.prepare('DELETE FROM access_staff WHERE id = ?'),
   log: db.raw.prepare('INSERT INTO access_log (at, by, action, details) VALUES (?, ?, ?, ?)'),
@@ -249,7 +251,8 @@ const publicStaff = (row) => ({
   roleId: row.role_id, active: Boolean(row.active), connected: Boolean(row.email), rate: row.rate || 0,
   sourceId: row.source_id || null,
   // Инвестор: доля, % от прибыли машины (null — не инвестор)
-  investorPercent: row.investor_percent ?? null, investorSince: row.investor_since || null
+  investorPercent: row.investor_percent ?? null, investorSince: row.investor_since || null,
+  investorNegative: row.investor_negative === 'zero' ? 'zero' : 'carry'
 });
 
 /** Сотрудник по id (кабинет инвестора, уведомления) или null */
@@ -408,6 +411,8 @@ export function saveStaff(input, by, { isAdminEmail }) {
   const rawPct = input.investorPercent === undefined ? undefined : String(input.investorPercent ?? '').replace(',', '.').trim();
   const investorPercent = rawPct === undefined ? undefined : rawPct === '' ? null : Number(rawPct);
   if (investorPercent !== undefined && investorPercent !== null && !(investorPercent >= 0 && investorPercent <= 100)) throw new AccessError('bad_percent');
+  // Минус по машине за месяц: учитывать в выплатах или обнулять (не передано — прежнее)
+  const investorNegative = ['carry', 'zero'].includes(input.investorNegative) ? input.investorNegative : undefined;
   const month = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 7);
   if (input.id) {
     const old = q.staffById.get(Number(input.id));
@@ -419,9 +424,11 @@ export function saveStaff(input, by, { isAdminEmail }) {
     if (rate !== undefined) q.setRate.run(rate || null, old.id);
     if (sourceId !== undefined) q.setSource.run(sourceId, old.id);
     if (investorPercent !== undefined) q.setInvestor.run(investorPercent, investorPercent === null ? null : month, old.id);
+    if (investorNegative !== undefined) q.setNegative.run(investorNegative, old.id);
     const changes = {};
     if (sourceId !== undefined && (old.source_id || null) !== sourceId) changes.source = `${old.source_id || '—'} → ${sourceId || '—'}`;
     if (investorPercent !== undefined && (old.investor_percent ?? null) !== investorPercent) changes.investor = `${old.investor_percent ?? '—'} → ${investorPercent ?? '—'}%`;
+    if (investorNegative !== undefined && (old.investor_negative || 'carry') !== investorNegative) changes.negative = `${old.investor_negative || 'carry'} → ${investorNegative}`;
     if (rate !== undefined && (old.rate || 0) !== rate) changes.rate = `${old.rate || 0} → ${rate}`;
     if (old.name !== name) changes.name = `${old.name} → ${name}`;
     if ((old.email || null) !== email) changes.email = `${old.email || '—'} → ${email || '—'}`;
@@ -436,6 +443,7 @@ export function saveStaff(input, by, { isAdminEmail }) {
   if (rate) q.setRate.run(rate, Number(info.lastInsertRowid));
   if (sourceId) q.setSource.run(sourceId, Number(info.lastInsertRowid));
   if (investorPercent !== undefined && investorPercent !== null) q.setInvestor.run(investorPercent, month, Number(info.lastInsertRowid));
+  if (investorNegative !== undefined) q.setNegative.run(investorNegative, Number(info.lastInsertRowid));
   logChange(by, 'staff.create', { staff: name, role: role.name });
   return publicStaff(q.staffById.get(Number(info.lastInsertRowid)));
 }

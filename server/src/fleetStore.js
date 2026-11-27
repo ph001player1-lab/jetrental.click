@@ -76,12 +76,14 @@ db.raw.exec(`
 `);
 
 // Чья машина (кабинет инвестора) и особая доля для этой машины (пусто — доля инвестора)
-for (const [col, type] of [['investor_id', 'INTEGER'], ['investor_percent', 'REAL']]) {
+// investor_negative — особое условие для машины: минус учитывать ('carry') или обнулять ('zero'); пусто — как у инвестора
+for (const [col, type] of [['investor_id', 'INTEGER'], ['investor_percent', 'REAL'], ['investor_negative', 'TEXT']]) {
   if (!db.raw.prepare('PRAGMA table_info(fleet_vehicles)').all().some((c) => c.name === col)) db.raw.exec(`ALTER TABLE fleet_vehicles ADD COLUMN ${col} ${type}`);
 }
 
 const q = {
   setInvestor: db.raw.prepare('UPDATE fleet_vehicles SET investor_id = ?, investor_percent = ? WHERE id = ?'),
+  setNegative: db.raw.prepare('UPDATE fleet_vehicles SET investor_negative = ? WHERE id = ?'),
   vehicles: db.raw.prepare('SELECT * FROM fleet_vehicles ORDER BY type, client_model, plate'),
   vehicle: db.raw.prepare('SELECT * FROM fleet_vehicles WHERE id = ?'),
   byKey: db.raw.prepare('SELECT * FROM fleet_vehicles WHERE plate_key = ?'),
@@ -132,6 +134,7 @@ const publicVehicle = (v) => ({
   nextServiceDate: v.next_service_date || '', repair: v.repair || 'ok', responsible: v.responsible || '',
   inventoryDate: v.inventory_date || '', photo: v.photo || '', comment: v.comment || '',
   investorId: v.investor_id || null, investorPercent: v.investor_percent ?? null,
+  investorNegative: ['carry', 'zero'].includes(v.investor_negative) ? v.investor_negative : null,
   updatedAt: v.updated_at, updatedBy: v.updated_by || ''
 });
 
@@ -230,12 +233,18 @@ export function saveVehicle(input, by) {
   const pctRaw = input.investorPercent === undefined ? undefined : String(input.investorPercent ?? '').replace(',', '.').trim();
   const investorPct = pctRaw === undefined || pctRaw === '' ? (pctRaw === '' ? null : undefined) : Number(pctRaw);
   if (investorPct !== undefined && investorPct !== null && !(investorPct >= 0 && investorPct <= 100)) throw new FleetError('bad_percent');
+  // Минус по этой машине: 'carry' / 'zero'; '' — как у инвестора; не передано — прежнее
+  const negative = input.investorNegative === undefined ? undefined : ['carry', 'zero'].includes(input.investorNegative) ? input.investorNegative : null;
   const same = q.byKey.get(plateKey);
   if (input.id) {
     const old = q.vehicle.get(Number(input.id));
     if (!old) throw new FleetError('not_found');
     if (same && same.id !== old.id) throw new FleetError('plate_taken');
     q.update.run({ ...row, id: old.id });
+    if (negative !== undefined && (old.investor_negative || null) !== negative) {
+      q.setNegative.run(negative, old.id);
+      q.log.run(row.at, by, plate, 'investor', JSON.stringify({ negative: `${old.investor_negative || '—'} → ${negative || '—'}` }));
+    }
     if (investorId !== undefined || investorPct !== undefined) {
       const nextId = investorId !== undefined ? investorId : old.investor_id;
       const nextPct = investorPct !== undefined ? investorPct : old.investor_percent;
@@ -253,6 +262,7 @@ export function saveVehicle(input, by) {
   if (same) throw new FleetError('plate_taken');
   const info = q.insert.run({ ...row, sheet_id: null });
   if (investorId || investorPct !== undefined) q.setInvestor.run(investorId || null, investorPct ?? null, Number(info.lastInsertRowid));
+  if (negative) q.setNegative.run(negative, Number(info.lastInsertRowid));
   q.log.run(row.at, by, plate, 'create', JSON.stringify({ model: clientModel, type }));
   ensureCatalogModel(clientModel, type);
   console.log(`Fleet: ${plate} (${clientModel}) added by ${by}`);

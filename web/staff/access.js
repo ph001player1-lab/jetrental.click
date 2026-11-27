@@ -68,6 +68,8 @@
             <label class="field"><span>${esc(t('ac.f.source'))}</span>
               <select name="sourceId" class="search"><option value="">${esc(t('ac.f.sourceNone'))}</option>${sources}</select></label>
             <label class="field"><span>${esc(t('ac.f.investor'))}</span><input name="investorPercent" class="search" inputmode="decimal" value="${esc(s.investorPercent ?? '')}" placeholder="${esc(t('ac.f.investorPh'))}"></label>
+            <label class="field"><span>${esc(t('ac.f.negative'))}</span><select name="investorNegative" class="search">
+              ${['carry', 'zero'].map((x) => `<option value="${x}"${(s.investorNegative || 'carry') === x ? ' selected' : ''}>${esc(t(`ac.neg.${x}`))}</option>`).join('')}</select></label>
           </div>
           <p class="muted jr-small">${esc(t('ac.f.hint'))}</p>
           <div class="ac-form__buttons">
@@ -84,7 +86,7 @@
       if (s.waName && s.waName !== s.name) parts.push(t('ac.waName', { name: s.waName }));
       const source = s.sourceId && (st.data.sources || []).find((x) => x.id === s.sourceId);
       if (source) parts.push(t('ac.cabinetOf', { name: source.name }));
-      if (s.investorPercent !== null && s.investorPercent !== undefined) parts.push(t('ac.investorOf', { n: s.investorPercent }));
+      if (s.investorPercent !== null && s.investorPercent !== undefined) parts.push(`${t('ac.investorOf', { n: s.investorPercent })} · ${t(`ac.neg.${s.investorNegative || 'carry'}`)}`);
       return parts.length ? `<div class="muted jr-small">${esc(parts.join(' · '))}</div>` : '';
     }
 
