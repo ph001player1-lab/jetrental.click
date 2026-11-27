@@ -28,6 +28,9 @@
     name_required: 'Укажите название.', bad_cost: 'Сумма — числом.', bad_amount: 'Сумма оплаты — числом больше нуля.', bad_date: 'Дата — в формате ДД.ММ.ГГГГ.',
     bad_url: 'Ссылка должна начинаться с https://', unknown_service: 'Сервис не найден — обновите страницу.', unknown_payment: 'Оплата не найдена — обновите страницу.',
     bad_model: 'Выберите модель из списка.', bad_limit: 'Лимит — числом (0 — без лимита).', admin_only: 'Только для админа.',
+    bad_invite: 'Это не ссылка-приглашение WhatsApp (нужна https://chat.whatsapp.com/…) или она уже не действует.',
+    join_failed: 'Бот не смог вступить в группу: ссылку сбросили или в группу пускают только по одобрению админа.',
+    telegram_off: 'Telegram-бот не подключён.', not_connected: 'WhatsApp-бот не подключён.',
     bad_percent: 'Процент — числом от 0 до 100.', bad_channels: 'Выберите, куда слать запросы.', no_reasons: 'Нужна хотя бы одна причина.',
     no_tg_group: 'Рабочая группа Telegram не привязана (/bind в группе).',
     not_waiting_for_link: 'Код можно получить, только пока показывается QR-код.', unknown_group: 'Группа не найдена — обновите страницу.', wabot_unreachable: 'Бот не отвечает на сервере.'
@@ -55,6 +58,18 @@
     let ticks = 0;
     async function tick() {
       ticks++;
+      const d = st.data?.discounts;
+      if (st.view === 'disc' && d?.tgLink) {
+        const fresh = await api('/settings').then((r) => r.discounts).catch(() => null);
+        // Код ссылки израсходован — группу привязали; истёк — просто убираем ссылку
+        if (fresh && !fresh.tgLink) {
+          const bound = Date.now() < Date.parse(d.tgLink.until);
+          st.data.discounts = fresh;
+          st.msg = bound ? { kind: 'ok', text: `Группа Telegram привязана: «${fresh.tgTitle || 'без названия'}».` } : { kind: 'error', text: 'Ссылка устарела — нажмите «Привязать группу» ещё раз.' };
+          ctx.rerender();
+        }
+        return;
+      }
       const linking = [st.wabot, st.wa].some((w) => w && ['qr', 'connecting', 'starting'].includes(w.status));
       if (st.view !== 'links' || (!linking && ticks % 12)) return;
       const [wabot, wa] = await Promise.all([api('/wabot').catch(() => st.wabot), api('/wa').catch(() => st.wa)]);
@@ -356,15 +371,39 @@ bash /opt/kokon/app/deploy/update.sh</pre>
       const s = st.data.discounts;
       const w = st.wabot;
       const ch = (v, label) => `<label class="mk-radio"><input type="radio" name="channels" value="${v}"${s.channels === v ? ' checked' : ''}> ${esc(label)}</label>`;
-      const tgLine = s.tgChat
-        ? `✅ Группа Telegram: <b>${esc(s.tgTitle || 'привязана')}</b> <button type="button" class="link jr-small" data-set-disc-unbind>отвязать</button>`
-        : `⚠️ Группа Telegram не выбрана. Добавьте бота в группу и напишите там <code>/discounts</code>${s.staffTgGroup ? ' — или используйте рабочую группу' : ''}.`;
+      // Группа Telegram: настоящее название; другую — по ссылке (выбрать группу в Telegram)
+      let tgLine;
+      if (!s.telegram) tgLine = '<p class="warn">Telegram-бот не подключён (вкладка «Ключи») — в Telegram писать некуда.</p>';
+      else {
+        const name = s.tgChat ? (s.tgTitle ? `«${esc(s.tgTitle)}»` : 'без названия') : '';
+        tgLine = `<div class="set-disc-tg">
+          <p class="mk-text">${s.tgChat
+            ? `✅ Группа Telegram: <b>${name}</b>${s.tgIsStaff ? ' <span class="muted">— это рабочая группа</span>' : ''}${s.tgFound ? '' : ' <span class="warn">— бот не видит группу (его удалили?)</span>'}`
+            : '⚠️ Группа Telegram не выбрана.'}</p>
+          <div class="set-actions">
+            <button type="button" class="btn btn--small" data-set-disc-tglink>🔗 ${s.tgChat ? 'Привязать другую группу' : 'Привязать группу'}</button>
+            ${s.staffTgGroup && !s.tgIsStaff ? `<button type="button" class="btn btn--small" data-set-disc-staff>Рабочая группа${s.staffTgTitle ? ` «${esc(s.staffTgTitle)}»` : ''}</button>` : ''}
+            ${s.tgChat ? '<button type="button" class="link jr-small" data-set-disc-unbind>отвязать</button>' : ''}
+          </div>
+          ${s.tgLink ? `<div class="set-disc-link">
+            <a class="btn btn--primary btn--small" href="${esc(s.tgLink.url)}" target="_blank" rel="noopener">Открыть Telegram и выбрать группу</a>
+            <ol class="jr-steps"><li>Нажмите кнопку — откроется Telegram (на телефоне или компьютере).</li><li>Выберите группу из списка. Если бота там нет — Telegram добавит его.</li>
+              <li>Нажмите «Запустить» / «Start», если Telegram спросит. В группе бот напишет «✅ Сюда будут приходить запросы на скидки».</li></ol>
+            <label class="field"><span>Или скопируйте ссылку и откройте её на телефоне</span><input class="search" readonly value="${esc(s.tgLink.url)}" data-set-copy></label>
+            <p class="muted jr-small">⏳ Ждём привязку… Ссылка действует 30 минут, сработает один раз.</p></div>` : ''}
+        </div>`;
+      }
       const waConnected = w && w.status === 'connected';
       const groups = waConnected ? (w.groups || []).map((g) => `<option value="${esc(g.id)}"${g.id === s.waGroup ? ' selected' : ''}>${esc(`${g.subject} (${g.size})`)}</option>`).join('') : '';
       const waField = waConnected
         ? `<label class="field"><span>Группа WhatsApp для скидок</span><select class="search" name="waGroup"><option value="">— не выбрана —</option>${groups}</select></label>
-           <p class="mk-tip">Пишет номер клиентского бота ${esc(phoneText(w.me?.id))}. Одобрить — ответить на сообщение «+», отклонить — «-». Нет группы в списке — добавьте туда номер бота.</p>`
+           <p class="mk-tip">Пишет номер клиентского бота ${esc(phoneText(w.me?.id))}. Одобрить — ответить на сообщение «+», отклонить — «-».</p>`
         : '<p class="warn">WhatsApp-бот не подключён (вкладка «Связь») — группу WhatsApp выбрать нельзя.</p>';
+      const waJoin = waConnected ? `<form class="mk-form set-disc-join" data-set-disc-join>
+          <label class="field"><span>Другая группа WhatsApp — по ссылке-приглашению</span><input class="search" name="invite" placeholder="https://chat.whatsapp.com/…" autocomplete="off"></label>
+          <p class="mk-tip">В WhatsApp: группа → «Пригласить по ссылке» → «Копировать ссылку». Бот вступит в группу, и она станет группой для скидок.</p>
+          <button type="submit" class="btn btn--small">Подключить группу</button>
+        </form>` : '';
       return `<section class="card set-sec"><h3>💸 Скидки</h3>
         <form class="mk-form" data-set-disc>
           <label class="field"><span>Нужно одобрение, если скидка больше, %</span><input class="search" name="approvePct" inputmode="decimal" value="${esc(s.approvePct)}"></label>
@@ -372,19 +411,25 @@ bash /opt/kokon/app/deploy/update.sh</pre>
           <label class="field"><span>Сообщать в группу о скидках больше, %</span><input class="search" name="notifyPct" inputmode="decimal" value="${esc(s.notifyPct)}"></label>
           <div class="mk-label">Куда писать о скидках</div>
           ${ch('tg', 'Telegram')}${ch('wa', 'WhatsApp')}${ch('both', 'Telegram и WhatsApp')}
-          <p class="mk-text">${tgLine}</p>
-          ${!s.tgChat && s.staffTgGroup ? '<button type="button" class="btn btn--small" data-set-disc-staff>Использовать рабочую группу Telegram</button>' : ''}
+          ${tgLine}
           <p class="mk-tip">В Telegram под запросом — кнопки «Одобрить / Отклонить». Нажать могут владелец и админы с Telegram ID во вкладке «Доступы». Одобрить можно и в портале: «Финансы» → «Скидки».</p>
           ${waField}
           <label class="field"><span>Причины скидки (по одной в строке; «Другое» — всегда есть, с комментарием)</span><textarea class="search" name="reasons" rows="8">${esc(s.reasons.join('\n'))}</textarea></label>
           <button type="submit" class="btn btn--primary btn--small">Сохранить</button>
           ${status(st.msg)}
         </form>
+        ${waJoin}
       </section>`;
     }
 
     async function saveDisc(body, okText) {
-      await act(async () => { const r = await api('/settings/discounts', { body }); st.data.discounts = { ...st.data.discounts, ...r.settings }; }, okText);
+      await act(async () => {
+        const r = await api('/settings/discounts', { body });
+        st.data.discounts = r.settings;
+        if (r.joined && st.wabot) st.wabot = await api('/wabot').catch(() => st.wabot);
+        if (typeof okText === 'function') okText = okText(r);
+        return r;
+      }, okText);
       ctx.rerender();
     }
 
@@ -394,8 +439,9 @@ bash /opt/kokon/app/deploy/update.sh</pre>
       if (st.busy) return;
       st.busy = true;
       try {
-        await fn();
-        st[where] = okText ? { kind: 'ok', text: okText } : null;
+        const r = await fn();
+        const text = typeof okText === 'function' ? okText(r) : okText;
+        st[where] = text ? { kind: 'ok', text } : null;
         return true;
       } catch (err) {
         st[where] = { kind: 'error', text: errText(err) };
@@ -444,6 +490,8 @@ bash /opt/kokon/app/deploy/update.sh</pre>
         return true;
       }
       if (el.closest('[data-set-disc-staff]')) { saveDisc({ tgUseStaff: true }, 'Запросы на скидки — в рабочую группу Telegram.'); return true; }
+      if (el.closest('[data-set-disc-tglink]')) { saveDisc({ tgLink: true }, null); return true; }
+      if (el.matches('[data-set-copy]')) { el.select(); return true; }
       if (el.closest('[data-set-disc-unbind]')) {
         if (window.confirm('Отвязать группу Telegram для скидок?')) saveDisc({ tgUnbind: true }, 'Группа Telegram для скидок отвязана.');
         return true;
@@ -490,6 +538,10 @@ bash /opt/kokon/app/deploy/update.sh</pre>
       if (form.matches('[data-set-ai]')) {
         act(async () => { const r = await api('/settings/ai', { body: { model: f.get('model'), limitUsd: f.get('limitUsd') } }); Object.assign(st.data.ai, r.ai); }, 'Сохранено.')
           .then(() => ctx.rerender());
+        return true;
+      }
+      if (form.matches('[data-set-disc-join]')) {
+        saveDisc({ waInvite: f.get('invite') }, (r) => `Бот в группе «${r.joined?.subject || 'WhatsApp'}» — запросы на скидки пойдут туда.`);
         return true;
       }
       if (form.matches('[data-set-disc]')) {

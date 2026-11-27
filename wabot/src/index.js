@@ -612,6 +612,29 @@ http.createServer(async (req, res) => {
       reportStatus();
       return send(res, 200, { ok: true, watch: config.watch });
     }
+    if (req.method === 'POST' && url.pathname === '/join') {
+      // Вступить в группу по ссылке-приглашению (chat.whatsapp.com/…) — просит админ в портале
+      const { invite } = await readJson(req);
+      const code = String(invite || '').trim().match(/(?:chat\.whatsapp\.com\/(?:invite\/)?)?([A-Za-z0-9]{10,40})\/?$/)?.[1];
+      if (!code) return send(res, 400, { error: 'bad_invite' });
+      if (!sock || state.status !== 'connected') return send(res, 409, { error: 'not_connected' });
+      let info;
+      try { info = await sock.groupGetInviteInfo(code); } catch (err) {
+        log(`invite check failed: ${err.message}`);
+        return send(res, 400, { error: 'bad_invite' });
+      }
+      let id = info?.id;
+      if (!state.groups.some((g) => g.id === id)) {
+        try { id = (await sock.groupAcceptInvite(code)) || id; } catch (err) {
+          log(`join by invite failed: ${err.message}`);
+          return send(res, 400, { error: 'join_failed' });
+        }
+        log(`joined group «${info?.subject || id}» by invite`);
+      }
+      await refreshGroups();
+      reportStatus();
+      return send(res, 200, { id, subject: info?.subject || state.groups.find((g) => g.id === id)?.subject || '' });
+    }
     if (req.method === 'POST' && url.pathname === '/config') {
       const { groupId } = await readJson(req);
       if (!groupId) {

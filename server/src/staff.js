@@ -12,7 +12,7 @@
  * ============================================================================
  */
 
-import { bindDiscountGroup } from './discounts.js';
+import { bindDiscountGroup, bindDiscountGroupByLink } from './discounts.js';
 import { config } from './config.js';
 import * as db from './db.js';
 import { formatStaffRequest, escapeHtml } from './format.js';
@@ -233,6 +233,11 @@ export async function handleGroupMessage(msg) {
   if (command === 'bind') return bindGroup(msg);
   // Группа для запросов на скидки (одобряют владелец и админ кнопками)
   if (command === 'discounts') return bindDiscountGroup(msg);
+  // По ссылке из портала (t.me/<бот>?startgroup=disc_<код>) — тоже группа для скидок
+  if (command === 'start') {
+    const arg = String(msg.text).trim().split(/\s+/)[1] || '';
+    if (arg.startsWith('disc_')) return bindDiscountGroupByLink(msg, arg.slice(5));
+  }
   if (command === 'test') return createTestRequest(msg);
   if (command === 'summary' && isStaffChat(msg.chat.id)) return sendMorningSummary();
 }

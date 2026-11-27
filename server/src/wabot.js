@@ -154,6 +154,11 @@ export function syncWatch(current = null) {
     .finally(() => { watchSyncing = false; });
 }
 
+/** Бот вступает в группу по ссылке-приглашению → { id, subject } */
+export async function wabotJoinGroup(invite) {
+  return wabotCall('POST', '/join', { invite: String(invite || '').slice(0, 200) });
+}
+
 /* --------------------------------------------------- Запросы к wabot */
 
 async function wabotCall(method, pathname, body) {

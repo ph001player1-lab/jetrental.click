@@ -16,17 +16,20 @@
  *
  *   GET  /api/staff/discounts?from=&to=   — сделки со скидками, итоги, ждут одобрения
  *   POST /api/staff/discounts/decide       { id, approve } — владелец или админ
- *   POST /api/staff/settings/discounts     — настройки (админ)
+ *   POST /api/staff/settings/discounts     — настройки (админ); группа Telegram —
+ *     по ссылке t.me/<бот>?startgroup=disc_<код> (выбрать группу в Telegram),
+ *     группа WhatsApp — по ссылке-приглашению chat.whatsapp.com/…
  * ============================================================================
  */
 
+import crypto from 'node:crypto';
 import * as db from './db.js';
 import { HttpError, sendJson, readJson } from './http.js';
 import { can, roleOf } from './roles.js';
 import { activeStaff, ADMIN_ROLE } from './access.js';
-import { telegramEnabled, sendMessage, inlineKeyboard, answerCallback, tg } from './telegram/api.js';
+import { telegramEnabled, telegramBotUsername, sendMessage, inlineKeyboard, answerCallback, tg } from './telegram/api.js';
 import { getStaffChatId } from './staff.js';
-import { wabotSend, syncWatch } from './wabot.js';
+import { wabotSend, syncWatch, wabotJoinGroup } from './wabot.js';
 import { escapeHtml } from './format.js';
 
 db.raw.exec(`
@@ -127,7 +130,12 @@ export function saveDiscountSettings(body) {
     const chat = getStaffChatId();
     if (!chat) throw new DiscountError('no_tg_group');
     db.setSetting('disc_tg_chat', String(chat));
-    db.setSetting('disc_tg_title', 'рабочая группа');
+    db.setSetting('disc_tg_title', '');
+  }
+  // Ссылка «выбрать группу в Telegram»: одноразовый код на 30 минут
+  if (body.tgLink) {
+    if (!telegramEnabled || !telegramBotUsername()) throw new DiscountError('telegram_off');
+    db.setSetting('disc_tg_token', `${crypto.randomBytes(9).toString('base64url')}|${Date.now() + LINK_MS}`);
   }
   if (body.tgUnbind) { db.setSetting('disc_tg_chat', ''); db.setSetting('disc_tg_title', ''); }
   if (body.reasons !== undefined) {
@@ -137,6 +145,55 @@ export function saveDiscountSettings(body) {
   }
   syncWatch();
   return discountSettings();
+}
+
+const LINK_MS = 30 * 60000;
+const linkToken = () => {
+  const [token, until] = String(db.getSetting('disc_tg_token') || '').split('|');
+  return token && Number(until) > Date.now() ? { token, until: Number(until) } : null;
+};
+
+/** Названия групп Telegram — у Telegram, раз в 10 минут (группу могли переименовать) */
+const titles = new Map();
+async function chatTitle(chatId) {
+  if (!telegramEnabled || !chatId) return null;
+  const hit = titles.get(String(chatId));
+  if (hit && Date.now() - hit.at < 600000) return hit.title;
+  let title = null;
+  try { title = (await tg('getChat', { chat_id: chatId }))?.title || null; } catch { /* бот не в группе */ }
+  titles.set(String(chatId), { title, at: Date.now() });
+  return title;
+}
+
+/** Настройки для портала: с настоящими названиями групп и ссылкой привязки */
+export async function discountSettingsView() {
+  const s = discountSettings();
+  const staffChat = getStaffChatId();
+  const [tgTitle, staffTitle] = await Promise.all([chatTitle(s.tgChat), chatTitle(staffChat)]);
+  if (tgTitle && tgTitle !== s.tgTitle) db.setSetting('disc_tg_title', tgTitle);
+  const link = linkToken();
+  const bot = telegramBotUsername();
+  return {
+    ...s, tgTitle: tgTitle || s.tgTitle, tgFound: Boolean(tgTitle),
+    tgIsStaff: Boolean(s.tgChat && staffChat && String(s.tgChat) === String(staffChat)),
+    staffTgGroup: Boolean(staffChat), staffTgTitle: staffTitle,
+    telegram: telegramEnabled && Boolean(bot),
+    tgLink: link && bot ? { url: `https://t.me/${bot}?startgroup=disc_${link.token}`, until: new Date(link.until).toISOString() } : null
+  };
+}
+
+/** /start disc_<код> в группе (пришло по ссылке из портала) — эта группа для скидок */
+export async function bindDiscountGroupByLink(msg, token) {
+  const link = linkToken();
+  if (!link || !token || token !== link.token) {
+    return sendMessage(msg.chat.id, 'Ссылка для привязки устарела. Создайте новую в портале: «Настройки» → «💸 Скидки».');
+  }
+  db.setSetting('disc_tg_token', '');
+  db.setSetting('disc_tg_chat', String(msg.chat.id));
+  db.setSetting('disc_tg_title', String(msg.chat.title || '').slice(0, 80));
+  titles.delete(String(msg.chat.id));
+  console.log(`Discount group bound by link: ${msg.chat.title || msg.chat.id}`);
+  return sendMessage(msg.chat.id, '✅ Сюда будут приходить запросы на скидки и сообщения о больших скидках. Одобрять могут владелец и админы (их Telegram ID — в «Доступах» портала).');
 }
 
 /** /discounts в группе Telegram — эта группа для запросов на скидки (только админ группы) */
@@ -374,6 +431,14 @@ export async function discountsDecide(staff, req, res) {
 export async function discountsSettingsRoute(staff, req, res) {
   if (!can(staff, 'access.admin')) throw new HttpError(403, 'admin_only');
   const body = await readJson(req);
-  sendJson(res, 200, { settings: await call(() => saveDiscountSettings(body)) });
+  let joined = null;
+  if (body.waInvite) {
+    // Бот вступает в группу по ссылке-приглашению, и она становится группой для скидок
+    joined = await wabotJoinGroup(body.waInvite);
+    body.waGroup = joined.id;
+    if (!body.channels) body.channels = discountSettings().channels === 'tg' ? 'both' : undefined;
+  }
+  await call(() => saveDiscountSettings(body));
+  sendJson(res, 200, { settings: await discountSettingsView(), joined });
 }
 

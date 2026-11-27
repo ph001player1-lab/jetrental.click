@@ -37,7 +37,7 @@ import { notifyAdmins } from './serverStats.js';
 import { telegramEnabled, telegramBotUsername, tg } from './telegram/api.js';
 import { getStaffChatId } from './staff.js';
 import { activeStaff, ADMIN_ROLE } from './access.js';
-import { discountSettings } from './discounts.js';
+import { discountSettingsView } from './discounts.js';
 
 const DAY_MS = 86400000;
 const BANGKOK_MS = 7 * 3600000;
@@ -584,7 +584,7 @@ export async function settingsRoute(staff, req, res) {
     monthlyThb: monthlyThb(services),
     payments: q.payments.all(30).map(paymentView),
     ai: { ...aiSettings(), models: AI_MODELS, keySet: Boolean(process.env.ANTHROPIC_API_KEY), month: aiMonth() },
-    discounts: { ...discountSettings(), staffTgGroup: Boolean(getStaffChatId()) },
+    discounts: await discountSettingsView(),
     options: { kinds: KINDS, periods: Object.keys(PERIODS), currencies: CURRENCIES }
   });
 }

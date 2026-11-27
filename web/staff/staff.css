@@ -1621,3 +1621,10 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
 .fin-disc-wait { padding: 10px 12px; border-radius: 10px; background: var(--reserve-bg); margin-bottom: 10px; }
 .fin-disc-wait h4 { margin: 0 0 6px; }
 .fin-disc-btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.set-disc-tg { display: grid; gap: 8px; }
+.set-disc-tg .mk-text { margin: 0; }
+.set-disc-link { display: grid; gap: 8px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); }
+.set-disc-link .btn { justify-self: start; }
+.set-disc-join { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line); }
+.set-disc-link a.btn { text-decoration: none; }
+.set-sec textarea { font: inherit; line-height: 1.45; }
