@@ -63,7 +63,8 @@
     /** Пока что-то вводят — фоновое обновление не трогает вкладку */
     function canRefresh() {
       const view = document.querySelector('.set');
-      return !st.editing && !st.paying && !(view && view.contains(document.activeElement) && document.activeElement.matches('input, select, textarea'));
+      return !st.editing && !st.paying && !view?.querySelector('form[data-dirty]')
+        && !(view && view.contains(document.activeElement) && document.activeElement.matches('input, select, textarea'));
     }
 
     function status(msg) {

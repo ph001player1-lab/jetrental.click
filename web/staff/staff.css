@@ -1530,3 +1530,7 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
 .set .mk-form { max-width: 680px; }
 .set .mk-form > .btn, .set-sec > .btn { justify-self: start; width: auto; }
 .set-sec > p { margin: 0; }
+
+/* Восстановленный черновик формы — над полями, во всю ширину */
+.draft-note { grid-column: 1 / -1; flex-basis: 100%; margin: 0 0 6px; padding: 6px 10px; border-radius: 8px; background: var(--reserve-bg); color: var(--warn); font-size: 13px; font-weight: 600; }
+.draft-note .link { margin-left: 6px; font-size: 13px; }

@@ -454,13 +454,13 @@
       state.dashboardFailed = !dashboard;
       state.offline = false;
       showDataError(fleet.error ? t('app.syncProblem', { error: fleet.error }) : '');
-      render();
+      render({ background: true });
     } catch (err) {
       if (err.status === 401) return showLogin('email', err.code === 'no_access' ? ERRORS.no_access : '');
       // Связи с сервером нет — это проблема IT, показываем её в окне «Проблемы»
       state.offline = true;
       showDataError(t('app.loadFailed'));
-      render();
+      render({ background: true });
     }
   }
 
@@ -698,7 +698,8 @@
     window.scrollTo(0, 0);
   }
 
-  function render() {
+  /** background — фоновое обновление данных (таймер, возврат на вкладку браузера) */
+  function render({ background = false } = {}) {
     const fleet = state.fleet;
     renderWho();
     renderInstall();
@@ -706,6 +707,8 @@
       ? esc(t('app.dataAt', { time: '\u0001' })).replace('\u0001', `<b>${esc(fmtTime.format(new Date(fleet.updatedAt)))}</b>`)
       : esc(fleet ? (fleet.enabled ? t('app.loadingWs') : t('app.wsOff')) : t('app.loading'));
     renderTabs();
+    // Пока в форме раздела есть несохранённый ввод, фоновое обновление раздел не перерисовывает
+    if (background && formsDirty()) return;
     const view = $('#view');
     if (state.tab === 'overview') view.innerHTML = renderOverview();
     if (state.tab === 'fleet') { view.innerHTML = renderFleet(); vehicles.afterRender(); }
@@ -728,6 +731,159 @@
     if (state.tab === 'settings' && (!view.querySelector('.set') || settings.canRefresh())) view.innerHTML = settings.render();
     // Роли не открыт ни один раздел — подсказка вместо пустого экрана
     if (!tabs().length) view.innerHTML = `<div class="empty">${esc(t('app.noSections'))}</div>`;
+  }
+
+  /* ------------------------------------- Формы: черновики и защита от обновления */
+
+  // Пока в форме раздела есть несохранённый ввод, фоновое обновление (возврат на
+  // вкладку браузера, таймер раз в 2 минуты) раздел не перерисовывает — обновляются
+  // только счётчики на вкладках. Ввод сохраняется черновиком в этом браузере: если
+  // раздел всё же перерисовали (перешли в другой раздел, обновили страницу, ошибка
+  // сохранения), поля заполнятся снова. Черновик стирается после сохранения, по
+  // «Отмена» и «Очистить», при выходе из портала; хранится не дольше 7 дней.
+  const DRAFT_PREFIX = 'jm_draft:';
+  const DRAFT_MS = 7 * 24 * 3600 * 1000;
+  // Не черновики: калькулятор и массовые правки прайса, лимит трафика, вход по коду
+  const NO_DRAFT = '[data-nodraft], [data-pr-calc], [data-pr-bulk], [data-pr-copy], #srv-settings, [data-set-wabot-pair], [data-set-wa-pair]';
+  const NO_DRAFT_TYPES = new Set(['search', 'file', 'password', 'hidden', 'submit', 'button', 'reset']);
+  let lastSubmit = null;
+
+  const formsDirty = () => Boolean(document.querySelector('#view form[data-dirty]'));
+  const draftFields = (form) => [...form.elements].filter((el) => el.name && !NO_DRAFT_TYPES.has(el.type));
+
+  /** Ключ черновика: сотрудник + раздел + первая data-метка формы («data-ac-staff=5») */
+  function draftKey(form) {
+    if (!form || !state.user || form.matches(NO_DRAFT) || !form.closest('#view')) return null;
+    const attr = [...form.attributes].find((a) => a.name.startsWith('data-') && a.name !== 'data-dirty');
+    return attr ? `${DRAFT_PREFIX}${state.user.email}:${state.tab}:${attr.name}=${attr.value}` : null;
+  }
+
+  function readForm(form) {
+    const values = {};
+    for (const el of draftFields(form)) {
+      if (el.type === 'radio') {
+        if (el.checked) values[el.name] = el.value;
+        else if (!(el.name in values)) values[el.name] = null;
+      } else if (el.type === 'checkbox') values[el.name] = el.checked;
+      else if (el.tagName === 'SELECT' && el.multiple) values[el.name] = [...el.selectedOptions].map((o) => o.value);
+      else values[el.name] = el.value;
+    }
+    return values;
+  }
+
+  function writeForm(form, values) {
+    for (const el of draftFields(form)) {
+      if (!(el.name in values)) continue;
+      const v = values[el.name];
+      if (el.type === 'radio') el.checked = el.value === v;
+      else if (el.type === 'checkbox') el.checked = Boolean(v);
+      else if (el.tagName === 'SELECT' && el.multiple) for (const o of el.options) o.selected = (v || []).includes(o.value);
+      else el.value = v ?? '';
+    }
+  }
+
+  /** Все поля черновика совпадают с тем, что сейчас в форме */
+  const sameAs = (current, draft) => Object.keys(draft).every((k) => JSON.stringify(current[k] ?? null) === JSON.stringify(draft[k] ?? null));
+
+  function draftGet(key) {
+    try {
+      const d = JSON.parse(localStorage.getItem(key) || 'null');
+      if (d && Date.now() - d.at < DRAFT_MS && d.values) return d;
+      if (d) localStorage.removeItem(key);
+    } catch { /* хранилище недоступно */ }
+    return null;
+  }
+  function draftSet(key, values) {
+    try { localStorage.setItem(key, JSON.stringify({ at: Date.now(), values })); } catch { /* хранилище недоступно или полно */ }
+  }
+  function draftDrop(key) {
+    try { localStorage.removeItem(key); } catch { /* хранилище недоступно */ }
+  }
+  function dropAllDrafts() {
+    try { for (const k of Object.keys(localStorage)) if (k.startsWith(DRAFT_PREFIX)) localStorage.removeItem(k); } catch { /* хранилище недоступно */ }
+  }
+
+  /** Сотрудник что-то ввёл: форма «грязная», через 0,3 с — черновик */
+  const draftTimers = new WeakMap();
+  function onDraftInput(event) {
+    const el = event.target;
+    if (!el.name || NO_DRAFT_TYPES.has(el.type)) return;
+    const form = el.form;
+    const key = draftKey(form);
+    if (!key) return;
+    form.dataset.dirty = '1';
+    clearTimeout(draftTimers.get(form));
+    draftTimers.set(form, setTimeout(() => {
+      // Пока ждали, сотрудник вышел или форму убрали — не пишем
+      if (!form.isConnected || draftKey(form) !== key) return;
+      const values = readForm(form);
+      // Вернули всё, как было, — черновик не нужен
+      if (form.draftInitial && sameAs(form.draftInitial, values)) {
+        draftDrop(key);
+        delete form.dataset.dirty;
+      } else draftSet(key, values);
+    }, 300));
+  }
+
+  /** Новые формы в разделе: запоминаем исходные значения и, если есть черновик, заполняем им */
+  function scanForms() {
+    for (const form of document.querySelectorAll('#view form')) {
+      if (form.draftSeen) continue;
+      form.draftSeen = true;
+      const key = draftKey(form);
+      if (!key) continue;
+      form.draftInitial = readForm(form);
+      const draft = draftGet(key);
+      if (!draft) continue;
+      // Черновик совпал с сохранённым — значит, его уже сохранили
+      if (sameAs(form.draftInitial, draft.values)) { draftDrop(key); continue; }
+      writeForm(form, draft.values);
+      form.dataset.dirty = '1';
+      form.insertAdjacentHTML('afterbegin', `<p class="draft-note" role="status">📝 ${esc(t('draft.restored'))}
+        <button type="button" class="link" data-draft-clear>${esc(t('draft.clear'))}</button></p>`);
+    }
+    // Форма, которую только что отправили, исчезла — сохранили, черновик больше не нужен
+    if (lastSubmit && Date.now() - lastSubmit.at < 15000
+      && ![...document.querySelectorAll('#view form')].some((f) => draftKey(f) === lastSubmit.key)) {
+      draftDrop(lastSubmit.key);
+      lastSubmit = null;
+    }
+  }
+
+  function bindDrafts() {
+    const view = $('#view');
+    let scheduled = false;
+    new MutationObserver(() => {
+      if (scheduled) return;
+      scheduled = true;
+      queueMicrotask(() => { scheduled = false; scanForms(); });
+    }).observe(view, { childList: true, subtree: true });
+    document.addEventListener('input', onDraftInput, true);
+    document.addEventListener('change', onDraftInput, true);
+    // Отправка: запоминаем, какую форму сохраняют (раньше, чем её обработает раздел)
+    document.addEventListener('submit', (event) => {
+      const key = draftKey(event.target);
+      if (key) lastSubmit = { key, at: Date.now() };
+    }, true);
+    document.addEventListener('click', (event) => {
+      const clear = event.target.closest('[data-draft-clear]');
+      if (clear) {
+        event.preventDefault();
+        event.stopPropagation();
+        const form = clear.closest('form');
+        draftDrop(draftKey(form));
+        clear.closest('.draft-note')?.remove();
+        form.reset();
+        delete form.dataset.dirty;
+        return;
+      }
+      // «Отмена» — ввод не нужен: стираем черновик своей формы (или всех открытых)
+      const button = event.target.closest('button');
+      if (button && button.closest('#view') && Object.keys(button.dataset).some((k) => /cancel$/i.test(k))) {
+        const forms = button.closest('form') ? [button.closest('form')] : [...document.querySelectorAll('#view form[data-dirty]')];
+        for (const form of forms) draftDrop(draftKey(form));
+      }
+    }, true);
   }
 
   /* ------------------------------------------------------ Вкладка «Финансы» */
@@ -2121,8 +2277,11 @@
       saveServerSettings(event.target);
     });
     bindModelDialog();
+    bindDrafts();
     $('#logout').addEventListener('click', async () => {
       await api('/logout', { method: 'POST' }).catch(() => {});
+      // Черновики форм остаются только у вошедшего сотрудника
+      dropAllDrafts();
       state.user = null;
       state.fleet = null;
       state.server = null;
