@@ -1639,3 +1639,15 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
   .set-map td { border: 0; padding: 2px 4px; width: auto !important; }
   .set-map td:first-child { grid-column: 1 / -1; font-weight: 600; }
 }
+
+/* ИИ: договор по фото */
+.dc-ai { border: 1px dashed var(--brand); }
+.dc-ai .dc-thumbs { grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); }
+.dc-ai-busy { margin: 0; font-weight: 600; animation: dc-ai-pulse 1.4s ease-in-out infinite; }
+@keyframes dc-ai-pulse { 50% { opacity: .45; } }
+.dc-ai-lines, .dc-ai-warn { margin: 0; padding-left: 0; list-style: none; display: grid; gap: 4px; font-size: 14px; }
+.dc-ai-warn li { color: var(--reserve); font-weight: 600; }
+.dc-form .dc-ai-filled { background: color-mix(in srgb, var(--brand) 9%, transparent); }
+.dc-form .dc-ai-unsure { background: var(--reserve-bg); border-color: var(--reserve); box-shadow: 0 0 0 1px var(--reserve); }
+.btn.is-disabled { opacity: .5; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .dc-ai-busy { animation: none; } }

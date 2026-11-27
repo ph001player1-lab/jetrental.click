@@ -545,6 +545,29 @@ export async function clientByContact(contact, now = Date.now()) {
   return clientBrief(idx.clients.get(id));
 }
 
+/**
+ * Клиенты по имени из паспорта (порядок слов неважен) — для распознавания договора по фото.
+ * Лучшие 3: { id, name, phone, booking, rent }
+ */
+export async function clientsByName(name, now = Date.now()) {
+  const words = normName(name).split(' ').filter((w) => w.length >= 2);
+  if (!words.length) return [];
+  const { clients } = await buildIndex(now);
+  const found = [];
+  for (const c of clients.values()) {
+    const own = normName(c.name).split(' ').filter((w) => w.length >= 2);
+    if (!own.length) continue;
+    const common = own.filter((w) => words.includes(w)).length;
+    if (common >= 2 || (common === own.length && common === words.length)) found.push({ c, score: common / Math.max(own.length, words.length) });
+  }
+  found.sort((a, b) => b.score - a.score || Number(Boolean(b.c.upcoming.length || b.c.active)) - Number(Boolean(a.c.upcoming.length || a.c.active)));
+  return found.slice(0, 3).map(({ c }) => ({
+    ...clientBrief(c),
+    booking: c.upcoming[0] ? { from: c.upcoming[0].from, to: c.upcoming[0].to, plates: c.upcoming[0].plates, model: c.upcoming[0].model } : null,
+    rent: c.active ? { from: c.active.from, to: c.active.to, plates: c.active.plates, model: c.active.model } : null
+  }));
+}
+
 /* ---------------------------------------------------------------- Список */
 
 export const FILTERS = ['all', 'rent', 'booking', 'debt', 'regular', 'lost', 'new', 'vip', 'problem', 'blacklist', 'dupes', 'badPhone'];

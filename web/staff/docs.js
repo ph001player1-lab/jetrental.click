@@ -12,7 +12,7 @@
 
   function create(ctx) {
     const { api, t, esc } = ctx;
-    const st = { view: 'list', list: null, q: '', failed: false, id: null, one: null, pre: null, form: null, msg: null, busy: false, sub: null, photoCaption: 'front' };
+    const st = { view: 'list', list: null, q: '', failed: false, id: null, one: null, pre: null, form: null, msg: null, busy: false, sub: null, photoCaption: 'front', ai: { files: [], busy: false, result: null, error: null } };
     const uiLang = () => (['ru', 'th'].includes(ctx.lang()) ? ctx.lang() : 'en');
     const label = (x) => (x ? x[uiLang()] || x.en || '' : '');
     const dmy = (iso) => (iso ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}` : '');
@@ -55,6 +55,7 @@
       st.sub = null;
       st.msg = null;
       st.quoteNote = null;
+      resetAi();
       st.form = { lang: uiLang() === 'ru' ? 'ru' : 'en', from: `${now.slice(0, 10)}T12:00`, to: '', equipment: null, fuel: 4, ...prefill, renter: { ...(prefill.renter || {}) } };
       Object.keys(st.form).forEach((k) => { if (st.form[k] === undefined) delete st.form[k]; });
       if (!st.form.from) st.form.from = `${now.slice(0, 10)}T12:00`;
@@ -257,6 +258,164 @@
     }
     const pendingDiscount = () => st.one?.contract.discountFull?.status === 'pending';
 
+    /* ------------------------------------------ ИИ: заполнить договор по фото */
+
+    // Фото держим в браузере: документы клиента никуда не сохраняются, фото техники
+    // после сохранения договора уходят в «Фото при выдаче»
+    function resetAi() {
+      for (const f of st.ai?.files || []) URL.revokeObjectURL(f.url);
+      st.ai = { files: [], busy: false, result: null, error: null };
+    }
+    const AI_INPUT = {
+      name: 'r_name', passport: 'r_passport', nationality: 'r_nationality', license: 'r_license', licenseCategories: 'r_license', licenseValidTo: 'r_license',
+      phone: 'r_phone', plate: 'plate', model: 'model', color: 'color', mileage: 'mileage', fuel: 'fuel', from: 'from', to: 'to'
+    };
+    const SOURCE = { fleet: 'dc.ai.src.fleet', crm: 'dc.ai.src.crm', request: 'dc.ai.src.request', photo: 'dc.ai.src.photo' };
+
+    function aiBlock() {
+      const a = st.ai || { files: [] };
+      const thumbs = a.files.map((f, i) => `<figure class="dc-thumb"><img src="${esc(f.url)}" alt="">
+        ${a.busy ? '' : `<button type="button" class="icon-btn" data-dc-aidel="${i}" aria-label="${esc(t('dc.delete'))}">✕</button>`}</figure>`).join('');
+      const r = a.result;
+      let out = '';
+      if (a.busy) out = `<p class="dc-ai-busy">⏳ ${esc(t('dc.ai.busy'))}</p>`;
+      else if (a.error) out = `<p class="md-status is-error" role="status">${esc(a.error)}</p>`;
+      else if (r) {
+        const lines = [];
+        lines.push(r.vehicle ? `🚗 ${esc(t('dc.ai.vehicle', { v: `${r.vehicle.model} · ${r.vehicle.plate}` }))}` : `🚗 ${esc(t('dc.ai.vehicleNone'))}`);
+        if (r.client) lines.push(`👤 ${esc(t('dc.ai.client', { name: r.client.name }))}`);
+        if (r.booking) lines.push(`📅 ${esc(t('dc.ai.booking', { from: dmy(r.booking.from), to: dmy(r.booking.to), src: t(SOURCE[r.booking.source] || 'dc.ai.src.photo') }))}`);
+        out = `<p class="md-status is-ok" role="status">✓ ${esc(t('dc.ai.done', { n: r.filledCount }))}${r.unsureCount ? ` ${esc(t('dc.ai.check'))}` : ''}</p>
+          <ul class="dc-ai-lines">${lines.map((l) => `<li>${l}</li>`).join('')}</ul>
+          ${r.warnings.length ? `<ul class="dc-ai-warn">${r.warnings.map((w) => `<li>⚠️ ${esc(w)}</li>`).join('')}</ul>` : ''}
+          <p class="muted jr-small">${esc(t('dc.ai.cost', { model: r.modelName, usd: r.usd }))}</p>`;
+      }
+      return `<section class="card dc-sec dc-ai" data-dc-ai>
+        <h3>🤖 ${esc(t('dc.ai.title'))}</h3>
+        <p class="muted jr-small">${esc(t('dc.ai.hint'))}</p>
+        ${thumbs ? `<div class="dc-thumbs">${thumbs}</div>` : ''}
+        <div class="dc-actions">
+          <label class="btn btn--small${a.busy ? ' is-disabled' : ''}"><span>📷 ${esc(t('dc.ai.add'))}</span><input type="file" accept="image/*" multiple data-dc-aifiles hidden${a.busy ? ' disabled' : ''}></label>
+          <button type="button" class="btn btn--primary btn--small" data-dc-airun${a.files.length && !a.busy ? '' : ' disabled'}>🤖 ${esc(t('dc.ai.run'))}</button>
+          <span class="muted jr-small">${a.files.length}/8</span>
+        </div>
+        ${out}
+        <p class="muted jr-small">🔒 ${esc(t('dc.ai.private'))}</p>
+      </section>`;
+    }
+
+    /** Обновить только блок ИИ — форма (и то, что в неё уже вписали) не трогается */
+    function refreshAi() {
+      const box = document.querySelector('[data-dc-ai]');
+      if (box) box.outerHTML = aiBlock();
+      else ctx.rerender();
+    }
+
+    const toBase64 = (blob) => new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]+,/, ''));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+
+    async function addAiFiles(files) {
+      for (const file of files) {
+        if (st.ai.files.length >= 8) break;
+        try {
+          const blob = await ctx.prepareShot(file);
+          st.ai.files.push({ blob, url: URL.createObjectURL(blob) });
+        } catch { /* не фото */ }
+      }
+      st.ai.error = null;
+      refreshAi();
+    }
+
+    async function runAi() {
+      const form = document.querySelector('[data-dc-form]');
+      if (!form || !st.ai.files.length || st.ai.busy) return;
+      st.ai.busy = true;
+      st.ai.error = null;
+      st.ai.result = null;
+      refreshAi();
+      try {
+        const photos = await Promise.all(st.ai.files.map(async (f) => ({ type: f.blob.type || 'image/jpeg', data: await toBase64(f.blob) })));
+        const r = await api('/docs/recognize', { body: { photos } });
+        st.ai.busy = false;
+        const current = document.querySelector('[data-dc-form]');
+        st.ai.result = await applyAi(current || form, r);
+      } catch (err) {
+        st.ai.busy = false;
+        st.ai.error = errText(err);
+      }
+      refreshAi();
+    }
+
+    /** Ответ ИИ → поля формы: вписанное ИИ — голубое, в чём он не уверен — жёлтое */
+    async function applyAi(form, r) {
+      const unsure = new Set((r.unsure || []).map((k) => AI_INPUT[k]).filter(Boolean));
+      const filled = new Set();
+      for (const el of form.querySelectorAll('.dc-ai-filled, .dc-ai-unsure')) el.classList.remove('dc-ai-filled', 'dc-ai-unsure');
+      const set = (name, value) => {
+        const el = form.elements[name];
+        if (!el || value === '' || value === null || value === undefined) return;
+        el.value = value;
+        filled.add(name);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      };
+      const f = r.fields || {};
+      set('r_name', f.name);
+      set('r_passport', f.passport);
+      set('r_nationality', f.nationality);
+      set('r_license', f.license);
+      set('r_phone', f.phone);
+      set('r_address', f.address);
+      if (r.booking?.from) set('from', `${r.booking.from}T${(form.elements.from.value || 'T12:00').split('T')[1] || '12:00'}`);
+      if (r.booking?.to) set('to', `${r.booking.to}T${(form.elements.to.value || 'T12:00').split('T')[1] || '12:00'}`);
+      if (r.request && form.elements.requestId && [...form.elements.requestId.options].some((o) => o.value === String(r.request.id))) {
+        form.elements.requestId.value = String(r.request.id);
+        st.form.requestId = r.request.id;
+      }
+      if (r.vehicle && vehicleById(r.vehicle.id)) {
+        set('vehicleId', String(r.vehicle.id));
+        await refreshQuote(form, true);
+        for (const n of ['model', 'plate', 'color']) if (form.elements[n]?.value) filled.add(n);
+        // Цвета нет в «Парке» — берём с фото
+        if (!form.elements.color?.value) set('color', f.color);
+      } else {
+        set('plate', f.plate);
+        set('model', f.model);
+        set('color', f.color);
+        if (r.booking) await refreshQuote(form, false);
+      }
+      set('mileage', f.mileage);
+      if (f.fuel !== null && f.fuel !== undefined) set('fuel', String(f.fuel));
+      for (const name of filled) form.elements[name]?.classList.add('dc-ai-filled');
+      for (const name of unsure) if (filled.has(name)) form.elements[name]?.classList.add('dc-ai-unsure');
+      // Если форму перерисуют — значения не потеряются
+      const cur = readContract(form);
+      st.form = { ...st.form, ...cur.data, lang: cur.lang };
+      const modelName = r.model === 'claude-opus-5-5' ? 'Claude Opus 5.5' : r.model === 'claude-sonnet-5-5' ? 'Claude Sonnet 5.5' : r.model === 'claude-haiku-5-5' ? 'Claude Haiku 5.5' : r.model;
+      return {
+        ...r, warnings: r.warnings || [], filledCount: filled.size, unsureCount: [...unsure].filter((n) => filled.has(n)).length,
+        modelName, usd: (r.usd || 0).toFixed(2)
+      };
+    }
+
+    /** После сохранения нового договора: фото техники с ИИ-подписями — в «Фото при выдаче» */
+    async function attachAiPhotos(contractId) {
+      const r = st.ai?.result;
+      if (!r) return 0;
+      const list = (r.photos || []).filter((p) => p.caption && st.ai.files[p.index]).slice(0, 9);
+      let n = 0;
+      for (const p of list) {
+        try {
+          await ctx.uploadImage(`/docs/photo?contract=${contractId}&caption=${encodeURIComponent(p.caption)}`, st.ai.files[p.index].blob);
+          n++;
+        } catch { /* остальные фото добавят вручную */ }
+      }
+      return n;
+    }
+
     /** Кнопки документа: PDF, подписи, ссылка, WhatsApp, удалить */
     function docActions(d) {
       const pdfReady = st.list?.pdfReady;
@@ -384,6 +543,7 @@
         </div>
         ${st.msg ? `<p class="md-status is-${st.msg.kind}" role="status">${esc(st.msg.text)}</p>` : ''}
         ${c ? `<section class="card dc-sec"><h3>📄 ${esc(t('dc.kind.contract'))}</h3>${discountBanner(c)}${docActions(c)}${issueBlock(c)}</section>` : ''}
+        ${!c && canEdit() ? aiBlock() : ''}
         ${contractForm()}
         ${c ? `${photosBlock()}${subBlock('receipt')}${subBlock('return')}${subBlock('addendum')}` : ''}
       </div>`;
@@ -487,8 +647,14 @@
       const { lang, data } = readContract(form);
       st.busy = true;
       try {
+        const wasNew = !st.id;
         const r = await api('/docs/save', { body: { id: st.id, kind: 'contract', lang, data } });
         st.msg = { kind: 'ok', text: t(st.id ? 'dc.saved' : 'dc.created') };
+        if (wasNew) {
+          const n = await attachAiPhotos(r.id);
+          if (n) st.msg = { kind: 'ok', text: `${t('dc.created')} ${t('dc.ai.photosAttached', { n })}` };
+          resetAi();
+        }
         await loadOne(r.id, false);
         await refreshList();
       } catch (err) {
@@ -653,6 +819,15 @@
         }, t('dc.deleted'));
         return true;
       }
+      if (el.closest('[data-dc-airun]')) { runAi(); return true; }
+      const aidel = el.closest('[data-dc-aidel]');
+      if (aidel) {
+        const [f] = st.ai.files.splice(Number(aidel.dataset.dcAidel), 1);
+        if (f) URL.revokeObjectURL(f.url);
+        st.ai.result = null;
+        refreshAi();
+        return true;
+      }
       const decide = el.closest('[data-dc-decide]');
       if (decide) {
         const [id, ok] = decide.dataset.dcDecide.split(':');
@@ -702,6 +877,12 @@
       if (el.matches('[data-dc-money]')) { recalcMoney(el.form); return true; }
       if (el.matches('[data-dc-request]')) { fillFromRequest(el.form, el.value); return true; }
       if (el.matches('[data-dc-caption]')) { st.photoCaption = el.value; return true; }
+      if (el.matches('[data-dc-aifiles]')) {
+        const files = [...el.files];
+        el.value = '';
+        if (files.length) addAiFiles(files);
+        return true;
+      }
       if (el.matches('[data-dc-photos]')) {
         const files = [...el.files];
         if (!files.length) return true;
@@ -726,6 +907,8 @@
 
     let searchTimer = null;
     function onInput(event) {
+      // Сотрудник поправил поле, в котором ИИ не был уверен, — подсветку снимаем
+      if (event.isTrusted && event.target.classList?.contains('dc-ai-unsure')) event.target.classList.remove('dc-ai-unsure');
       if (event.target.matches?.('[data-dc-money]')) { recalcMoney(event.target.form); return true; }
       if (!event.target.matches?.('[data-dc-search]')) return false;
       st.q = event.target.value.trim();

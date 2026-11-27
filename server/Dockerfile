@@ -8,8 +8,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV CHROMIUM_PATH=/usr/bin/chromium-browser
 
-COPY package.json ./
-RUN npm install --omit=dev
+COPY package.json package-lock.json ./
+# Зависимости — строго по package-lock.json; чужие скрипты при установке не запускаем
+RUN npm ci --omit=dev --ignore-scripts
 
 COPY assets ./assets
 COPY src ./src

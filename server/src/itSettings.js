@@ -33,7 +33,7 @@ import { config } from './config.js';
 import { HttpError, sendJson, readJson } from './http.js';
 import { can } from './roles.js';
 import { currentRates } from './finance.js';
-import { notifyAdmins } from './serverStats.js';
+import { notifyAdmins, alertAdminsOnce } from './serverStats.js';
 import { telegramEnabled, telegramBotUsername, tg } from './telegram/api.js';
 import { getStaffChatId } from './staff.js';
 import { activeStaff, ADMIN_ROLE } from './access.js';
@@ -118,6 +118,7 @@ const q = {
   between: db.raw.prepare('SELECT * FROM it_payments WHERE paid_on >= ? AND paid_on < ? ORDER BY paid_on'),
   reminded: db.raw.prepare('SELECT 1 FROM it_reminders WHERE key = ?'),
   remind: db.raw.prepare('INSERT OR IGNORE INTO it_reminders (key, at) VALUES (?, ?)'),
+  aiInsert: db.raw.prepare('INSERT INTO ai_usage (at, model, input_tokens, output_tokens, usd, purpose, by_email) VALUES (?, ?, ?, ?, ?, ?, ?)'),
   aiMonth: db.raw.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(usd), 0) AS usd, COALESCE(SUM(input_tokens), 0) AS input, COALESCE(SUM(output_tokens), 0) AS output FROM ai_usage WHERE at >= ? AND at < ?')
 };
 
@@ -461,6 +462,36 @@ export function aiMonth(now = Date.now()) {
   const to = new Date(Date.parse(`${addMonths(`${month}-01`, 1)}T00:00:00Z`) - BANGKOK_MS).toISOString();
   const r = q.aiMonth.get(from, to);
   return { month, requests: r.n, usd: Math.round(r.usd * 100) / 100, inputTokens: r.input, outputTokens: r.output };
+}
+
+// Цена Claude за миллион токенов, $ (вход / выход) — для учёта расходов и лимита
+const AI_PRICES = { 'claude-opus-5-5': [4, 20], 'claude-sonnet-5-5': [2, 10], 'claude-haiku-5-5': [0.1, 0.5] };
+
+/** Можно ли сейчас звать ИИ: ключ задан и месячный лимит не исчерпан */
+export function aiAllowed() {
+  if (!process.env.ANTHROPIC_API_KEY) return { ok: false, code: 'ai_no_key' };
+  const { limitUsd } = aiSettings();
+  if (limitUsd > 0 && aiMonth().usd >= limitUsd) return { ok: false, code: 'ai_limit' };
+  return { ok: true };
+}
+
+/** Записать расход на один запрос к ИИ; при 80 % и 100 % лимита — оповещение админам (раз в месяц) */
+export function recordAiUsage({ model, inputTokens = 0, outputTokens = 0, purpose = null, by = null }) {
+  const [pin, pout] = AI_PRICES[model] || AI_PRICES['claude-opus-5-5'];
+  const usd = (inputTokens * pin + outputTokens * pout) / 1e6;
+  q.aiInsert.run(new Date().toISOString(), model, inputTokens, outputTokens, usd, purpose, by);
+  const { limitUsd } = aiSettings();
+  if (limitUsd > 0) {
+    const m = aiMonth();
+    const pct = m.usd >= limitUsd ? 100 : m.usd >= limitUsd * 0.8 ? 80 : 0;
+    if (pct) {
+      const text = pct === 100
+        ? `🤖 ИИ: расход за месяц ${m.usd} $ — лимит ${limitUsd} $ исчерпан, распознавание фото остановлено до следующего месяца. Поднять лимит: «Настройки» → «Модель ИИ».`
+        : `🤖 ИИ: расход за месяц ${m.usd} $ — это 80% лимита ${limitUsd} $.`;
+      alertAdminsOnce(`ai_${pct}_${m.month}`, text, 40 * 86400000).catch(() => null);
+    }
+  }
+  return usd;
 }
 
 export function saveAi(body) {
