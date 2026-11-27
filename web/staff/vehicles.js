@@ -62,13 +62,14 @@
 
     /** Инвестор машины — видно сразу (владельцу и админу): в карточке под статусом */
     function investorLine(car) {
+      if (!canEdit()) return '';
       const v = car.vehicleId ? byId(car.vehicleId) : null;
       const text = v ? investorName(v) : '';
-      return text ? `<div class="vh-inv">📈 ${esc(t('vh.f.investor'))}: ${esc(text)}</div>` : '';
+      return `<div class="vh-inv${text ? '' : ' vh-inv--none'}">📈 ${esc(t('vh.f.investor'))}: ${esc(text || t('vh.invNone'))}</div>`;
     }
 
-    /** Есть ли у кого-то из машин инвестор — тогда в таблице колонка «Инвестор» */
-    const showInvestorCol = () => (fleet().investors || []).length > 0 && vehicles().some((v) => v.investorId);
+    /** Колонка «Инвестор» в таблице — владельцу и админу всегда («компания», если инвестора нет) */
+    const showInvestorCol = () => canEdit();
 
     function details(v) {
       const rows = [
@@ -204,9 +205,15 @@
 
     /** Чья машина (кабинет инвестора) и особая доля для неё — владелец и админ */
     function investorFields(v) {
+      if (!canEdit()) return '';
       const list = fleet().investors || [];
-      if (!list.length) return '';
       const now = v.id && investorName(v);
+      // Инвесторов ещё нет — поле всё равно показываем и подсказываем, где их завести
+      if (!list.length) {
+        return `
+        <label class="field"><span>${esc(t('vh.f.investor'))}</span><select class="search" name="investorId" disabled><option value="">${esc(t('vh.f.investorNone'))}</option></select></label>
+        <p class="muted jr-small vh-inv-hint">${esc(t('vh.invHint'))}</p>`;
+      }
       const options = list.map((p) => `<option value="${p.id}"${p.id === v.investorId ? ' selected' : ''}>${esc(p.name)} (${p.percent}%)</option>`).join('');
       return `
         ${now ? `<p class="vh-inv vh-wide">📈 ${esc(t('vh.invNow', { text: now }))}</p>` : ''}
@@ -227,7 +234,7 @@
             <button type="button" class="icon-btn icon-btn--plain" data-vh-close aria-label="${esc(t('vh.close'))}">×</button>
           </div>
           <p class="muted jr-small">${esc(t('vh.formTip'))}</p>
-          <div class="vh-grid">${FIELDS.map((f) => field(f, v)).join('')}${investorFields(v)}</div>
+          <div class="vh-grid">${FIELDS.slice(0, 6).map((f) => field(f, v)).join('')}${investorFields(v)}${FIELDS.slice(6).map((f) => field(f, v)).join('')}</div>
           <datalist id="vh-models">${models.map((m) => `<option value="${esc(m)}"></option>`).join('')}</datalist>
           <datalist id="vh-brands">${brands.map((m) => `<option value="${esc(m)}"></option>`).join('')}</datalist>
           <div data-vh-dmsg></div>
@@ -358,7 +365,7 @@
           <td class="num vh-col-x">${tariff(car) ? esc(ctx.money(tariff(car))) : '—'}</td>
           <td class="num vh-col-x">${v?.mileage !== null && v?.mileage !== undefined ? esc(num(v.mileage)) : ''}</td>
           <td class="vh-col-x">${esc(service)}</td>
-          ${showInvestorCol() ? `<td class="vh-col-x vh-inv-td">${v && investorName(v) ? `📈 ${esc(investorName(v))}` : '—'}</td>` : ''}
+          ${showInvestorCol() ? `<td class="vh-col-x vh-inv-td">${v && investorName(v) ? `📈 ${esc(investorName(v))}` : `<span class="muted">${esc(t('vh.invNone'))}</span>`}</td>` : ''}
           <td>${problemBadges(car, true)}</td>
           <td><div class="vh-td-actions">
             ${ctx.canSetStatus() && car.vehicleId ? `<button type="button" class="icon-btn icon-btn--plain" data-vh-status="${car.vehicleId}" title="${esc(t('fs.change'))}" aria-label="${esc(t('fs.change'))}">🔄</button>` : ''}

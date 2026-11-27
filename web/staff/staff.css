@@ -1478,3 +1478,8 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
 /* Инвестор машины — в карточке под статусом, в таблице и в окне правки */
 .vh-inv { margin: 4px 0 0; font-size: 12px; font-weight: 600; color: var(--tickets); }
 .vh-inv-td { font-size: 12px; color: var(--tickets); min-width: 100px; max-width: 170px; }
+
+.vh-inv--none { color: var(--muted); font-weight: 500; }
+.vh-inv-hint { margin: 0; align-self: end; }
+/* Поля инвестора в окне правки — отдельной полосой во всю ширину, чтобы не терялись среди остальных */
+.vh-grid .vh-inv, .vh-grid .vh-inv-hint { grid-column: 1 / -1; }
