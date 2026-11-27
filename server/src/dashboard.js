@@ -171,7 +171,7 @@ async function websiteProblems(tx, fleet) {
   for (const model of unitModels) {
     if (fleet.catalog.has(model)) continue;
     problems.push({
-      group: 'website', level: 'warning', target: { tab: 'site', q: model },
+      group: 'website', level: 'warning', target: { tab: 'fleet', q: model },
       title: tx.t('notInCatalog.title', { model }),
       detail: tx.t('notInCatalog.detail')
     });
@@ -184,10 +184,10 @@ async function websiteProblems(tx, fleet) {
     const untranslated = DESCRIPTION_LANGS.filter((l) => !own[l]);
     const hasDescription = untranslated.length < DESCRIPTION_LANGS.length;
     const missing = [!m.priceFrom && 'price', !m.photo && 'photo', !hasDescription && 'description'].filter(Boolean);
-    const target = { tab: 'site', q: m.model };
+    const target = { tab: 'fleet', q: m.model };
     if (missing.length) {
       problems.push({
-        group: 'website', level: 'warning', target,
+        group: 'website', level: 'warning', target: missing.includes('price') ? { tab: 'price', q: m.model } : target,
         title: tx.t('website.title', { model: m.model, missing: missing.map((k) => tx.t(`missing.${k}`)).join(tx.t('list.sep')) }),
         detail: tx.t(missing.includes('price') ? 'website.detailPrice' : 'website.detailOther')
       });
