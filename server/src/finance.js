@@ -25,6 +25,7 @@ import { getFleet, plateKey } from './fleet.js';
 import { staffPhones } from './staffUsers.js';
 import { cashbookMeta, cashbookRows, PURPOSE_GROUP } from './cashbook.js';
 import { itPaymentsBetween } from './itSettings.js';
+import { portalExpensesBetween } from './operations.js';
 
 const DAY_MS = 86400000;
 const BANGKOK_MS = 7 * 3600000;
@@ -245,6 +246,8 @@ function groupCashNotes(rates) {
   for (const row of withoutRepeats(rows)) {
     const body = String(row.text || '').replace(/[\p{Extended_Pictographic}️‎‏⁨⁩]/gu, '').trim();
     const first = body.split('\n')[0].trim();
+    // Расход, внесённый в портале (бот пишет его в группу с меткой) — считаем из портала, не отсюда
+    if (body.includes('[portal ')) continue;
     const type = EXPENSE_RE.test(first) ? 'expense' : HANDOVER_RE.test(first) ? 'handover' : null;
     if (!type) continue;
     let value = valueOf(first, rates);
@@ -316,6 +319,14 @@ function expensesFor(a, b, cashMeta, notes) {
     add(n.category, n.thb, 'group');
     plateCost(n.plate, n.category, n.thb, { at: isoOf(n.at), text: n.text || '', source: 'group' });
   }
+  // Расходы по чекам из «＋ Операция» — как «Expense:» в группе: где загружена касса WS, там из неё
+  let portalExpenses = 0;
+  for (const e of portalExpensesBetween(a, b)) {
+    if (hasCash && e.at >= cashA && e.at < cashB) continue;
+    portalExpenses++;
+    add(e.category, e.thb, 'portal');
+    plateCost(e.plate, e.category, e.thb, { at: isoOf(e.at), text: e.text, source: 'portal' });
+  }
   // Оплаты сервисов из «Настроек» (сервер, домены, подписки) — статья «IT и подписки»
   let portalPayments = 0;
   for (const p of itPaymentsBetween(a, b)) {
@@ -332,6 +343,7 @@ function expensesFor(a, b, cashMeta, notes) {
     total: categories.reduce((s, c) => s + c.sum, 0),
     groupReports,
     portalPayments,
+    portalExpenses,
     ws: hasCash ? Object.fromEntries(Object.entries(ws).map(([k, v]) => [k, round(v)])) : null,
     byPlate
   };
@@ -685,6 +697,13 @@ export async function financeReport({ from, to }, now = Date.now(), { clientsVis
       if (n.at >= start && n.at < end) h.spent += n.thb;
     }
   }
+  // Расходы наличными из «＋ Операция» — тоже потрачено из кассы сотрудника
+  for (const e of portalExpensesBetween(0, now)) {
+    if (e.method !== 'cash' || !e.by || isOwner(e.by)) continue;
+    const h = holder(e.by);
+    h.events.push([e.at, -e.thb]);
+    if (e.at >= start && e.at < end) h.spent += e.thb;
+  }
 
   const debtList = findDebts(parsed, now, who);
   const overdue = debtList.filter((d) => d.overdue);
@@ -708,7 +727,7 @@ export async function financeReport({ from, to }, now = Date.now(), { clientsVis
   const expenses = expensesFor(start, end, cashMeta, notes);
   const profitStart = dataFrom ? Math.max(start, dayStart(bangkokIso(Date.parse(dataFrom)))) : start;
   const profitExpenses = profitStart < end ? (profitStart === start ? expenses : expensesFor(profitStart, end, cashMeta, notes)) : null;
-  const expensesKnown = Boolean(profitExpenses && (profitExpenses.cashFrom || profitExpenses.groupReports));
+  const expensesKnown = Boolean(profitExpenses && (profitExpenses.cashFrom || profitExpenses.groupReports || profitExpenses.portalExpenses));
   const salary = salaryByTimesheet(from, to, phones);
 
   // Машины: выручка, загрузка, ремонт и прочие расходы (касса WS, «Expense:»), кредит

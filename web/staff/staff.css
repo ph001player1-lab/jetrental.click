@@ -1667,3 +1667,32 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
 .dc-form input { min-width: 0; }
 .dc-vsum { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
 @media (max-width: 640px) { .dc-span2 { grid-column: 1 / -1; } }
+
+/* «＋ Операция»: кнопка на всех вкладках и окно */
+.op-fab { position: fixed; right: 16px; bottom: calc(84px + var(--safe-bottom, 0px)); z-index: 30; display: inline-flex; align-items: center; gap: 6px;
+  min-height: 52px; padding: 0 18px; border: 0; border-radius: 26px; background: var(--brand); color: #fff; font: inherit; font-size: 18px; font-weight: 700;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .25); cursor: pointer; }
+.op-fab__label { font-size: 15px; }
+.op-fab__n { min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; background: #fff; color: var(--brand); font-size: 13px; line-height: 22px; text-align: center; }
+@media (min-width: 860px) { .op-fab { bottom: 24px; right: 24px; } }
+@media (max-width: 480px) { .op-fab__label { display: none; } .op-fab { width: 56px; justify-content: center; padding: 0; font-size: 26px; } .op-fab__n { position: absolute; top: -4px; right: -4px; } }
+.op-sheet { width: min(720px, calc(100% - 16px)); }
+@media (max-width: 640px) { .op-sheet { width: 100%; max-width: 100%; height: 100%; max-height: 100%; margin: 0; border-radius: 0; } }
+.op { gap: 14px; }
+.op textarea { width: 100%; padding: 10px 14px; font: inherit; font-size: 16px; resize: vertical; }
+.op-kinds { flex-wrap: wrap; }
+.op-drafts { display: grid; gap: 6px; }
+.op-draft { display: grid; gap: 2px; width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.op-draft:hover { border-color: var(--brand); }
+.op-back { justify-self: start; }
+.op-remote { margin: 0; padding: 8px 12px; border-radius: 10px; background: var(--reserve-bg); }
+.op-ai { margin: 0; font-weight: 600; }
+.op-form { display: grid; gap: 12px; padding: 12px; border-radius: 12px; background: var(--surface-2); }
+.op-form .dc-grid > .field { min-width: 0; }
+.op-sub { display: grid; gap: 6px; }
+.op-sub summary { cursor: pointer; }
+.op-row { display: grid; grid-template-columns: minmax(0, 1fr) 110px auto; gap: 6px; align-items: center; }
+.op-contract { margin: 0; }
+.op-unsure { background: var(--reserve-bg) !important; border-color: var(--reserve) !important; box-shadow: 0 0 0 1px var(--reserve); }
+.op-done { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+.op-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; margin: 0; }

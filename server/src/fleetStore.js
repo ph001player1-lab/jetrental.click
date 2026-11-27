@@ -270,6 +270,26 @@ export function saveVehicle(input, by) {
 }
 
 /** Состояние «ремонт» из смены статуса (В ремонт / Свободна) — без остальных полей карточки */
+/** Пробег и ТО из «＋ Операция»: { mileage, serviceDate, serviceKm } — что передали. Пробег назад не идёт */
+export function updateVehicleStats(id, stats, by) {
+  const old = q.vehicle.get(Number(id) || 0);
+  if (!old) return null;
+  const sets = [];
+  const vals = [];
+  const changes = {};
+  const km = Number.isFinite(Number(stats.mileage)) && Number(stats.mileage) > 0 ? Math.round(Number(stats.mileage)) : null;
+  if (km !== null && (old.mileage === null || km >= old.mileage) && km !== old.mileage) { sets.push('mileage = ?'); vals.push(km); changes.mileage = `${old.mileage ?? '—'} → ${km}`; }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(stats.serviceDate || '')) && stats.serviceDate !== old.service_date) {
+    sets.push('service_date = ?'); vals.push(stats.serviceDate); changes.serviceDate = `${old.service_date || '—'} → ${stats.serviceDate}`;
+  }
+  const skm = Number.isFinite(Number(stats.serviceKm)) && Number(stats.serviceKm) > 0 ? Math.round(Number(stats.serviceKm)) : null;
+  if (skm !== null && skm !== old.service_km) { sets.push('service_km = ?'); vals.push(skm); changes.serviceKm = `${old.service_km ?? '—'} → ${skm}`; }
+  if (!sets.length) return null;
+  db.raw.prepare(`UPDATE fleet_vehicles SET ${sets.join(', ')}, updated_at = ?, updated_by = ? WHERE id = ?`).run(...vals, nowIso(), by, old.id);
+  q.log.run(nowIso(), by, old.plate, 'update', JSON.stringify(changes));
+  return changes;
+}
+
 export function setRepair(id, repair, by) {
   const old = q.vehicle.get(Number(id) || 0);
   if (!old || !REPAIR.includes(repair) || old.repair === repair) return;

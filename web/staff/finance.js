@@ -33,7 +33,7 @@
     const st = {
       preset: 'month', data: null, failed: false, loading: false, sort: 'revenue', opsAll: false, upload: null,
       wsOnlyAll: false, groupOnlyAll: false, debtsAll: false, withheldAll: false, loansOpen: false, loansMsg: null,
-      disc: null, discAll: false, discMsg: null
+      disc: null, discAll: false, discMsg: null, receipts: null, receiptsAll: false
     };
 
     // Даты и числа — всегда по-русски, время по Бангкоку
@@ -81,9 +81,11 @@
       st.loading = true;
       ctx.rerender();
       try {
-        const [data, disc] = await Promise.all([api(`/finance?from=${from}&to=${to}`), api(`/discounts?from=${from}&to=${to}`).catch(() => null)]);
+        const [data, disc, receipts] = await Promise.all([api(`/finance?from=${from}&to=${to}`), api(`/discounts?from=${from}&to=${to}`).catch(() => null),
+          api(`/expenses?from=${from}&to=${to}`).catch(() => null)]);
         st.data = data;
         st.disc = disc;
+        st.receipts = receipts;
         st.failed = false;
       } catch (err) {
         st.failed = ERRORS[err.code] || 'Не удалось загрузить данные. Обновите страницу.';
@@ -197,7 +199,7 @@
       const s = d.summary;
       const p = d.profit;
       const partial = d.dataFrom && d.dataFrom.slice(0, 10) > d.period.from;
-      let expHint = 'из кассы WS и сообщений «Expense:»';
+      let expHint = 'касса WS, «Expense:» в группе, чеки из «＋ Операция»';
       if (p.expenses === null) expHint = 'нет данных: загрузите кассу WS или пишите «Expense:» в группу';
       else if (p.expensesTo && p.expensesTo < p.to) expHint = `по кассе WS по ${dayEnd(p.expensesTo)}`;
       let profitTone = '';
@@ -406,8 +408,9 @@
       else if (e.groupReports) sources = `сообщения «Expense:» в группе (${e.groupReports})`;
       const rows = e.categories.map((c) => {
         let src = '';
-        if (c.portal && (c.ws || c.group)) src = `<div class="muted jr-small">«Настройки» ${esc(num(c.portal))} · касса и группа ${esc(num(c.ws + c.group))}</div>`;
-        else if (c.portal) src = '<div class="muted jr-small">оплаты сервисов из «Настроек»</div>';
+        const portalWhat = c.key === 'it' ? '«Настройки»' : 'портал (чеки)';
+        if (c.portal && (c.ws || c.group)) src = `<div class="muted jr-small">${portalWhat} ${esc(num(c.portal))} · касса и группа ${esc(num(c.ws + c.group))}</div>`;
+        else if (c.portal) src = `<div class="muted jr-small">${c.key === 'it' ? 'оплаты сервисов из «Настроек»' : 'чеки из «＋ Операция»'}</div>`;
         else if (c.ws && c.group) src = `<div class="muted jr-small">касса ${esc(num(c.ws))} · группа ${esc(num(c.group))}</div>`;
         else if (c.group) src = '<div class="muted jr-small">из группы</div>';
         return `<tr><td><b>${esc(c.label)}</b>${src}</td><td class="fin-num">${esc(baht(c.sum))}</td><td class="fin-num muted">${esc(num(c.count))}</td></tr>`;
@@ -420,9 +423,28 @@
         ${e.notOperating.length ? `<p class="muted jr-small">Не входят в расходы: ${e.notOperating.map((c) => `${esc(c.label)} — ${esc(baht(c.sum))}`).join(', ')}.</p>` : ''}
         ${ads}` : `<p class="muted">${empty}</p>`;
       const ws = e.ws ? `<p class="muted jr-small">По кассе WS: приход без залогов ${esc(baht(e.ws.income))}, залоги внесено ${esc(baht(e.ws.depositsIn))} / возвращено ${esc(baht(e.ws.depositsOut))}. Перемещения денег (снятие и внесение средств) — не расход.</p>` : '';
-      return section('exp', 'Расходы по статьям', `${table}${ws}${renderSalary(e)}
+      return section('exp', 'Расходы по статьям', `${table}${ws}${renderReceipts()}${renderSalary(e)}
         <p class="muted jr-small">Чтобы со временем отказаться от WS, расходы можно писать в группу одной строкой — статья определится по словам (fuel, repair, wash, taxi, salary, ads, office, insurance, tax):</p>
         ${template('expense')}`, sources ? `Источник: ${esc(sources.replace(/\.$/, ''))}.` : '');
+    }
+
+    /** Расходы по чекам из «＋ Операция»: кто, за что, фото чека; ошибочный — удалить */
+    function renderReceipts() {
+      const r = st.receipts;
+      if (!r || !r.items.length) return '';
+      const list = st.receiptsAll ? r.items : r.items.slice(0, 15);
+      const pay = { cash: 'наличные', transfer: 'перевод', card: 'карта' };
+      return `<h4>Чеки из «＋ Операция»</h4><div class="table-wrap"><table class="fin-table fin-table--wide fin-table--stack">
+        <thead><tr><th>Дата</th><th>Статья</th><th>Что</th><th class="fin-num">Сумма</th><th>Кто</th><th></th></tr></thead>
+        <tbody>${list.map((x) => `<tr>
+          <td data-label="Дата">${esc(day(x.date))}</td>
+          <td data-label="Статья">${esc(x.label)}${x.plate ? ` <span class="plate">#${esc(x.plate)}</span>` : ''}</td>
+          <td data-label="Что">${esc([x.vendor, x.note].filter(Boolean).join(' — ') || '—')}</td>
+          <td class="fin-num" data-label="Сумма"><b>${esc(baht(x.thb))}</b>${x.currency !== 'THB' ? `<div class="muted jr-small">${esc(num(x.amount))} ${esc(x.currency)}</div>` : ''}${x.method ? `<div class="muted jr-small">${esc(pay[x.method] || x.method)}</div>` : ''}</td>
+          <td data-label="Кто">${esc(x.by || '—')}</td>
+          <td>${x.receipt ? `<a class="link jr-small" href="/api/staff/expenses/photo?id=${x.id}" target="_blank" rel="noopener">🧾 чек</a>` : ''}
+            ${r.canDelete ? ` <button type="button" class="link jr-small fin-less" data-fin-expdel="${x.id}">удалить</button>` : ''}</td>
+        </tr>`).join('')}</tbody></table></div>${showAll('receiptsAll', r.items.length, 15)}`;
     }
 
     /* ------------------------------------------------------ 7. Прогноз */
@@ -549,6 +571,12 @@
       if (all) { st[all.dataset.finAll] = true; ctx.rerender(); return true; }
       const dec = el.closest('[data-fin-decide]');
       if (dec) { const [id, ok] = dec.dataset.finDecide.split(':'); dec.disabled = true; decide(Number(id), ok === '1'); return true; }
+      const expDel = el.closest('[data-fin-expdel]');
+      if (expDel) {
+        if (!window.confirm('Удалить этот расход? Он пропадёт из «Финансов» и кабинета инвестора.')) return true;
+        send('/expenses/delete', JSON.stringify({ id: Number(expDel.dataset.finExpdel) }), 'application/json').then(load).catch(() => null);
+        return true;
+      }
       const contract = el.closest('[data-fin-contract]');
       if (contract) { ctx.openContract(Number(contract.dataset.finContract)); return true; }
       if (el.closest('[data-fin-loans-open]')) { st.loansOpen = true; st.loansMsg = null; ctx.rerender(); return true; }

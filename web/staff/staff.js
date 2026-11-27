@@ -439,8 +439,10 @@
     state.timer = setInterval(() => { if (!document.hidden) loadData(); }, REFRESH_MS);
     loadServerAlert();
     loadTicketsBadge();
+    renderOpButton();
+    refreshOpBadge();
     clearInterval(state.alertTimer);
-    state.alertTimer = setInterval(() => { loadServerAlert(); loadTicketsBadge(); }, 30 * 1000);
+    state.alertTimer = setInterval(() => { loadServerAlert(); loadTicketsBadge(); refreshOpBadge(); }, 30 * 1000);
   }
 
   async function loadData() {
@@ -982,6 +984,52 @@
   /* ------------------------------------ Быстрый выбор клиента из базы */
 
   const pick = window.STAFF_PICK.create({ api, t, esc });
+
+  /* ------------------------------------------------------ «＋ Операция» */
+
+  // Возврат, замена, сервис — «Парк» (меняет); расход — ещё и «Финансы»; выдача и акты — и «Документы»
+  const mayOp = (kind) => (kind === 'expense' ? can('fleet.edit') || can('finance.view')
+    : kind === 'service' ? can('fleet.edit') : can('fleet.edit') && can('docs.edit'));
+  const anyOp = () => ['issue', 'return', 'swap', 'service', 'expense'].some(mayOp);
+  const op = window.STAFF_OP.create({
+    api, t, esc, dateTime, money,
+    lang: () => lang,
+    mayOp,
+    vehicles: () => state.fleet?.vehicles || [],
+    freeToday: () => freeVehicles(bkkToday(), bkkToday()),
+    prepareShot: async (file) => {
+      const canvas = toCanvas(await decodeFile(file), 1600);
+      return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+    },
+    uploadImage: (url, blob) => uploadImage(url, blob),
+    newContractFromDraft: (draft) => { setTab('docs'); docs.openNewFromDraft(draft); },
+    openContract: (id) => openContract(id),
+    // Подтвердили — статусы и документы поменялись
+    onApplied: () => { loadData(); if (state.tab === 'docs') docs.load(); if (state.tab === 'finance') finance.load(); },
+    onClosed: () => refreshOpBadge()
+  });
+
+  /** Кнопка «＋ Операция»: на всех вкладках; число — открытые операции (например, начатые на телефоне) */
+  function renderOpButton() {
+    let btn = document.getElementById('op-fab');
+    if (!state.user || !anyOp()) { btn?.remove(); return; }
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.type = 'button';
+      btn.id = 'op-fab';
+      btn.className = 'op-fab';
+      btn.addEventListener('click', () => op.open());
+      document.body.appendChild(btn);
+    }
+    btn.innerHTML = `＋ <span class="op-fab__label">${esc(t('op.title'))}</span><span class="op-fab__n" hidden></span>`;
+  }
+  async function refreshOpBadge() {
+    const btn = document.getElementById('op-fab');
+    if (!btn || op.isOpen() || document.hidden) return;
+    const n = await op.count();
+    const badge = btn.querySelector('.op-fab__n');
+    if (badge) { badge.hidden = !n; badge.textContent = n; }
+  }
 
   /* -------------------------------------------------- Вкладка «Документы» */
 
@@ -2368,6 +2416,7 @@
       // Черновики форм остаются только у вошедшего сотрудника
       dropAllDrafts();
       state.user = null;
+      renderOpButton();
       state.fleet = null;
       state.server = null;
       stopServerPolling();

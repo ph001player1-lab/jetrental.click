@@ -60,6 +60,8 @@ import { marketingReport, marketingDetails, saveSource, deleteSource, placeSourc
 import { crmList, crmClient, saveClient, setTags, addNote, mergeClients, importClients, CrmError } from './crm.js';
 import { recognizeContractPhotos, AiError } from './ai/recognize.js';
 import { renterOf, parsePhotos, contractProposal } from './ai/proposal.js';
+import { opDrafts, opDraftCreate, opDraftGet, opDraftPhotoAdd, opDraftPhotoGet, opDraftPhotoDelete, opDraftUpdate, opDraftCancel, opDraftRecognize, opDraftManual,
+  opDraftApply, opDraftAttach, opVehicle, expensesList, expensePhoto, expenseDelete } from './operations.js';
 import { importCashbook } from './cashbook.js';
 import { serverReport, serverStatusRoute, saveServerSettings, alertAdminsOnce } from './serverStats.js';
 import { listTickets, ticketsBadge, createTicket, uploadShot, getShot, setTicketStatus, markSeen, deleteTicket } from './tickets.js';
@@ -926,6 +928,22 @@ const ROUTES = {
   'POST /api/staff/docs/unissue': signedIn(docsUnissue),
   'POST /api/staff/docs/recognize': signedIn(docsRecognizeRoute),
   'GET /api/staff/clients/pick': signedIn(clientsPickRoute),
+  'GET /api/staff/op/drafts': signedIn(opDrafts),
+  'POST /api/staff/op/draft': signedIn(opDraftCreate),
+  'GET /api/staff/op/draft': signedIn(opDraftGet),
+  'POST /api/staff/op/draft/photo': signedIn(opDraftPhotoAdd),
+  'GET /api/staff/op/draft/photo': signedIn(opDraftPhotoGet),
+  'POST /api/staff/op/draft/photo/delete': signedIn(opDraftPhotoDelete),
+  'POST /api/staff/op/draft/update': signedIn(opDraftUpdate),
+  'POST /api/staff/op/draft/cancel': signedIn(opDraftCancel),
+  'POST /api/staff/op/draft/recognize': signedIn(opDraftRecognize),
+  'POST /api/staff/op/draft/manual': signedIn(opDraftManual),
+  'POST /api/staff/op/draft/apply': signedIn(opDraftApply),
+  'POST /api/staff/op/draft/attach': signedIn(opDraftAttach),
+  'GET /api/staff/op/vehicle': signedIn(opVehicle),
+  'GET /api/staff/expenses': signedIn(expensesList),
+  'GET /api/staff/expenses/photo': signedIn(expensePhoto),
+  'POST /api/staff/expenses/delete': signedIn(expenseDelete),
   'GET /api/staff/discounts': signedIn(discountsReport),
   'POST /api/staff/discounts/decide': signedIn(discountsDecide),
   'POST /api/staff/settings/discounts': signedIn(discountsSettingsRoute),

@@ -314,7 +314,7 @@ export function saveDocument(body, staff) {
     if (!contract || contract.kind !== 'contract') throw new DocError('unknown_contract');
   }
   const data = kind === 'contract' ? cleanContract(body.data || {}) : cleanSub(kind, body.data || {}, rowData(contract));
-  if (kind === 'photos' && existing) data.photos = rowData(existing).photos || [];
+  if ((kind === 'photos' || kind === 'return') && existing) data.photos = rowData(existing).photos || [];
   const json = JSON.stringify(data);
   dropContractCache();
   if (existing) {
@@ -597,6 +597,49 @@ export function contractRenters(query, limit = 10) {
   return out;
 }
 
+/** Договор целиком — для «＋ Операция»: номер, язык, данные, оборудование с подписями */
+export function contractById(id) {
+  const row = getDoc(id);
+  if (!row || row.kind !== 'contract') return null;
+  const d = rowData(row);
+  return {
+    id: row.id, number: row.number, lang: row.lang, data: d,
+    returned: q.children.all(row.id).some((x) => x.kind === 'return'),
+    equipment: (d.equipment || []).map((e) => ({ key: e.key, ok: Boolean(e.ok), label: EQUIPMENT[e.key] || { en: e.key, ru: e.key, th: '' } }))
+  };
+}
+
+/** Фото (JPEG) к документу «Фото при выдаче» или к акту возврата: [{ buffer, caption }] → сколько добавлено */
+export function addDocPhotos(docId, photos, staff) {
+  const doc = getDoc(docId);
+  if (!doc || !['photos', 'return'].includes(doc.kind)) return 0;
+  const data = rowData(doc);
+  data.photos = data.photos || [];
+  let n = 0;
+  for (const p of photos) {
+    if (data.photos.length >= MAX_PHOTOS) break;
+    if (!p?.buffer || p.buffer.length < 1000 || p.buffer[0] !== 0xff || p.buffer[1] !== 0xd8) continue;
+    const file = `photo-${crypto.randomBytes(6).toString('hex')}.jpg`;
+    fs.mkdirSync(path.join(DOCS_DIR, String(doc.id)), { recursive: true });
+    fs.writeFileSync(path.join(DOCS_DIR, String(doc.id), file), p.buffer);
+    data.photos.push({ file, caption: PHOTO_CAPTIONS[p.caption] ? p.caption : 'other', at: bangkokNow().slice(0, 16) });
+    n++;
+  }
+  if (n) {
+    // Новое фото — подписи снимаем (подписывали без него)
+    const signed = Object.keys(signaturesOf(doc)).length > 0;
+    if (signed) removeSignatureFiles(doc.id);
+    q.update.run(doc.lang, JSON.stringify(data), signed ? '{}' : (doc.signatures || '{}'), now(), by(staff), doc.id);
+  }
+  return n;
+}
+
+/** Документ по id: { id, kind, number, contractId } или null */
+export function docBrief(id) {
+  const row = getDoc(id);
+  return row ? { id: row.id, kind: row.kind, number: row.number, contractId: row.contract_id || row.id } : null;
+}
+
 function contractBrief(row) {
   const d = rowData(row);
   return { id: row.id, number: row.number, name: d.renter?.name || '', phone: d.renter?.phone || '', model: d.model, plate: d.plate, from: d.from, to: d.to, discount: discountBrief(activeDiscount(row.id)) };
@@ -652,7 +695,7 @@ const summary = (row) => {
     discount: row.kind === 'contract' ? discountBrief(activeDiscount(row.id)) : undefined,
     id: row.id, kind: row.kind, number: row.number, lang: row.lang, createdAt: row.created_at, by: row.created_name,
     signed: { renter: sigs.renter || null, company: sigs.company || null },
-    sentAt: row.sent_at, sentTo: row.sent_to, photos: row.kind === 'photos' ? (data.photos || []).length : undefined
+    sentAt: row.sent_at, sentTo: row.sent_to, photos: row.kind === 'photos' || row.kind === 'return' ? (data.photos || []).length : undefined
   };
 };
 
@@ -887,7 +930,7 @@ export async function docsPhotoUpload(staff, req, res, url) {
 export async function docsPhotoGet(staff, req, res, url) {
   needView(staff);
   const doc = getDoc(url.searchParams.get('id'));
-  const photo = doc?.kind === 'photos' ? rowData(doc).photos?.[Number(url.searchParams.get('i'))] : null;
+  const photo = doc?.kind === 'photos' || doc?.kind === 'return' ? rowData(doc).photos?.[Number(url.searchParams.get('i'))] : null;
   if (!photo) throw new HttpError(404, 'unknown_photo');
   res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=3600' });
   fs.createReadStream(path.join(DOCS_DIR, String(doc.id), photo.file)).on('error', () => res.end()).pipe(res);

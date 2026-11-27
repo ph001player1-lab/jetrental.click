@@ -375,7 +375,8 @@
         <p class="muted jr-small">${esc(t('dc.ai.hint'))}</p>
         ${thumbs ? `<div class="dc-thumbs">${thumbs}</div>` : ''}
         <div class="dc-actions">
-          <label class="btn btn--small${a.busy ? ' is-disabled' : ''}"><span>📷 ${esc(t('dc.ai.add'))}</span><input type="file" accept="image/*" multiple data-dc-aifiles hidden${a.busy ? ' disabled' : ''}></label>
+          <label class="btn btn--small${a.busy ? ' is-disabled' : ''}"><span>📷 ${esc(t('op.camera'))}</span><input type="file" accept="image/*" capture="environment" data-dc-aifiles hidden${a.busy ? ' disabled' : ''}></label>
+          <label class="btn btn--small${a.busy ? ' is-disabled' : ''}"><span>🖼 ${esc(t('dc.ai.add'))}</span><input type="file" accept="image/*" multiple data-dc-aifiles hidden${a.busy ? ' disabled' : ''}></label>
           <button type="button" class="btn btn--primary btn--small" data-dc-airun${a.files.length && !a.busy ? '' : ' disabled'}>🤖 ${esc(t('dc.ai.run'))}</button>
           <span class="muted jr-small">${a.files.length}/8</span>
         </div>
@@ -425,7 +426,10 @@
       st.ai.result = null;
       refreshAi();
       try {
-        const photos = await Promise.all(st.ai.files.map(async (f) => ({ type: f.blob.type || 'image/jpeg', data: await toBase64(f.blob) })));
+        const photos = await Promise.all(st.ai.files.map(async (f) => {
+          const blob = f.blob || await (await fetch(f.url, { credentials: 'same-origin' })).blob();
+          return { type: blob.type || 'image/jpeg', data: await toBase64(blob) };
+        }));
         const r = await api('/docs/recognize', { body: { photos } });
         st.ai.busy = false;
         const current = document.querySelector('[data-dc-form]');
@@ -491,16 +495,42 @@
     /** После сохранения нового договора: фото техники с ИИ-подписями — в «Фото при выдаче» */
     async function attachAiPhotos(contractId) {
       const r = st.ai?.result;
-      if (!r) return 0;
-      const list = (r.photos || []).filter((p) => p.caption && st.ai.files[p.index]).slice(0, 9);
+      const list = r ? (r.photos || []).filter((p) => p.caption && st.ai.files[p.index]).slice(0, 9) : [];
       let n = 0;
+      const fromDraft = [];
       for (const p of list) {
+        const f = st.ai.files[p.index];
+        if (f.draftIndex !== undefined) { fromDraft.push({ index: f.draftIndex, caption: p.caption }); continue; }
         try {
-          await ctx.uploadImage(`/docs/photo?contract=${contractId}&caption=${encodeURIComponent(p.caption)}`, st.ai.files[p.index].blob);
+          await ctx.uploadImage(`/docs/photo?contract=${contractId}&caption=${encodeURIComponent(p.caption)}`, f.blob);
           n++;
         } catch { /* остальные фото добавят вручную */ }
       }
+      // Договор из «＋ Операция»: фото техники переходят из черновика, черновик закрывается
+      if (st.ai?.draftId) {
+        try { n += (await api('/op/draft/attach', { body: { id: st.ai.draftId, contractId, photos: fromDraft } })).photos || 0; } catch { /* черновик удалится сам через неделю */ }
+      }
       return n;
+    }
+
+    /** Из «＋ Операция» (выдача): новый договор — фото черновика и то, что ИИ уже прочитал */
+    async function openNewFromDraft(draft) {
+      if (!st.pre) {
+        try { st.pre = await api('/docs/prefill'); } catch { /* форма без подсказок */ }
+      }
+      openNew({});
+      st.ai = {
+        files: (draft.photos || []).map((p) => ({ url: `/api/staff/op/draft/photo?id=${draft.id}&i=${p.i}&k=${p.key}`, draftIndex: p.i })),
+        busy: false, result: null, error: null, draftId: draft.id
+      };
+      ctx.rerender();
+      const r = draft.proposal?.contract ? { ...draft.proposal.contract, model: draft.proposal.model, usd: draft.proposal.usd || 0 } : null;
+      if (!r) return;
+      for (let i = 0; i < 40 && !document.querySelector('[data-dc-form]'); i++) await new Promise((ok) => setTimeout(ok, 50));
+      const form = document.querySelector('[data-dc-form]');
+      if (!form) return;
+      st.ai.result = await applyAi(form, r);
+      refreshAi();
     }
 
     /** Кнопки документа: PDF, подписи, ссылка, WhatsApp, удалить */
@@ -1046,7 +1076,7 @@
     const canRefresh = () => st.view === 'list' && !document.activeElement?.matches?.('[data-dc-search]');
 
     return {
-      load, render, onClick, onChange, onInput, onSubmit, canRefresh, openNew,
+      load, render, onClick, onChange, onInput, onSubmit, canRefresh, openNew, openNewFromDraft,
       openContract: (id) => { st.view = 'edit'; st.sub = null; st.msg = null; loadOne(id).catch(() => null); }
     };
   }
