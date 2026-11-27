@@ -1266,6 +1266,7 @@
           <span class="pill pill--${car.status}"><span class="dot dot--${car.status}"></span>${esc(vehicles.statusText(car))}</span>
         </div>
         ${vehicles.wsLine(car)}
+        ${vehicles.investorLine(car)}
         ${vehicles.problemBadges(car)}
         <div class="car__meta">
           <span>${freeText(car)}</span>

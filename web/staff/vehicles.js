@@ -53,8 +53,22 @@
     /** Инвестор машины — видят только владелец и админ (у них есть список инвесторов) */
     function investorName(v) {
       const p = (fleet().investors || []).find((x) => x.id === v.investorId);
-      return p ? `${p.name} · ${v.investorPercent ?? p.percent}% · ${t(`ac.neg.${v.investorNegative || p.negative || 'carry'}`)}${v.investorNegative ? ` (${t('inv.neg.vehicle')})` : ''}` : '';
+      if (!p) return '';
+      // Своя доля или условие у машины — помечаем, что это особое условие этой машины
+      const pct = `${v.investorPercent ?? p.percent}%${v.investorPercent !== null && v.investorPercent !== undefined ? ` (${t('inv.neg.vehicle')})` : ''}`;
+      const rule = `${t(`ac.neg.${v.investorNegative || p.negative || 'carry'}`)}${v.investorNegative ? ` (${t('inv.neg.vehicle')})` : ''}`;
+      return `${p.name} · ${pct} · ${rule}`;
     }
+
+    /** Инвестор машины — видно сразу (владельцу и админу): в карточке под статусом */
+    function investorLine(car) {
+      const v = car.vehicleId ? byId(car.vehicleId) : null;
+      const text = v ? investorName(v) : '';
+      return text ? `<div class="vh-inv">📈 ${esc(t('vh.f.investor'))}: ${esc(text)}</div>` : '';
+    }
+
+    /** Есть ли у кого-то из машин инвестор — тогда в таблице колонка «Инвестор» */
+    const showInvestorCol = () => (fleet().investors || []).length > 0 && vehicles().some((v) => v.investorId);
 
     function details(v) {
       const rows = [
@@ -192,8 +206,10 @@
     function investorFields(v) {
       const list = fleet().investors || [];
       if (!list.length) return '';
+      const now = v.id && investorName(v);
       const options = list.map((p) => `<option value="${p.id}"${p.id === v.investorId ? ' selected' : ''}>${esc(p.name)} (${p.percent}%)</option>`).join('');
       return `
+        ${now ? `<p class="vh-inv vh-wide">📈 ${esc(t('vh.invNow', { text: now }))}</p>` : ''}
         <label class="field"><span>${esc(t('vh.f.investor'))}</span><select class="search" name="investorId"><option value="">${esc(t('vh.f.investorNone'))}</option>${options}</select></label>
         <label class="field"><span>${esc(t('vh.f.investorPercent'))}</span><input class="search" name="investorPercent" inputmode="decimal" value="${esc(v.investorPercent ?? '')}" placeholder="${esc(t('vh.f.investorPercentPh'))}"></label>
         <label class="field"><span>${esc(t('vh.f.negative'))}</span><select class="search" name="investorNegative">
@@ -342,6 +358,7 @@
           <td class="num vh-col-x">${tariff(car) ? esc(ctx.money(tariff(car))) : '—'}</td>
           <td class="num vh-col-x">${v?.mileage !== null && v?.mileage !== undefined ? esc(num(v.mileage)) : ''}</td>
           <td class="vh-col-x">${esc(service)}</td>
+          ${showInvestorCol() ? `<td class="vh-col-x vh-inv-td">${v && investorName(v) ? `📈 ${esc(investorName(v))}` : '—'}</td>` : ''}
           <td>${problemBadges(car, true)}</td>
           <td><div class="vh-td-actions">
             ${ctx.canSetStatus() && car.vehicleId ? `<button type="button" class="icon-btn icon-btn--plain" data-vh-status="${car.vehicleId}" title="${esc(t('fs.change'))}" aria-label="${esc(t('fs.change'))}">🔄</button>` : ''}
@@ -353,7 +370,7 @@
       }).join('');
       return `<div class="vh-table-wrap"><table class="vh-table">
         <thead><tr><th class="vh-col-p">${esc(t('fl.th.plate'))}</th><th>${esc(t('fl.th.model'))}</th><th>${esc(t('fl.th.status'))}</th><th class="vh-col-x">WS</th>
-          <th class="num vh-col-x">${esc(t('fl.th.price'))}</th><th class="num vh-col-x">${esc(t('fl.th.mileage'))}</th><th class="vh-col-x">${esc(t('fl.th.service'))}</th><th>${esc(t('fl.th.problems'))}</th><th></th></tr></thead>
+          <th class="num vh-col-x">${esc(t('fl.th.price'))}</th><th class="num vh-col-x">${esc(t('fl.th.mileage'))}</th><th class="vh-col-x">${esc(t('fl.th.service'))}</th>${showInvestorCol() ? `<th class="vh-col-x">${esc(t('vh.f.investor'))}</th>` : ''}<th>${esc(t('fl.th.problems'))}</th><th></th></tr></thead>
         <tbody>${rows}</tbody></table></div>`;
     }
 
@@ -608,7 +625,7 @@
     }
 
     return {
-      cardBlock, toolbar, renderNotInWs, renderArchive, renderTable, problemBadges, wsLine, lastLine, historyBlock, statusText, filterProblems, view, afterRender,
+      cardBlock, toolbar, renderNotInWs, renderArchive, renderTable, problemBadges, wsLine, investorLine, lastLine, historyBlock, statusText, filterProblems, view, afterRender,
       onClick, onSubmit, onChange, canEdit, dialogOpen: () => Boolean(st.dialog)
     };
   }

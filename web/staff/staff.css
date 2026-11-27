@@ -1474,3 +1474,7 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
 .inv-rule--carry { background: var(--surface-2); color: var(--muted); }
 .inv-rule--zero { background: var(--reserve-bg); color: var(--warn); }
 .inv-minus { margin: 0; padding: 6px 10px; border-radius: 8px; background: var(--rent-bg); color: var(--rent); font-size: 13px; font-weight: 600; }
+
+/* Инвестор машины — в карточке под статусом, в таблице и в окне правки */
+.vh-inv { margin: 4px 0 0; font-size: 12px; font-weight: 600; color: var(--tickets); }
+.vh-inv-td { font-size: 12px; color: var(--tickets); min-width: 100px; max-width: 170px; }
