@@ -62,6 +62,10 @@ const TEXTS = {
     'sum.none': '✅ <b>Предупреждений нет</b>',
     'sum.problems': '⚠️ <b>Предупреждения: {n}</b> — {counts}',
     'sum.more': '…и ещё {n}',
+    'sum.check': '🔍 <b>Нужна проверка статуса: {n}</b> — владелец или админ, вкладка «Парк»',
+    'sum.checkLine': '• {car}: портал — {portal}, WS — {ws}',
+    'sum.checkWsOnly': '• {car}: в портале нет данных, WS — {ws}',
+    'vs.free': 'свободна', 'vs.rent': 'аренда', 'vs.reserve': 'бронь', 'vs.service': 'ремонт',
     'cat.sales': 'Продажи', 'cat.it': 'IT', 'cat.marketing': 'Сайт', 'cat.service': 'Сервис',
 
     // Личные оповещения админам (вкладка «Сервер»)
@@ -168,6 +172,10 @@ const TEXTS = {
     'sum.none': '✅ <b>No warnings</b>',
     'sum.problems': '⚠️ <b>Warnings: {n}</b> — {counts}',
     'sum.more': '…and {n} more',
+    'sum.check': '🔍 <b>Status needs a check: {n}</b> — owner or admin, Fleet tab',
+    'sum.checkLine': '• {car}: portal — {portal}, WS — {ws}',
+    'sum.checkWsOnly': '• {car}: nothing in the portal, WS — {ws}',
+    'vs.free': 'free', 'vs.rent': 'rented', 'vs.reserve': 'booked', 'vs.service': 'repair',
     'cat.sales': 'Sales', 'cat.it': 'IT', 'cat.marketing': 'Website', 'cat.service': 'Service',
 
     'alert.traffic70': '🟡 <b>Server traffic: {percent}% of the limit</b>\n{used} of {limit} GB used this month. Forecast to month end: {forecast} GB.',

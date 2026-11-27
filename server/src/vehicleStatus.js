@@ -12,11 +12,20 @@
  * Из этого — «снимок» парка в том же виде, что был из WS (статус сейчас, когда
  * освободится, занятость на 30 дней): по нему работают «Парк», календарь,
  * «Обзор», утренняя сводка, сайт и боты (свободна ли техника на даты).
+ *
+ * Сверка с WS.Автопрокат (так решил владелец):
+ *   - по технике нет данных в портале, а в WS она занята — статус из WS, «нужна проверка»;
+ *   - портал и WS расходятся — «нужна проверка»;
+ *   - проверяют владелец и админ: «Верно: портал» или «Верно: WS» (или ставят статус сами).
+ *     Проверка действует, пока не изменится портал (отчёт, событие, ремонт) или статус в WS;
+ *   - проверка не снимает предупреждение «в WS другое»: оно висит, пока WS не исправят;
+ *   - пока не проверили, сайт и боты не предлагают технику, если хоть где-то она занята.
  * ============================================================================
  */
 
 import * as db from './db.js';
 import { freeFromAt, isFreeBetween } from './ws/timeline.js';
+import { getWsSnapshot } from './ws/sync.js';
 
 const DAY_MS = 86400000;
 const BANGKOK_MS = 7 * 3600000;
@@ -43,11 +52,24 @@ db.raw.exec(`
     wa_error   TEXT
   );
   CREATE INDEX IF NOT EXISTS vehicle_events_plate ON vehicle_events (plate_key);
+  CREATE TABLE IF NOT EXISTS vehicle_checks (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    plate_key  TEXT NOT NULL,
+    status     TEXT NOT NULL,
+    choice     TEXT NOT NULL,
+    portal_sig TEXT NOT NULL,
+    ws_sig     TEXT NOT NULL,
+    note       TEXT,
+    by_email   TEXT,
+    by_name    TEXT,
+    at         TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS vehicle_checks_plate ON vehicle_checks (plate_key);
 `);
 
 const q = {
   reports: db.raw.prepare(`
-    SELECT m.id, m.ts, m.kind, m.data, p.plate, p.role
+    SELECT m.id, m.ts, m.kind, m.data, m.author_name, p.plate, p.role
     FROM wa_message_plates p JOIN wa_messages m ON m.id = p.message_id
     WHERE m.kind IN (${REPORT_KINDS.map(() => '?').join(',')}) AND m.status != 'ignored' AND p.role != 'mention'
       AND instr(m.text, '${PORTAL_MARK}') = 0
@@ -57,7 +79,10 @@ const q = {
   addEvent: db.raw.prepare(`INSERT INTO vehicle_events (plate_key, plate, kind, date_from, date_to, note, by_email, by_name, at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`),
   setWa: db.raw.prepare('UPDATE vehicle_events SET wa_status = ?, wa_error = ? WHERE id = ?'),
-  lastEvents: db.raw.prepare('SELECT * FROM vehicle_events WHERE plate_key = ? ORDER BY id DESC LIMIT ?')
+  lastEvents: db.raw.prepare('SELECT * FROM vehicle_events WHERE plate_key = ? ORDER BY id DESC LIMIT ?'),
+  checks: db.raw.prepare('SELECT * FROM vehicle_checks ORDER BY id'),
+  addCheck: db.raw.prepare(`INSERT INTO vehicle_checks (plate_key, status, choice, portal_sig, ws_sig, note, by_email, by_name, at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 };
 
 const keyOf = (plate) => String(plate || '').replace(/\D/g, '');
@@ -76,7 +101,7 @@ function histories() {
   const items = [];
   for (const r of q.reports.all(...REPORT_KINDS)) {
     const f = parseJson(r.data).fields || {};
-    items.push({ plate: r.plate, ts: Date.parse(r.ts), kind: r.kind, role: r.role, from: isIso(f.from) ? f.from : null, to: isIso(f.to) ? f.to : null, src: 'group', ref: r.id });
+    items.push({ plate: r.plate, ts: Date.parse(r.ts), kind: r.kind, role: r.role, from: isIso(f.from) ? f.from : null, to: isIso(f.to) ? f.to : null, src: 'group', ref: r.id, by: r.author_name || null });
   }
   for (const e of q.events.all()) {
     items.push({ plate: e.plate_key, ts: Date.parse(e.at), kind: `p_${e.kind}`, role: 'main', from: e.date_from, to: e.date_to, src: 'portal', ref: e.id, by: e.by_name || e.by_email });
@@ -85,7 +110,7 @@ function histories() {
 
   const byPlate = new Map();
   const stateOf = (plate) => {
-    if (!byPlate.has(plate)) byPlate.set(plate, { rent: null, rents: [], bookings: [], last: null });
+    if (!byPlate.has(plate)) byPlate.set(plate, { rent: null, rents: [], bookings: [], last: null, log: [] });
     return byPlate.get(plate);
   };
   for (const it of items) {
@@ -117,7 +142,9 @@ function histories() {
         break;
       default: break;
     }
-    st.last = { kind: it.kind, at: new Date(it.ts).toISOString(), src: it.src, by: it.by || null };
+    st.last = { kind: it.kind, at: new Date(it.ts).toISOString(), src: it.src, by: it.by || null, ref: it.ref };
+    st.log.push(st.last);
+    if (st.log.length > 8) st.log.shift();
   }
   return byPlate;
 }
@@ -132,13 +159,16 @@ function addDays(iso, n) {
  * units — техника из fleet.js (без архива): plate, type, model, wsName, status (In Repair / Needs Repair / Free).
  */
 export function portalSnapshot(units, now = Date.now()) {
-  if (cache && now - cache.at < CACHE_MS && cache.units === units) return cache.snapshot;
+  const ws = getWsSnapshot();
+  if (cache && now - cache.at < CACHE_MS && cache.units === units && cache.ws === ws) return cache.snapshot;
   const windowFrom = now - WINDOW_BACK_DAYS * DAY_MS;
   const windowTo = now + WINDOW_DAYS * DAY_MS;
   const hist = histories();
   const today = dayOf(now);
+  const wsByPlate = new Map((ws?.cars || []).map((c) => [keyOf(c.plate), c]));
+  const checks = new Map(q.checks.all().map((c) => [c.plate_key, c]));
   const cars = units.filter((u) => u.plate || u.model).map((u) => {
-    const h = hist.get(keyOf(u.plate)) || { rent: null, rents: [], bookings: [], last: null };
+    const h = hist.get(keyOf(u.plate)) || { rent: null, rents: [], bookings: [], last: null, log: [] };
     const segments = [];
     for (const r of h.rents) if (r.to > windowFrom) segments.push({ kind: 'rent', from: Math.max(r.from, windowFrom), to: r.to });
     let overdue = false;
@@ -154,23 +184,80 @@ export function portalSnapshot(units, now = Date.now()) {
     for (const b of bookings) segments.push({ kind: 'reserve', from: Math.max(dayStart(b.from), windowFrom), to: Math.min(dayStart(b.to) + DAY_MS, windowTo) });
     if (u.status === 'In Repair') segments.push({ kind: 'service', from: now - 60000, to: windowTo });
     segments.sort((a, b) => a.from - b.from);
-    // Сейчас: аренда главнее ремонта, ремонт главнее брони
-    const nowSegs = segments.filter((s) => s.from <= now && now < s.to);
-    const status = ['rent', 'service', 'reserve'].find((k) => nowSegs.some((s) => s.kind === k)) || 'free';
-    const freeFrom = freeFromAt(segments, now, windowTo);
+    const portalStatus = statusOf(segments, now);
+
+    // Сверка с WS и ручная проверка (см. начало файла)
+    const key = keyOf(u.plate);
+    const w = key ? wsByPlate.get(key) : null;
+    const wsStatus = w ? w.status : null;
+    const wsSegs = w ? (w.segments || []).map((x) => ({ kind: x.kind, from: Date.parse(x.from), to: Date.parse(x.to) })) : [];
+    const portalHas = Boolean(h.last) || u.status === 'In Repair';
+    const portalSig = `${h.last ? `${h.last.src}:${h.last.ref}` : 'none'}|${u.status}`;
+    const wsSig = wsStatus || 'none';
+    const chk = checks.get(key);
+    const checked = chk && chk.portal_sig === portalSig && chk.ws_sig === wsSig ? chk : null;
+    const both = () => [...segments, ...wsSegs].sort((a, b) => a.from - b.from);
+    let status = portalStatus;
+    let effective = segments;
+    let needsCheck = false;
+    let source = h.last ? { kind: h.last.src, by: h.last.by, at: h.last.at } : { kind: 'none' };
+    if (checked) {
+      status = checked.status;
+      // «Верно: портал» — занятость по порталу; «Верно: WS» — по обоим (что-то из WS ещё не внесено в портал)
+      effective = checked.status === portalStatus ? segments : both();
+      source = { kind: 'check', by: checked.by_name || checked.by_email, at: checked.at, choice: checked.choice };
+    } else if (portalHas) {
+      if (wsStatus && wsStatus !== portalStatus) { needsCheck = true; effective = both(); }
+    } else if (wsStatus && wsStatus !== 'free') {
+      // В портале по технике ничего нет, а в WS она занята — берём из WS и просим проверить
+      status = wsStatus;
+      needsCheck = true;
+      effective = both();
+      source = { kind: 'ws' };
+    } else {
+      // Нет данных в портале, в WS свободна — свободна (будущие брони WS тоже учитываем)
+      effective = both();
+      if (wsStatus) source = { kind: 'ws' };
+    }
+    const freeFrom = freeFromAt(effective, now, windowTo);
     return {
       id: u.id, vehicleId: u.id, plate: u.plate, model: u.model || '', wsModel: u.wsName || '', type: u.type || null,
-      status, freeFrom: freeFrom === null ? null : freeFrom === Infinity ? 'later' : new Date(freeFrom).toISOString(),
-      freeWeek: isFreeBetween(segments, now, now + 7 * DAY_MS),
-      needsRepair: u.status === 'Needs Repair', overdue, until,
+      status, portalStatus, wsStatus, needsCheck,
+      // Проверили (или портал прав), а в WS всё ещё другое — пока WS не исправят
+      wsMismatch: Boolean(wsStatus) && !needsCheck && status !== wsStatus,
+      source, portalSig, wsSig,
+      freeFrom: freeFrom === null ? null : freeFrom === Infinity ? 'later' : new Date(freeFrom).toISOString(),
+      freeWeek: isFreeBetween(effective, now, now + 7 * DAY_MS),
+      needsRepair: u.status === 'Needs Repair', overdue: overdue && status === 'rent', until,
       nextBooking: bookings.find((b) => dayStart(b.from) > now) || null,
-      last: h.last, deposit: null, tariffs: [],
-      segments: segments.map((s) => ({ kind: s.kind, from: new Date(s.from).toISOString(), to: new Date(s.to).toISOString() }))
+      last: h.last, history: [...h.log].reverse(), deposit: null, tariffs: [],
+      segments: effective.map((x) => ({ kind: x.kind, from: new Date(x.from).toISOString(), to: new Date(x.to).toISOString() }))
     };
   });
   const snapshot = { updatedAt: new Date(now).toISOString(), windowFrom: new Date(windowFrom).toISOString(), windowTo: new Date(windowTo).toISOString(), cars, source: 'portal' };
-  cache = { at: now, units, snapshot };
+  cache = { at: now, units, ws, snapshot };
   return snapshot;
+}
+
+/** Статус сейчас по занятости: аренда главнее ремонта, ремонт главнее брони */
+function statusOf(segments, now) {
+  const nowSegs = segments.filter((x) => x.from <= now && now < x.to);
+  return ['rent', 'service', 'reserve'].find((k) => nowSegs.some((x) => x.kind === k)) || 'free';
+}
+
+/**
+ * Ручная проверка (владелец, админ): choice 'portal' | 'ws' — какой источник прав.
+ * car — из portalSnapshot (её подписи источников запоминаем: изменится источник — проверка снимется).
+ */
+export function addCheck(car, choice, staff, note = '') {
+  if (!['portal', 'ws'].includes(choice)) throw new StatusError('bad_choice');
+  if (choice === 'ws' && !car.wsStatus) throw new StatusError('no_ws');
+  const status = choice === 'ws' ? car.wsStatus : car.portalStatus;
+  q.addCheck.run(keyOf(car.plate), status, choice, car.portalSig, car.wsSig, String(note || '').trim().slice(0, 300) || null,
+    staff.email, staff.name || staff.email, new Date().toISOString());
+  invalidateStatuses();
+  console.log(`Vehicle ${car.plate}: status checked by ${staff.email} — «${choice}» is right (${status})`);
+  return status;
 }
 
 /**

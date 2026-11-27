@@ -1431,3 +1431,14 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
 .ac-matrix .ac-rname { width: 88px; }
 .ac-matrix .ac-level { max-width: 92px; padding: 4px 2px; font-size: 12px; }
 .ac-matrix th, .ac-matrix td { padding: 6px 5px; }
+
+/* «Парк»: источник статуса и проверка расхождений с Автопрокатом */
+.vh-src { margin-top: 4px; font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.vh-src--check { color: var(--rent); font-weight: 600; }
+.vh-src-t { margin-top: 3px; max-width: 180px; }
+.vh-check-btn { min-height: 30px; padding: 0 10px; font-size: 12px; border-color: var(--rent); color: var(--rent); margin-top: 4px; }
+.vh-onlycheck[aria-pressed="true"] { background: var(--rent); border-color: var(--rent); color: #fff; }
+.vh-hist { margin-top: 8px; font-size: 13px; }
+.vh-hist summary { cursor: pointer; color: var(--muted); font-weight: 600; }
+.vh-hist ol { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 3px; }
+.vh-check-actions .btn { white-space: normal; text-align: left; }

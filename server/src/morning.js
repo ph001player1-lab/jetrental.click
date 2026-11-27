@@ -27,6 +27,8 @@ const SEND_HOUR = 10;
 const WAIT_DATA_UNTIL_MINUTE = 45;
 // В каждой категории показываем первые 5, остальные — на сайте сотрудников
 const MAX_PER_CATEGORY = 5;
+// Расхождений «нужна проверка» в сводке — не больше (остальные — «…и ещё N»)
+const MAX_CHECK_LINES = 10;
 const CATEGORY_ICON = { sales: '💼', it: '🖥', marketing: '🌐', service: '🔧' };
 const BANGKOK_MS = 7 * 3600000;
 
@@ -45,6 +47,19 @@ export function formatSummary(problems, outlook, snapshot, now = Date.now()) {
     const count = (status) => snapshot.cars.filter((c) => c.status === status).length;
     lines.push(g('sum.fleet', { free: count('free'), rent: count('rent'), service: count('service') }));
   }
+  // Расхождения портала и WS, которые ждут проверки владельцем или админом — сколько и какие
+  const toCheck = (snapshot?.cars || []).filter((c) => c.needsCheck);
+  if (toCheck.length) {
+    lines.push('', g('sum.check', { n: toCheck.length }));
+    for (const c of toCheck.slice(0, MAX_CHECK_LINES)) {
+      lines.push(g(c.source?.kind === 'ws' ? 'sum.checkWsOnly' : 'sum.checkLine', {
+        car: escapeHtml(`${c.model || c.wsModel || ''} #${c.plate}`.trim()), portal: g(`vs.${c.portalStatus}`), ws: g(`vs.${c.wsStatus}`)
+      }));
+    }
+    if (toCheck.length > MAX_CHECK_LINES) lines.push(g('sum.more', { n: toCheck.length - MAX_CHECK_LINES }));
+  }
+  // Они уже в блоке выше — в списке проблем не повторяем
+  problems = problems.filter((p) => !(p.group === 'reconcile' && p.level === 'error'));
   lines.push('');
   if (!problems.length) {
     lines.push(g('sum.none'));

@@ -134,7 +134,8 @@ export function matchProblems(tx, snapshot, fleet) {
     if (!unit) {
       problems.push({
         group: 'data', level: 'warning', target: { tab: 'fleet', q: car.plate },
-        title: tx.t('notInSheet.title', { car: `${car.wsModel || 'Vehicle'} · ${car.plate}` }),
+        // Название из WS — без «(9999)» в конце: госномер и так рядом
+        title: tx.t('notInSheet.title', { car: `${String(car.wsModel || 'Vehicle').replace(/\s*\(\d+\)\s*$/, '')} · ${car.plate}` }),
         detail: tx.t('notInSheet.detail')
       });
       continue;
@@ -449,7 +450,37 @@ function blacklistProblems(tx, now) {
 }
 
 /** Расхождения рабочей группы WhatsApp и WS (journal/reconcile.js) */
-async function reconcileProblems(tx, now) {
+/**
+ * Сверка статусов портала с WS: «нужна проверка» (расхождение или статус только из WS —
+ * проверяют владелец и админ) и «в WS другое» (проверено, но WS ещё не исправили).
+ */
+function statusProblems(tx, portal) {
+  const problems = [];
+  const st = (s) => tx.t(`ws.${s}`);
+  const srcName = (car) => (car.source?.kind === 'ws' ? tx.t('src.none') : tx.t(`src.${car.source?.kind || 'none'}`));
+  for (const car of portal.cars) {
+    const target = { tab: 'fleet', q: car.plate };
+    if (car.needsCheck) {
+      problems.push({
+        group: 'reconcile', level: 'error', target,
+        title: tx.t('needsCheck.title', { car: carName(car) }),
+        detail: car.source?.kind === 'ws'
+          ? tx.t('needsCheck.wsOnly', { ws: st(car.wsStatus) })
+          : tx.t('needsCheck.detail', { portal: st(car.portalStatus), src: srcName(car), ws: st(car.wsStatus) })
+      });
+    } else if (car.wsMismatch) {
+      problems.push({
+        group: 'reconcile', level: 'warning', target,
+        title: tx.t('wsMismatch.title', { car: carName(car) }),
+        detail: tx.t('wsMismatch.detail', { status: st(car.status), ws: st(car.wsStatus) })
+      });
+    }
+  }
+  return problems;
+}
+
+/** Прежняя сверка «группа ↔ WS» (вкладка «Журнал → Сверка»); в «Обзоре» её заменила statusProblems */
+export async function reconcileProblems(tx, now) {
   const result = reconcile(now);
   if (!result.available) return [];
   const phones = await staffPhones();
@@ -495,7 +526,7 @@ export async function collectProblems(now = Date.now(), lang = 'en') {
     ...(snapshot ? matchProblems(tx, snapshot, fleet) : []),
     ...priceProblems(tx, fleet),
     ...(await websiteProblems(tx, fleet).catch(() => [])),
-    ...(await reconcileProblems(tx, now).catch((err) => { console.error('Reconcile failed:', err.message); return []; }))
+    ...(portal ? statusProblems(tx, portal) : [])
   ];
   const level = (p) => (p.level === 'error' ? 0 : 1);
   return problems

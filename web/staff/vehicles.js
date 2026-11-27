@@ -23,11 +23,12 @@
     const { api, t, esc } = ctx;
     const VIEW_KEY = 'jm_fleet_view';
     const savedView = () => { try { return localStorage.getItem(VIEW_KEY) === 'table' ? 'table' : 'cards'; } catch { return 'cards'; } };
-    const st = { dialog: null, msg: null, saving: false, archiveOpen: false, archiveMsg: null, view: savedView(), onlyProblems: false };
+    const st = { dialog: null, msg: null, saving: false, archiveOpen: false, archiveMsg: null, view: savedView(), onlyProblems: false, onlyCheck: false };
     const STATUS_KINDS = ['free', 'rent', 'reserve', 'service'];
     const dm = (iso) => (iso ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}` : '');
     const fleet = () => ctx.fleet() || {};
     const canEdit = () => Boolean(fleet().canEditFleet);
+    const canCheck = () => Boolean(fleet().canCheck);
     const keyOf = (plate) => String(plate || '').replace(/\D/g, '');
     const vehicles = () => fleet().vehicles || [];
     const byId = (id) => vehicles().find((v) => v.id === Number(id));
@@ -147,7 +148,7 @@
       st.dialog = d;
       st.msg = null;
       const dlg = dialogEl();
-      dlg.innerHTML = d.type === 'status' ? statusForm(d) : d.kind === 'archive' ? archiveForm(d) : vehicleForm(d);
+      dlg.innerHTML = d.type === 'check' ? checkForm(d) : d.type === 'status' ? statusForm(d) : d.kind === 'archive' ? archiveForm(d) : vehicleForm(d);
       if (!dlg.open) dlg.showModal();
       dlg.querySelector('input:not([type=hidden]), select, textarea')?.focus();
     }
@@ -235,7 +236,9 @@
       const list = car.problems || [];
       if (!list.length) return compact ? '<span class="vh-ok" title="OK">✓</span>' : '';
       return `<span class="vh-probs">${list.map((p) => {
-        const text = t(`fp.${p.code}`, { date: dm(p.date), ws: p.ws ? (['free', 'rent', 'reserve', 'service'].includes(p.ws) ? ctx.statusName(p.ws) : p.ws) : '' });
+        const name = (x) => (['free', 'rent', 'reserve', 'service'].includes(x) ? ctx.statusName(x) : x || '');
+        const code = p.code === 'needs_check' && !p.portal ? 'needs_check_ws' : p.code;
+        const text = t(`fp.${code}`, { date: dm(p.date), ws: name(p.ws), portal: name(p.portal) });
         const fix = ['no_photo', 'no_description'].includes(p.code) ? ` data-vh-model="${esc(car.model)}"` : '';
         return `<span class="vh-prob vh-prob--${p.level}"${fix} title="${esc(text)}">${p.level === 'error' ? '⛔' : '⚠️'} ${esc(text)}</span>`;
       }).join('')}</span>`;
@@ -253,19 +256,43 @@
           <button type="button" class="chip" data-vh-view="table" aria-pressed="${st.view === 'table'}">☰ ${esc(t('fl.view.table'))}</button>
         </div>
         <button type="button" class="chip vh-onlyprob" data-vh-onlyprob aria-pressed="${st.onlyProblems}">⚠️ ${esc(t('fl.onlyProblems', { n }))}</button>
+        ${cars.some((c) => c.needsCheck) ? `<button type="button" class="chip vh-onlycheck" data-vh-onlycheck aria-pressed="${st.onlyCheck}">🔍 ${esc(t('ck.only', { n: cars.filter((c) => c.needsCheck).length }))}</button>` : ''}
         ${st.msg && !st.dialog ? `<span class="vh-msg vh-msg--${st.msg.kind}" role="status">${esc(st.msg.text)}</span>` : ''}
       </div>`;
     }
 
-    const filterProblems = (cars) => (st.onlyProblems ? withProblems(cars) : cars);
+    const filterProblems = (cars) => {
+      let list = st.onlyProblems ? withProblems(cars) : cars;
+      if (st.onlyCheck) list = list.filter((c) => c.needsCheck);
+      return list;
+    };
     const view = () => st.view;
 
-    /** Строка о статусе в WS (сверка): совпадает — молчим */
+    /** Откуда статус и кто его поставил: «рабочая группа · Nik · 27 Nov, 14:20», «WS (не проверено)», «проверено · Анна» */
+    function sourceText(car) {
+      const s = car.source || { kind: 'none' };
+      const parts = [t(`src.${s.kind}`)];
+      if (s.kind === 'check' && s.choice) parts[0] = `${t('src.check')} (${t(`ck.right.${s.choice}`)})`;
+      if (s.by) parts.push(s.by);
+      if (s.at) parts.push(ctx.dateTime(s.at));
+      return parts.join(' · ');
+    }
+
+    /** Под статусом: источник; кнопка «Проверить», если портал и WS расходятся */
     function wsLine(car) {
-      if (!fleet().ws?.enabled) return '';
-      if (!car.ws) return `<div class="car__group warn">⚠️ ${esc(t('fp.not_in_ws'))}</div>`;
-      if (car.ws.status === car.status) return '';
-      return `<div class="car__group warn">⚠️ ${esc(t('fl.inWs', { status: ctx.statusName(car.ws.status) }))}</div>`;
+      const check = car.needsCheck && canCheck()
+        ? ` <button type="button" class="btn btn--small vh-check-btn" data-vh-check="${car.vehicleId}">🔍 ${esc(t('ck.btn'))}</button>` : '';
+      return `<div class="vh-src${car.needsCheck ? ' vh-src--check' : ''}">${esc(t('src.line', { src: sourceText(car) }))}${check}</div>`;
+    }
+
+    /** История статуса: последние отчёты группы и события портала */
+    function historyBlock(car) {
+      const list = car.history || [];
+      if (!list.length) return '';
+      return `<details class="vh-hist"><summary>${esc(t('ck.history'))}</summary><ol>${list.map((h) => {
+        const kind = h.kind.startsWith('p_') ? t(`fs.kind.${h.kind.slice(2)}`) : t(`jr.kind.${h.kind}`);
+        return `<li>${esc(ctx.dateTime(h.at))} · <b>${esc(kind)}</b> · ${esc(t(`src.${h.src}`))}${h.by ? ` · ${esc(h.by)}` : ''}</li>`;
+      }).join('')}</ol></details>`;
     }
 
     /** Последнее событие по технике: «Выдача · 12 Nov, 12:44 · группа» */
@@ -290,7 +317,8 @@
         return `<tr class="vh-tr${(car.problems || []).some((p) => p.level === 'error') ? ' vh-tr--error' : (car.problems || []).length ? ' vh-tr--warn' : ''}">
           <td class="vh-col-p"><b class="car__plate">${esc(car.plate || '—')}</b></td>
           <td><b>${esc(car.model || car.wsModel || '—')}</b><div class="muted jr-small"><span class="car__plate vh-plate-m">${esc(car.plate || '—')}</span>${TYPE_ICON[car.type] || ''} ${esc(v ? `${v.brand} ${v.model}`.trim() : car.wsModel || '')}</div></td>
-          <td><span class="pill pill--${car.status}">${esc(statusText(car))}</span></td>
+          <td><span class="pill pill--${car.status}">${esc(statusText(car))}</span><div class="muted jr-small vh-src-t">${esc(sourceText(car))}</div>
+            ${car.needsCheck && canCheck() ? `<button type="button" class="btn btn--small vh-check-btn" data-vh-check="${car.vehicleId}">🔍 ${esc(t('ck.btn'))}</button>` : ''}</td>
           <td class="vh-col-x">${car.ws ? (car.ws.status === car.status ? '<span class="vh-ok">✓</span>' : `<span class="warn">⚠️ ${esc(ctx.statusName(car.ws.status))}</span>`) : fleet().ws?.enabled ? '<span class="warn">—</span>' : ''}</td>
           <td class="num vh-col-x">${tariff(car) ? esc(ctx.money(tariff(car))) : '—'}</td>
           <td class="num vh-col-x">${v?.mileage !== null && v?.mileage !== undefined ? esc(num(v.mileage)) : ''}</td>
@@ -326,6 +354,52 @@
     }
     let fitTimer = null;
     window.addEventListener('resize', () => { clearTimeout(fitTimer); fitTimer = setTimeout(afterRender, 100); });
+
+    /* ------------------------------------------------- Проверка расхождения */
+
+    function checkForm(d) {
+      const car = d.car;
+      const portalTxt = car.source?.kind === 'ws' ? t('ck.portalNone') : `${ctx.statusName(car.portalStatus)}`;
+      return `
+        <form class="sheet__body vh-form" data-vh-check-form novalidate>
+          <div class="sheet__head">
+            <div><div class="muted">${esc(t('ck.title'))}</div><h2>${esc(`${car.model || car.wsModel} · ${car.plate}`)}</h2></div>
+            <button type="button" class="icon-btn icon-btn--plain" data-vh-close aria-label="${esc(t('vh.close'))}">×</button>
+          </div>
+          <dl class="vh-dl">
+            <dt>${esc(t('ck.portalSide'))}</dt><dd><b>${esc(portalTxt)}</b>${car.last ? ` · ${esc(t(`src.${car.last.src}`))}${car.last.by ? ` · ${esc(car.last.by)}` : ''} · ${esc(ctx.dateTime(car.last.at))}` : ''}</dd>
+            <dt>${esc(t('ck.wsSide'))}</dt><dd><b>${esc(ctx.statusName(car.wsStatus))}</b></dd>
+          </dl>
+          ${historyBlock(car)}
+          <label class="field"><span>${esc(t('ck.note'))}</span><input class="search" name="note" maxlength="300" placeholder="${esc(t('ck.notePh'))}"></label>
+          <p class="muted jr-small">${esc(t('ck.tip'))}</p>
+          <div data-vh-dmsg></div>
+          <div class="vh-actions vh-check-actions">
+            <button type="submit" class="btn btn--primary" name="choice" value="portal">✓ ${esc(t('ck.portal', { status: portalTxt }))}</button>
+            <button type="submit" class="btn btn--primary" name="choice" value="ws">✓ ${esc(t('ck.ws', { status: ctx.statusName(car.wsStatus) }))}</button>
+            <button type="button" class="btn" data-vh-status="${car.vehicleId}">${esc(t('ck.other'))}</button>
+          </div>
+        </form>`;
+    }
+
+    async function saveCheck(form, choice) {
+      const d = st.dialog;
+      const note = new FormData(form).get('note') || '';
+      st.saving = true;
+      st.msg = null;
+      refreshDialogMsg();
+      try {
+        await api('/fleet/check', { body: { vehicleId: d.car.vehicleId, choice, note } });
+        st.saving = false;
+        closeDialog();
+        st.msg = { kind: 'ok', text: t('ck.saved', { plate: d.car.plate }) };
+        await ctx.reload();
+      } catch (err) {
+        st.saving = false;
+        st.msg = { kind: 'error', text: t(err.code === 'nothing_to_check' ? 'ck.already' : 'vh.err.failed') };
+        refreshDialogMsg();
+      }
+    }
 
     /* ------------------------------------------------------ Смена статуса */
 
@@ -460,7 +534,7 @@
     /* ------------------------------------------------------- События */
 
     function onClick(event) {
-      const el = event.target.closest('[data-vh-new], [data-vh-edit], [data-vh-add-ws], [data-vh-archive], [data-vh-archive-edit], [data-vh-restore], [data-vh-delete], [data-vh-close], [data-vh-archive-box] > summary, [data-vh-view], [data-vh-onlyprob], [data-vh-status], [data-vh-kind], [data-vh-model]');
+      const el = event.target.closest('[data-vh-new], [data-vh-edit], [data-vh-add-ws], [data-vh-archive], [data-vh-archive-edit], [data-vh-restore], [data-vh-delete], [data-vh-close], [data-vh-archive-box] > summary, [data-vh-view], [data-vh-onlyprob], [data-vh-onlycheck], [data-vh-check], [data-vh-status], [data-vh-kind], [data-vh-model]');
       if (!el) return false;
       const d = el.dataset;
       if (el.matches('summary')) { st.archiveOpen = !el.parentElement.open; return false; }
@@ -471,6 +545,12 @@
         return true;
       }
       if ('vhOnlyprob' in d) { st.onlyProblems = !st.onlyProblems; ctx.rerender(); return true; }
+      if ('vhOnlycheck' in d) { st.onlyCheck = !st.onlyCheck; ctx.rerender(); return true; }
+      if (d.vhCheck) {
+        const car = (fleet().cars || []).find((c) => c.vehicleId === Number(d.vhCheck));
+        if (car) openDialog({ type: 'check', car });
+        return true;
+      }
       if (d.vhModel) { ctx.openModel(d.vhModel); return true; }
       if (d.vhStatus) { const v = byId(d.vhStatus); if (v) openDialog({ type: 'status', vehicle: v, kind: 'rent' }); return true; }
       if (d.vhKind) { if (st.dialog?.type === 'status') openDialog({ ...st.dialog, kind: d.vhKind }); return true; }
@@ -488,11 +568,12 @@
     }
 
     function onSubmit(event) {
-      const form = event.target.closest('[data-vh-form], [data-vh-archive-form], [data-vh-status-form]');
+      const form = event.target.closest('[data-vh-form], [data-vh-archive-form], [data-vh-status-form], [data-vh-check-form]');
       if (!form) return false;
       event.preventDefault();
       if (st.saving) return true;
-      if (form.matches('[data-vh-form]')) saveVehicle(form);
+      if (form.matches('[data-vh-check-form]')) saveCheck(form, event.submitter?.value || 'portal');
+      else if (form.matches('[data-vh-form]')) saveVehicle(form);
       else if (form.matches('[data-vh-status-form]')) saveStatus(form);
       else saveArchive(form);
       return true;
@@ -508,7 +589,7 @@
     }
 
     return {
-      cardBlock, toolbar, renderNotInWs, renderArchive, renderTable, problemBadges, wsLine, lastLine, statusText, filterProblems, view, afterRender,
+      cardBlock, toolbar, renderNotInWs, renderArchive, renderTable, problemBadges, wsLine, lastLine, historyBlock, statusText, filterProblems, view, afterRender,
       onClick, onSubmit, onChange, canEdit, dialogOpen: () => Boolean(st.dialog)
     };
   }

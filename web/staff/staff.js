@@ -1259,7 +1259,7 @@
                 <li><span class="dot dot--${s.kind}"></span>${esc(STATUS[s.kind])}: ${esc(dateTime(s.from))} → ${esc(dateTime(s.to))}</li>`).join('')}</ul>`
                 : `<div class="muted">${esc(t('fleet.nothing30'))}</div>`}
             </div>
-            ${vehicles.lastLine(car)}
+            ${vehicles.historyBlock(car)}
             ${vehicles.cardBlock(car)}
           </div>` : ''}
       </article>`;

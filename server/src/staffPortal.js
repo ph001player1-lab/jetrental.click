@@ -50,7 +50,7 @@ import { accessOverview, saveRole, deleteRole, saveStaff, deleteStaff, importSta
 import { financeReport, saveLoans } from './finance.js';
 import { soldList, markSold, unmarkSold, markSoldList, isSold, SoldError } from './sold.js';
 import { listVehicles, saveVehicle, deleteVehicle, fleetLog, getVehicle, setRepair, FleetError } from './fleetStore.js';
-import { addStatusEvent, eventReport, setEventWa, recentEvents, invalidateStatuses, sameModel, StatusError } from './vehicleStatus.js';
+import { addStatusEvent, eventReport, setEventWa, recentEvents, invalidateStatuses, sameModel, addCheck, StatusError } from './vehicleStatus.js';
 import { marketingReport, marketingDetails, saveSource, deleteSource, placeSource, saveSettings, allSources, MarketingError } from './marketing.js';
 import { crmList, crmClient, saveClient, setTags, addNote, mergeClients, importClients, CrmError } from './crm.js';
 import { importCashbook } from './cashbook.js';
@@ -294,11 +294,12 @@ function vehicleIssues(car, { vehicle, entry, tariff, wsOn, today }) {
   if (!entry?.description) add('no_description', 'warning');
   if (wsOn) {
     if (!car.ws) add('not_in_ws', 'warning');
-    else {
-      if (!sameModel(car.ws.model, [car.wsModel, car.model])) add('model_diff', 'warning', { ws: car.ws.model });
-      if (car.ws.status !== car.status) add('status_diff', 'warning', { ws: car.ws.status });
-    }
+    else if (!sameModel(car.ws.model, [car.wsModel, car.model])) add('model_diff', 'warning', { ws: car.ws.model });
   }
+  // Портал и WS расходятся (или статус только из WS) — нужна проверка владельцем или админом
+  if (car.needsCheck) add('needs_check', 'error', { portal: car.source?.kind === 'ws' ? null : car.portalStatus, ws: car.wsStatus });
+  // Проверено, но в WS всё ещё другое — висит, пока WS не исправят
+  else if (car.wsMismatch) add('ws_mismatch', 'warning', { ws: car.wsStatus });
   return out;
 }
 
@@ -340,6 +341,8 @@ async function fleet(req, res) {
     canEditFleet: editFleet,
     // Менять статус вручную (позже — и менеджерам: бронь, приём машины)
     canSetStatus: editFleet,
+    // Проверять расхождения портала и WS — только владелец и админ
+    canCheck: editFleet,
     eventsToGroup: Boolean(wabotSettings().eventsGroup),
     // Карточки техники из портала (первоисточник) — тем, кому открыт «Парк»
     ...(fleetView ? { vehicles } : {}),
@@ -349,6 +352,24 @@ async function fleet(req, res) {
     group: Object.fromEntries([...groupStatusByPlate()].map(([plate, g]) => [plate, { status: g.status, at: g.at, kind: g.kind }])),
     ...prices
   });
+}
+
+/** POST /api/staff/fleet/check { vehicleId, choice: portal|ws, note? } — проверка расхождения (владелец, админ) */
+async function fleetCheckRoute(staff, req, res) {
+  if (!can(staff, 'fleet.edit')) throw new HttpError(403, 'read_only');
+  const body = await readJson(req);
+  const car = (await getPortalSnapshot())?.cars.find((c) => c.vehicleId === Number(body.vehicleId));
+  if (!car) throw new HttpError(404, 'not_found');
+  if (!car.needsCheck) throw new HttpError(409, 'nothing_to_check');
+  let status;
+  try {
+    status = addCheck(car, body.choice, staff, body.note);
+  } catch (err) {
+    if (err instanceof StatusError) throw new HttpError(400, err.code);
+    throw err;
+  }
+  invalidateFleet();
+  sendJson(res, 200, { ok: true, status });
 }
 
 /**
@@ -372,6 +393,9 @@ async function fleetStatusRoute(staff, req, res) {
   if (body.kind === 'free' && vehicle.repair !== 'ok') setRepair(vehicle.id, 'ok', staff.email);
   invalidateFleet();
   invalidateStatuses();
+  // Статус поставил владелец или админ — это и есть проверка: портал верен (WS исправят отдельно)
+  const after = (await getPortalSnapshot().catch(() => null))?.cars.find((c) => c.vehicleId === vehicle.id);
+  if (after?.needsCheck) addCheck(after, 'portal', staff, 'статус поставлен вручную');
   const name = vehicle.clientModel || `${vehicle.brand} ${vehicle.model}`.trim();
   const wa = await postFleetEvent(eventReport(event, name));
   setEventWa(event.id, wa.status, wa.error || null);
@@ -760,6 +784,7 @@ const ROUTES = {
   'POST /api/staff/fleet/sold': signedIn(fleetSold),
   'POST /api/staff/fleet/vehicle': signedIn(fleetVehicle),
   'POST /api/staff/fleet/status': signedIn(fleetStatusRoute),
+  'POST /api/staff/fleet/check': signedIn(fleetCheckRoute),
   'POST /api/staff/fleet/vehicle/delete': signedIn(fleetVehicleDelete),
   'POST /api/staff/finance/loans': signedIn(financeLoans),
   'GET /api/staff/marketing': signedIn(marketingRoute),
