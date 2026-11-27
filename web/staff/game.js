@@ -64,7 +64,7 @@ function phuketMinutes() { const d = new Date(nowMs() + 7 * 3600000); return d.g
 
 /* ---------- изометрия ---------- */
 const HW = 16, HH = 8;            // половина плитки 32×16
-const MW = 46, MH = 36;           // карта в плитках
+const MW = 52, MH = 42;           // карта в плитках
 const OX = MH * HW + 40, OY = 110;
 const WORLD_W = (MW + MH) * HW + 80, WORLD_H = (MW + MH) * HH + 170;
 let dropOff = 0;                  // сдвиг вверх для интро (падение плиток и объектов)
@@ -79,7 +79,7 @@ const tFill = (x0, y0, x1, y1, t) => { for (let y = y0; y <= y1; y++) for (let x
 const isWater = (t) => t === T.SEA || t === T.SHALLOW;
 (function buildMap() {
   for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
-    const dx = (x + 0.5 - 20.5) / 19, dy = (y + 0.5 - 17.5) / 16;
+    const dx = (x + 0.5 - 22) / 21, dy = (y + 0.5 - 19.5) / 18.5;
     const n = 0.07 * Math.sin(x * 0.9 + y * 0.3) + 0.06 * Math.cos(y * 0.8 - x * 0.2);
     map[y * MW + x] = dx ** 4 + dy ** 4 < 1 - n ? T.GRASS : T.SEA;
   }
@@ -87,7 +87,7 @@ const isWater = (t) => t === T.SEA || t === T.SHALLOW;
   for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
     const i = y * MW + x;
     if (land[i] === T.GRASS) {
-      let shore = x >= 31;
+      let shore = x >= 35;
       for (let j = -1; j <= 1 && !shore; j++) for (let k = -1; k <= 1; k++) if ((land[(y + j) * MW + x + k] ?? T.SEA) === T.SEA || y + j < 0 || y + j >= MH) shore = true;
       if (shore) map[i] = T.SAND;
     } else {
@@ -99,15 +99,18 @@ const isWater = (t) => t === T.SEA || t === T.SHALLOW;
       if (near) map[i] = T.SHALLOW;
     }
   }
-  // кольцевая дорога, выезды «в город», к пляжу, подъезд к стоянкам
-  tFill(8, 7, 29, 7, T.ROAD); tFill(8, 27, 29, 27, T.ROAD); tFill(8, 7, 8, 27, T.ROAD); tFill(29, 7, 29, 27, T.ROAD);
-  tFill(2, 17, 7, 17, T.ROAD); tFill(20, 2, 20, 6, T.ROAD); tFill(14, 28, 14, 31, T.ROAD); tFill(30, 22, 35, 22, T.ROAD);
-  // зоны компании
-  tFill(9, 16, 18, 19, T.PAVE); tFill(19, 16, 24, 16, T.PAVE); tFill(17, 20, 18, 26, T.PAVE); tFill(11, 25, 16, 26, T.PAVE);
-  tFill(11, 10, 18, 15, T.WOOD); tFill(19, 10, 23, 15, T.CARPET);
+  // кольцевая дорога, выезды «в город», к пляжу
+  tFill(8, 7, 32, 7, T.ROAD); tFill(8, 31, 32, 31, T.ROAD); tFill(8, 7, 8, 31, T.ROAD); tFill(32, 7, 32, 31, T.ROAD);
+  tFill(2, 19, 7, 19, T.ROAD); tFill(22, 2, 22, 6, T.ROAD); tFill(14, 32, 14, 36, T.ROAD); tFill(33, 24, 38, 24, T.ROAD);
+  // зоны компании: офис и финансы, гараж и стоянка сервиса, стоянки машин и байков
+  tFill(9, 16, 18, 19, T.PAVE); tFill(19, 16, 26, 16, T.PAVE); tFill(17, 20, 18, 23, T.PAVE); tFill(11, 25, 16, 25, T.PAVE);
+  tFill(11, 10, 18, 15, T.WOOD); tFill(19, 10, 25, 15, T.CARPET);
   tFill(11, 20, 16, 24, T.CONC);
-  tFill(19, 17, 27, 21, T.LOT); tFill(19, 23, 27, 25, T.LOT);
-  tFill(17, 22, 28, 22, T.ROAD); tSet(28, 19, T.ROAD);
+  tFill(11, 26, 16, 30, T.LOT);
+  tFill(19, 17, 30, 23, T.LOT);
+  tFill(18, 25, 30, 30, T.LOT);
+  tFill(17, 24, 31, 24, T.ROAD); tFill(17, 25, 17, 30, T.ROAD);
+  for (const y of [18, 22, 27, 30]) tSet(31, y, T.ROAD);
 })();
 
 /* ---------- плитки ---------- */
@@ -206,13 +209,17 @@ function buildStatic() {
   });
   // разметка стоянок
   const line = (x0, y0, x1, y1) => { const a = iso(x0, y0), c = iso(x1, y1); pline(g, a[0], a[1], c[0], c[1], '#e6e3d6'); };
-  for (let i = 0; i <= 7; i++) {
-    const sx = 19.55 + i * 1.15 - 0.575;
-    line(sx, 17.25, sx, 18.6); line(sx, 20.0, sx, 21.3);
+  for (let i = 0; i <= 10; i++) {
+    const sx = 19.6 + i * 1.15 - 0.575;
+    line(sx, 17.1, sx, 18.1); line(sx, 19.7, sx, 20.7); line(sx, 21.2, sx, 22.2);
   }
-  for (let i = 0; i <= 12; i++) {
-    const sx = 19.4 + i * 0.7 - 0.35;
-    line(sx, 23.1, sx, 23.95); line(sx, 24.45, sx, 25.35);
+  for (let i = 0; i <= 20; i++) {
+    const sx = 18.9 + i * 0.55 - 0.275;
+    for (const y of [25.7, 26.6, 28.3, 29.2]) line(sx, y - 0.3, sx, y + 0.3);
+  }
+  for (let i = 0; i <= 5; i++) {
+    const sx = 11.7 + i * 1.15 - 0.575;
+    line(sx, 26.4, sx, 27.4); line(sx, 28.7, sx, 29.7);
   }
   for (const y of [16.1, 16.9, 17.7, 18.5, 19.3]) line(9.3, y, 10.6, y);
   // ковёр в шоуруме, полоса у ворот гаража, буква P
@@ -226,7 +233,7 @@ function buildStatic() {
   }
   g.fillStyle = 'rgba(255,255,255,.75)';
   g.font = '8px "Press Start 2P", monospace';
-  const pp = iso(23.2, 19.4); g.fillText('P', pp[0] - 4, pp[1] + 4);
+  const pp = iso(25.0, 19.0); g.fillText('P', pp[0] - 4, pp[1] + 4);
   dropOff = keep;
 }
 
@@ -456,9 +463,8 @@ function drawTumble(o) {
 }
 
 /* =====================================================================
- * Мир: стены, дверь, вывески, мебель, гараж, пляж, город, дороги
+ * Мир: стены, дверь, гараж, пляж, город, дороги
  * ===================================================================== */
-
 const objs = [];
 function addObj(o) { if (o.depth === undefined) o.depth = o.x + o.y; objs.push(o); return o; }
 
@@ -481,11 +487,11 @@ function wall(x0, y0, x1, y1, h, color, cap, depth, extra = {}) {
     }
   });
 }
-// офис и финансы: задние стены высокие, передние — низкие (разрез, как в «домиках»)
-for (let x = 11; x <= 23; x++) wall(x, 10, x + 1, 10, 30, OFFICE.L, OFFICE.cap, x + 10.45, { window: x % 3 === 0 });
+// офис (x 11–18) и финансы (x 19–25): задние стены высокие, передние — низкие (разрез, как в «домиках»)
+for (let x = 11; x <= 25; x++) wall(x, 10, x + 1, 10, 30, OFFICE.L, OFFICE.cap, x + 10.45, { window: x % 3 === 0 && x !== 21 && x !== 24 });
 for (let y = 10; y <= 15; y++) wall(11, y, 11, y + 1, 30, OFFICE.R, OFFICE.cap, 11 + y + 0.45, { window: y === 12 });
-for (let x = 11; x <= 23; x++) if (x !== 16) wall(x, 16, x + 1, 16, 7, OFFICE.L, OFFICE.cap, x + 16.5);
-for (let y = 10; y <= 15; y++) wall(24, y, 24, y + 1, 7, OFFICE.R, OFFICE.cap, 24 + y + 0.5);
+for (let x = 11; x <= 25; x++) if (x !== 16) wall(x, 16, x + 1, 16, 7, OFFICE.L, OFFICE.cap, x + 16.5);
+for (let y = 10; y <= 15; y++) wall(26, y, 26, y + 1, 7, OFFICE.R, OFFICE.cap, 26 + y + 0.5);
 // гараж
 for (let x = 11; x <= 16; x++) wall(x, 20, x + 1, 20, 22, GARAGE_C.L, GARAGE_C.cap, x + 20.45, { window: x === 14 });
 for (let y = 20; y <= 24; y++) wall(11, y, 11, y + 1, 22, GARAGE_C.R, GARAGE_C.cap, 11 + y + 0.45);
@@ -507,11 +513,10 @@ addObj({
     b.globalAlpha = 1;
     poly([up(p1, 22), up(p2, 22), up(p2, 26), up(p1, 26)], OFFICE.cap);
     px(p1[0], p1[1] - 26, 2, 26, '#8d7a5a'); px(p2[0] - 2, p2[1] - 26, 2, 26, '#8d7a5a');
-    px(mid[0] - 6, mid[1] - 34, 13, 6, '#2c3e50'); px(mid[0] - 5, mid[1] - 33, 11, 4, S.sim > 8 * 60 && S.sim < 20 * 60 ? '#4ee07a' : '#c0392b');
   }
 });
 
-/* ---------- вывески ---------- */
+/* ---------- вывеска сервиса ---------- */
 function sign(x, y, depth, text, bg, fg, h) {
   return addObj({
     x, y, depth,
@@ -522,11 +527,10 @@ function sign(x, y, depth, text, bg, fg, h) {
       px(sx - w / 2 + 2, sy - h + 2, w, 13, 'rgba(0,0,0,.25)');
       px(sx - w / 2, sy - h, w, 13, bg);
       b.fillStyle = fg; b.fillText(text, Math.round(sx - w / 2 + 4), Math.round(sy - h + 10));
-      px(sx - w / 2 + 6, sy - h + 13, 1, h - 30 > 0 ? 6 : 4, '#555'); px(sx + w / 2 - 7, sy - h + 13, 1, h - 30 > 0 ? 6 : 4, '#555');
+      px(sx - w / 2 + 6, sy - h + 13, 1, 6, '#555'); px(sx + w / 2 - 7, sy - h + 13, 1, 6, '#555');
     }
   });
 }
-sign(17.5, 10, 27.6, 'JET MOBILITY', '#1d2b3a', '#ffd38a', 58);
 sign(14, 20, 36.6, 'SERVICE', '#3a2a1d', '#ffb26b', 40);
 
 /* ---------- мебель и предметы ---------- */
@@ -552,14 +556,14 @@ function desk(id, x, y) {
   });
 }
 DESK_X.forEach((x, i) => { desk(`d${i + 1}`, x, 11.3); box(x, 12.15, 0.32, 0.3, 3, '#3e4552'); });
-desk('fd', 21.4, 12.3);
+desk('fd', 21.4, 13.0);
 box(18.25, 10.45, 0.5, 0.3, 13, '#8a6a46');                         // шкаф с документами
 box(19.05, 11.95, 0.2, 3.9, 8, '#efe7d6');                          // стойка финансов
 addObj({ x: 11.75, y: 13.6, draw() {                                // диван для клиентов
   isoBox(11.8, 13.6, 0.5, 1.5, 4, '#c0563d', '#a8472f', '#8f3c28');
   isoBox(11.5, 13.6, 0.14, 1.5, 9, '#c0563d', '#a8472f', '#8f3c28');
 } });
-for (const [x, y] of [[11.45, 10.45], [23.65, 15.45], [11.4, 15.4]]) addObj({ x, y, draw() {
+for (const [x, y] of [[11.45, 10.45], [11.4, 15.4]]) addObj({ x, y, draw() {
   isoBox(x, y, 0.22, 0.22, 4, '#b5651d', '#9c561a', '#844816');
   const [sx, sy] = iso(x, y);
   for (let i = 0; i < 9; i++) px(sx - 4 + (i % 3) * 3, sy - 12 + Math.floor(i / 3) * 2 - (i % 2), 3, 2, i % 2 ? '#3f9b3a' : '#2f7d2c');
@@ -577,8 +581,8 @@ for (const v of DISPLAY) addObj({ x: v.x, y: v.y, draw() {
 // Финансы: два больших сейфа с монетами и суммой над ними
 const SAFES_OBJ = {};
 const SAFES = {
-  op: { x: 20.0, y: 10.75, title: 'Касса: приход сегодня', note: 'Наличные, полученные сегодня (аренда, доплаты) — из «Финансов».' },
-  dep: { x: 22.6, y: 10.75, title: 'Залоговая касса', note: 'Залоги клиентов на руках сейчас — из «Финансов».' }
+  op: { x: 20.4, y: 11.0, title: 'Касса: приход сегодня', note: 'Наличные, полученные сегодня (аренда, доплаты) — из «Финансов».' },
+  dep: { x: 22.5, y: 11.0, title: 'Залоговая касса', note: 'Залоги клиентов на руках сейчас — из «Финансов».' }
 };
 for (const id of ['op', 'dep']) {
   const s = SAFES[id];
@@ -602,7 +606,7 @@ for (const id of ['op', 'dep']) {
   });
 }
 // Кошельки сотрудников: столики с монетами (минус — красная расписка), имя и сумма над каждым
-const PEDESTALS = [[23.35, 11.55], [23.35, 12.45], [23.35, 13.35], [23.35, 14.25], [22.55, 11.75], [22.55, 12.65], [22.55, 13.55], [22.55, 14.45]]
+const PEDESTALS = [[25.1, 11.5], [25.1, 12.4], [25.1, 13.3], [25.1, 14.2], [25.1, 15.1], [24.1, 11.5], [24.1, 12.4], [24.1, 13.3], [24.1, 14.2], [24.1, 15.1]]
   .map(([x, y]) => ({ x, y, w: null, kind: 'wallet' }));
 for (const p of PEDESTALS) addObj({ x: p.x, y: p.y, draw() {
   if (!p.w) { p.hit = null; return; }
@@ -662,50 +666,51 @@ addObj({ x: 13.5, y: 25, depth: 38.6, draw() {
   poly([up(p1, 18), up(p2, 18), up(p2, 22), up(p1, 22)], GARAGE_C.cap);
   px(p1[0], p1[1] - 22, 2, 22, '#80868d'); px(p2[0] - 2, p2[1] - 22, 2, 22, '#80868d');
 } });
-// будка выдачи, табличка маркетолога
-addObj({ x: 28.25, y: 17.2, draw() {
-  isoBox(28.25, 17.2, 0.7, 0.45, 9, '#f4efe4', '#ddd6c6', '#c7c0b0');
-  isoBox(28.25, 17.2, 0.9, 0.62, 2, '#e74c3c', '#c0392b', '#a93226', 12);
+// будка выдачи у въезда
+addObj({ x: 31.45, y: 20.1, draw() {
+  isoBox(31.45, 20.1, 0.6, 0.45, 9, '#f4efe4', '#ddd6c6', '#c7c0b0');
+  isoBox(31.45, 20.1, 0.8, 0.62, 2, '#e74c3c', '#c0392b', '#a93226', 12);
 } });
-sign(28.6, 20.0, 48.4, 'RENT FROM 250', '#fffdf5', '#c0392b', 22);
-// пляж: зонтики и шезлонги
+// пляж: зонтики и шезлонги, места для купания
 const BEACH = [];
-for (const [x, y, c] of [[33.6, 11.2, '#e74c3c'], [34.0, 14.6, '#2e86de'], [33.6, 18.2, '#f39c12'], [35.2, 25.4, '#16a085']]) {
+for (const [x, y, c] of [[36.6, 11.6, '#e74c3c'], [37.1, 15.4, '#2e86de'], [36.7, 19.2, '#f39c12'], [37.6, 28.4, '#16a085'], [36.9, 32.6, '#8e44ad'], [38.6, 22.4, '#e67e22']]) {
   addObj({ x, y, draw() { drawUmbrella({ x, y, c }); } });
   box(x - 0.6, y + 0.4, 0.75, 0.3, 2, '#f3efe6');
   BEACH.push({ p: [x - 0.6, y + 0.35], kind: 'lie', who: null });
 }
-for (const p of [[40.4, 12.6], [40.9, 16.6], [40.5, 20.6]]) BEACH.push({ p, kind: 'swim', who: null });
+for (const p of [[44.0, 13.6], [44.6, 17.6], [44.2, 21.6], [43.9, 26.0]]) BEACH.push({ p, kind: 'swim', who: null });
 
 /* ---------- город и природа ---------- */
 (function decor() {
   const roadNear = (x, y, r) => { for (let j = -r; j <= r; j++) for (let k = -r; k <= r; k++) if (tAt(Math.floor(x) + k, Math.floor(y) + j) === T.ROAD) return true; return false; };
-  const inside = (x, y) => x > 7.5 && x < 30.5 && y > 6.5 && y < 28.5;
+  const ringInside = (x, y) => x > 7.5 && x < 33.5 && y > 6.5 && y < 32.5;
   const ROOF = ['#c0392b', '#d35400', '#16a085', '#2c3e50', '#8e44ad'];
   const WALLS = ['#f6f1e7', '#fdebd0', '#e8f6f3', '#fef9e7', '#f2f3f4'];
   let i = 0;
-  for (let y = 2; y < 33; y += 2) for (let x = 2; x < 31; x += 2) {
+  for (let y = 2; y < 39; y += 2) for (let x = 2; x < 35; x += 2) {
     const jx = x + hash(x, y) * 1.2, jy = y + hash(y, x) * 1.2;
     const t = tAt(Math.floor(jx), Math.floor(jy));
-    if (inside(jx, jy) || roadNear(jx, jy, 1) || t !== T.GRASS) continue;
+    if (ringInside(jx, jy) || roadNear(jx, jy, 1) || t !== T.GRASS) continue;
     const r = hash(x * 3, y * 5);
-    if (r < 0.45 && (x < 7 || y < 6)) addObj({ x: jx, y: jy, c: WALLS[i % 5], roof: ROOF[i++ % 5], draw: drawHouse });
+    if (r < 0.45 && (x < 7 || y < 6 || y > 33)) addObj({ x: jx, y: jy, c: WALLS[i % 5], roof: ROOF[i++ % 5], draw: drawHouse });
     else if (r < 0.75) addObj({ x: jx, y: jy, draw: drawTree });
     else addObj({ x: jx, y: jy, h: 16 + Math.floor(r * 10), lean: r > 0.85 ? -1 : 1, seed: r * 9, draw: drawPalm });
   }
-  for (const [x, y] of [[25.5, 11.5], [26.8, 13.6], [25.6, 15.3], [9.8, 23.4], [9.6, 25.8], [27.8, 25.9], [31.4, 9.5], [31.7, 13.0], [31.5, 16.8], [32.0, 26.5], [36.5, 9.8], [36.8, 24.8]]) {
+  for (const [x, y] of [[27.5, 11.5], [29.6, 13.6], [28.4, 15.2], [9.8, 23.4], [9.6, 26.8], [9.8, 29.8], [34.4, 9.5], [34.6, 13.0], [34.4, 16.8], [34.6, 28.5], [39.5, 9.8], [39.8, 30.8], [40.5, 17.0]]) {
     addObj({ x, y, h: 17 + Math.floor(hash(x * 7, y) * 8), lean: hash(y, x) > 0.5 ? 1 : -1, seed: x, draw: drawPalm });
   }
 })();
 
 /* ---------- дороги: граф ---------- */
+// Кольцо вокруг территории, съезды к рядам стоянок (R1–R4), подъезд (E→DW), дорога к сервису (DW–G), выезды «в город»
 const RN = {
-  A: [8.5, 7.5], N: [20.5, 7.5], B: [29.5, 7.5], R1: [29.5, 19.25], E: [29.5, 22.5], C: [29.5, 27.5], S: [14.5, 27.5],
-  D: [8.5, 27.5], Wn: [8.5, 17.5], WX: [2.3, 17.5], NX: [20.5, 2.3], SX: [14.5, 31.6], BX: [35.2, 22.5], DW: [18.6, 22.5]
+  A: [8.5, 7.5], N: [22.5, 7.5], B: [32.5, 7.5], R1: [32.5, 18.9], R2: [32.5, 22.95], E: [32.5, 24.5], R3: [32.5, 27.45], R4: [32.5, 30.2],
+  C: [32.5, 31.5], G: [17.5, 31.5], S: [14.5, 31.5], D: [8.5, 31.5], Wn: [8.5, 19.5], WX: [2.3, 19.5], NX: [22.5, 2.3], SX: [14.5, 36.2],
+  BX: [38.6, 24.5], DW: [17.5, 24.5]
 };
 const RE = {
-  A: ['N', 'Wn'], N: ['A', 'B', 'NX'], B: ['N', 'R1'], R1: ['B', 'E'], E: ['R1', 'C', 'DW', 'BX'], C: ['E', 'S'],
-  S: ['C', 'D', 'SX'], D: ['S', 'Wn'], Wn: ['D', 'A', 'WX'], WX: ['Wn'], NX: ['N'], SX: ['S'], BX: ['E'], DW: ['E']
+  A: ['N', 'Wn'], N: ['A', 'B', 'NX'], B: ['N', 'R1'], R1: ['B', 'R2'], R2: ['R1', 'E'], E: ['R2', 'R3', 'DW', 'BX'], R3: ['E', 'R4'], R4: ['R3', 'C'],
+  C: ['R4', 'G'], G: ['C', 'S', 'DW'], S: ['G', 'D', 'SX'], D: ['S', 'Wn'], Wn: ['D', 'A', 'WX'], WX: ['Wn'], NX: ['N'], SX: ['S'], BX: ['E'], DW: ['E', 'G']
 };
 const ENDS = ['WX', 'NX', 'SX'];
 function bfs(graph, from, to) {
@@ -717,20 +722,21 @@ function bfs(graph, from, to) {
   }
   return [from];
 }
-// пешеходные точки снаружи
+// пешеходные точки снаружи: дорожки, проходы между рядами, полоса у въезда, пляж
 const WN = {
-  DO: [16.5, 16.75], CW: [10.3, 17.7], CE: [17.8, 17.0], GS: [17.75, 21.3], DWW: [17.8, 22.5], LT: [23.5, 22.5],
-  GT: [28.6, 22.5], MK: [28.15, 21.25], BKm: [28.4, 19.8], BK: [28.2, 17.85], RX: [30.4, 22.5], BE: [32.2, 22.5],
-  GAS: [17.6, 25.7], GA: [13.5, 25.8], LW: [18.5, 19.25], LE: [27.9, 19.25]
+  DO: [16.5, 16.75], CW: [10.3, 18.4], CE: [17.8, 16.9], GS: [17.75, 21.3], LW: [18.5, 18.9], CWl: [18.5, 22.95], DWW: [17.8, 23.6],
+  GAS: [17.5, 25.6], GA: [13.5, 25.6], S1: [31.35, 18.9], BK: [31.4, 21.0], S2: [31.35, 23.4], GT: [31.35, 24.5], MK: [31.4, 25.8],
+  BL1: [31.35, 27.45], BL2: [31.35, 30.2], BW1: [18.35, 27.45], BW2: [18.35, 30.2], RX: [33.6, 24.5], BE: [35.8, 24.5]
 };
 const WE = {
-  DO: ['CW', 'CE'], CW: ['DO'], CE: ['DO', 'GS', 'LW'], GS: ['CE', 'DWW', 'LW'], DWW: ['GS', 'LT', 'GAS'], LT: ['DWW', 'GT'],
-  GT: ['LT', 'MK', 'BKm', 'RX'], MK: ['GT'], BKm: ['GT', 'BK', 'LE'], BK: ['BKm'], RX: ['GT', 'BE'], BE: ['RX'], GAS: ['DWW', 'GA'], GA: ['GAS'],
-  LW: ['CE', 'GS', 'LE'], LE: ['LW', 'BKm']
+  DO: ['CW', 'CE'], CW: ['DO'], CE: ['DO', 'GS', 'LW'], GS: ['CE', 'LW', 'CWl', 'DWW'], LW: ['CE', 'GS', 'S1'], CWl: ['GS', 'DWW', 'S2'],
+  DWW: ['GS', 'CWl', 'GAS', 'GT', 'BW1'], GAS: ['DWW', 'GA'], GA: ['GAS'], S1: ['LW', 'BK'], BK: ['S1', 'S2'], S2: ['BK', 'CWl', 'GT'],
+  GT: ['S2', 'DWW', 'MK', 'RX', 'BL1'], MK: ['GT'], BL1: ['GT', 'BL2', 'BW1'], BL2: ['BL1', 'BW2'], BW1: ['DWW', 'BL1', 'BW2'], BW2: ['BW1', 'BL2'],
+  RX: ['GT', 'BE'], BE: ['RX']
 };
-const zoneOf = (p) => (p[0] >= 11 && p[0] < 24 && p[1] >= 10 && p[1] < 16 ? 'office'
+const zoneOf = (p) => (p[0] >= 11 && p[0] < 26 && p[1] >= 10 && p[1] < 16 ? 'office'
   : p[0] >= 11 && p[0] < 17 && p[1] >= 20 && p[1] < 25 ? 'garage'
-    : p[0] >= 30.8 ? 'beach' : 'out');
+    : p[0] >= 34.8 ? 'beach' : 'out');
 function nearestWN(p) {
   let best = 'DO', bd = Infinity;
   for (const [k, q] of Object.entries(WN)) { const d = dist(p, q); if (d < bd) { bd = d; best = k; } }
@@ -745,7 +751,7 @@ function deskGap(x) {
 // Внутри офиса ходим через проход (y = 12.65), а не сквозь столы и стойку
 function officeToAisle(p) {
   const pts = [];
-  if (p[0] > 18.9) { if (p[1] < 12.9) pts.push([20.5, p[1] < 12.0 ? 11.75 : 13.05]); pts.push([19.8, 14.75], [18.6, 15.1]); }
+  if (p[0] > 18.9) { if (p[1] < 14.2) pts.push([20.0, p[1]]); pts.push([19.8, 14.75], [18.6, 15.1]); }
   else if (p[1] < 11.15) { const x = deskGap(p[0]); pts.push([x, 10.95], [x, 12.65]); }
   else if (p[1] < 12.4) pts.push([p[0] + 0.6 > 18.4 ? p[0] - 0.6 : p[0] + 0.6, 12.65]);
   return pts;
@@ -776,16 +782,20 @@ function walkRoute(from, to, via) {
 }
 
 /* ---------- техника ---------- */
-// Стоянки: два ряда машин, два ряда байков; что не влезло — у дороги за кольцом
-const SLOTS = { car: [], bike: [] };
-for (let i = 0; i < 7; i++) { SLOTS.car.push({ x: 19.55 + i * 1.15, y: 17.9, row: 'A', v: null }); SLOTS.car.push({ x: 19.55 + i * 1.15, y: 20.6, row: 'B', v: null }); }
-for (let i = 0; i < 12; i++) { SLOTS.bike.push({ x: 19.4 + i * 0.7, y: 23.5, row: 'S', v: null }); SLOTS.bike.push({ x: 19.4 + i * 0.7, y: 24.9, row: 'S', v: null }); }
-for (let i = 0; i < 10; i++) SLOTS.car.push({ x: 30.45, y: 8.7 + i * 1.1, row: 'O', v: null });
-for (let i = 0; i < 6; i++) SLOTS.bike.push({ x: 30.45, y: 23.5 + i * 0.6, row: 'Q', v: null, dir: 'x' });
-// Сервис: подъёмник и места ожидания (в гараже и перед ним)
-const GWAIT = [{ x: 15.7, y: 21.0, dir: 'y' }, { x: 15.7, y: 23.5, dir: 'y' }, { x: 12.1, y: 23.9, dir: 'x' }, { x: 11.8, y: 25.9, dir: 'x' }, { x: 15.6, y: 25.9, dir: 'x' }]
+// Стоянки: у каждого вида — свои места, с запасом: машины 30 (3 ряда), скутеры 50 и мотоциклы 30 (4 ряда байков).
+// Каждый ряд выходит на свой проезд (lane), проезды — на кольцо у въезда.
+const LANE = { AB: { y: 18.9, node: 'R1' }, C: { y: 22.95, node: 'R2' }, D: { y: 24.5, node: 'E' }, F: { y: 27.45, node: 'R3' }, H: { y: 30.2, node: 'R4' } };
+const SLOTS = { car: [], moto: [], scooter: [] };
+for (const [y, lane] of [[17.6, 'AB'], [20.2, 'AB'], [21.7, 'C']]) for (let i = 0; i < 10; i++) SLOTS.car.push({ x: 19.6 + i * 1.15, y, lane, v: null });
+{
+  let k = 0;
+  for (const [y, lane] of [[25.7, 'D'], [26.6, 'F'], [28.3, 'F'], [29.2, 'H']]) for (let i = 0; i < 20; i++) (k++ < 50 ? SLOTS.scooter : SLOTS.moto).push({ x: 18.9 + i * 0.55, y, lane, v: null });
+}
+// Сервис: подъёмник, 3 места в гараже и стоянка сервиса на 10 мест перед ним
+const GWAIT = [{ x: 15.7, y: 21.0, dir: 'y' }, { x: 15.7, y: 23.5, dir: 'y' }, { x: 12.1, y: 23.9, dir: 'x' }]
+  .concat([26.9, 29.2].flatMap((y) => [0, 1, 2, 3, 4].map((i) => ({ x: 11.7 + i * 1.15, y, dir: 'y', row: 'L' }))))
   .map((g) => ({ ...g, v: null }));
-const STAFFPARK = [[9.95, 16.5], [9.95, 17.3], [9.95, 18.1], [9.95, 18.9], [9.95, 19.7], [10.75, 19.7], [10.75, 16.5], [10.75, 17.3], [10.75, 18.1], [10.75, 18.9]]
+const STAFFPARK = [[9.95, 16.5], [9.95, 17.3], [9.95, 18.1], [9.95, 18.9], [10.75, 16.5], [10.75, 17.3], [10.75, 18.1], [10.75, 18.9], [9.95, 19.6], [10.75, 19.6]]
   .map((p) => ({ x: p[0], y: p[1], v: null }));
 const VEH = [];
 const VEH_BY_ID = new Map();
@@ -813,7 +823,7 @@ function removeVehicle(v) {
   const i = VEH.indexOf(v); if (i >= 0) VEH.splice(i, 1);
   VEH_BY_ID.delete(v.id);
 }
-const slotsFor = (v) => (v.type === 'car' ? SLOTS.car : SLOTS.bike);
+const slotsFor = (v) => SLOTS[v.type] || SLOTS.scooter;
 const freeSlot = (v) => slotsFor(v).find((s) => !s.v) || null;
 function parkAt(v, s) { v.slot = s; s.v = v; v.x = s.x; v.y = s.y; v.dir = s.dir || 'y'; v.sgn = 1; v.ox = 0; v.oy = 0; v.path = []; v.hidden = false; v.cruise = false; }
 function leaveSlot(v) { if (v.slot) { v.slot.v = null; v.slot = null; } }
@@ -857,35 +867,34 @@ function takeControl(v, fn) {
   fn();
 }
 function routeToSlot(v, s) {
-  if (s.row === 'A') return [...bfs(RE, v.node, 'R1').slice(1).map((n) => RN[n].slice()), [s.x, 19.25], [s.x, s.y]];
-  if (s.row === 'O') return [...bfs(RE, v.node, 'R1').slice(1).map((n) => RN[n].slice()), [29.5, s.y], [s.x, s.y]];
-  if (s.row === 'Q') return [...bfs(RE, v.node, 'E').slice(1).map((n) => RN[n].slice()), [29.5, s.y], [s.x, s.y]];
-  return [...bfs(RE, v.node, 'E').slice(1).map((n) => RN[n].slice()), [s.x, 22.5], [s.x, s.y]];
+  const L = LANE[s.lane];
+  return [...bfs(RE, v.node || 'E', L.node).slice(1).map((n) => RN[n].slice()), [s.x, L.y], [s.x, s.y]];
 }
 function routeFromSlot(v) {
   const s = v.slot;
-  if (s && s.row === 'A') { v.node = 'R1'; v.prev = Math.random() < 0.5 ? 'E' : 'B'; return [[s.x, 19.25], [28.6, 19.25], RN.R1.slice()]; }
-  if (s && s.row === 'O') { v.node = 'R1'; v.prev = 'B'; return [[29.5, s.y], RN.R1.slice()]; }
-  if (s && s.row === 'Q') { v.node = 'C'; v.prev = 'E'; return [[29.5, s.y], RN.C.slice()]; }
-  v.node = 'E'; v.prev = 'DW';
-  return [[v.x, 22.5], RN.E.slice()];
+  const L = LANE[s ? s.lane : 'D'];
+  v.node = L.node;
+  v.prev = L.node === 'E' ? 'DW' : pick(RE[L.node]);
+  return [[s ? s.x : v.x, L.y], [31.6, L.y], RN[L.node].slice()];
 }
+// гараж: въезд и выезд по дороге сервиса (x = 17.5) к узлу G на кольце
 function routeFromGarage(v) {
-  const pts = LIFT.v === v ? [[LIFT.x, 23.3]] : v.gspot && v.gspot.y < 25 ? [[v.x, Math.min(v.y + 0.6, 24.6)]] : [];
-  v.node = 'S'; v.prev = 'SX';
-  return [...pts, [13.5, 25.3], [14.5, 26.4], RN.S.slice()];
+  let pts;
+  if (LIFT.v === v) pts = [[LIFT.x, 23.3], [13.5, 25.4], [17.5, 25.5]];
+  else if (v.gspot && v.gspot.row === 'L') pts = [[v.x, 28.05], [17.5, 28.05]];
+  else pts = [[v.x, Math.min(v.y + 0.6, 24.6)], [13.5, 25.4], [17.5, 25.5]];
+  v.node = 'G'; v.prev = 'DW';
+  return [...pts, RN.G.slice()];
 }
 function routeToGarage(v, spot) {
-  const nodes = bfs(RE, v.node, 'S').slice(1).map((n) => RN[n].slice());
-  if (spot.y > 25) return [...nodes, [14.5, 26.4], [spot.x, 26.4], [spot.x, spot.y]];
-  return [...nodes, [14.5, 26.2], [13.5, 25.3], [spot.x, Math.min(spot.y + 0.6, 24.6)], [spot.x, spot.y]];
+  const nodes = bfs(RE, v.node || 'E', 'G').slice(1).map((n) => RN[n].slice());
+  if (spot.row === 'L') return [...nodes, [17.5, 28.05], [spot.x, 28.05], [spot.x, spot.y]];
+  return [...nodes, [17.5, 25.5], [13.5, 25.4], [spot.x, Math.min(spot.y + 0.6, 24.6)], [spot.x, spot.y]];
 }
 function nearPoint(v) {
   const s = v.slot;
-  if (s && s.row === 'O') return [s.x + 0.6, s.y + 0.3];
-  if (s && s.row === 'Q') return [s.x + 0.5, s.y + 0.25];
-  if (v.type === 'car') return [v.x + 0.6, v.y < 19 ? 18.85 : 19.95];
-  return [v.x + 0.35, v.y < 24 ? 22.9 : 24.2];
+  if (!s) return [v.x + 0.6, v.y + 0.4];
+  return [s.x + (v.type === 'car' ? 0.6 : 0.27), LANE[s.lane].y];
 }
 // Сразу поставить технику туда, где она по статусу (первая загрузка, большие изменения)
 function placeVehicle(v) {
@@ -939,11 +948,11 @@ function assignHomes() {
     else { const x = 14.4 + (i - 3) * 1.2; a.home = { p: [x, 13.75], pose: 'stand', face: 1, client: [x + 0.4, 14.3] }; }
   });
   (groups.finance || []).forEach((a, i) => {
-    a.home = i === 0 ? { p: [21.4, 11.75], via: [20.5, 11.75], pose: 'sit', face: 1, desk: 'fd', client: [21.4, 13.05] } : { p: [20.0 + i * 0.5, 13.9], pose: 'stand', face: 1, client: [20.0 + i * 0.5, 14.4] };
+    a.home = i === 0 ? { p: [21.4, 12.45], via: [20.0, 12.45], pose: 'sit', face: 1, desk: 'fd', client: [21.4, 13.75] } : { p: [22.6 + (i - 1) * 0.5, 14.4], pose: 'stand', face: 1, client: [22.6 + (i - 1) * 0.5, 14.9] };
   });
   (groups.service || []).forEach((a, i) => { a.home = { p: i === 0 ? [12.55, 22.45] : [14.7, 24.0 - i * 0.55], pose: 'stand', face: 1 }; });
-  (groups.marketing || []).forEach((a, i) => { a.home = { p: [28.15 - i * 0.45, 21.25 + i * 0.35], pose: 'megaphone', face: 1 }; });
-  (groups.delivery || []).forEach((a, i) => { a.home = { p: [28.2 - i * 0.6, 17.85 + i * 0.3], pose: 'stand', face: -1 }; });
+  (groups.marketing || []).forEach((a, i) => { a.home = { p: [31.4, 25.8 + i * 0.4], pose: 'megaphone', face: 1 }; });
+  (groups.delivery || []).forEach((a, i) => { a.home = { p: [31.4, 20.9 + i * 0.35], pose: 'stand', face: -1 }; });
 }
 function staffBike(a, slot) {
   const v = { id: `bike${a.sid}`, model: `скутер: ${a.name}`, type: 'scooter', color: BIKES[a.sid % BIKES.length], plate: '', x: slot.x, y: slot.y, ox: 0, oy: 0,
@@ -1040,7 +1049,7 @@ const CLIENT_LOOKS = [
   { skin: '#c68a5e', hair: '#2d1d12', shirt: '#e84393', pants: '#34495e' }, { skin: '#f5d0b0', hair: '#8b4b23', shirt: '#00b894', pants: '#dfe6e9' },
   { skin: '#8d5a3b', hair: '#111111', shirt: '#fdcb6e', pants: '#2d3436' }, { skin: '#f3c7a1', hair: '#e8e1c4', shirt: '#74b9ff', pants: '#636e72' }
 ];
-const ENTRY = [31.5, 22.6];
+const ENTRY = [35.8, 24.6];
 function newClient(extra = {}) {
   return newPerson({ kind: 'client', name: 'Клиент', look: pick(CLIENT_LOOKS), speed: 1.15, present: true, x: ENTRY[0], y: ENTRY[1], ...extra });
 }
@@ -1056,7 +1065,7 @@ function* arrive(a) {
   const end = pick(ENDS);
   v.x = RN[end][0]; v.y = RN[end][1]; v.node = end; v.rider = a;
   const nodes = bfs(RE, end, 'Wn').slice(1).map((n) => RN[n].slice());
-  yield drive(v, [...nodes, [9.3, 17.5], [9.6, slot.y], [slot.x, slot.y]]);
+  yield drive(v, [...nodes, [9.3, 19.5], [9.6, slot.y], [slot.x, slot.y]]);
   v.rider = null; v.dir = 'x'; v.sgn = 1;
   a.hidden = false; a.x = slot.x + 0.55; a.y = slot.y + 0.2; a.pose = 'stand';
   bubble(a, '👋');
@@ -1086,7 +1095,7 @@ function* leave(a) {
     yield walk(a, walkRoute([a.x, a.y], [v.x + 0.55, v.y + 0.2]));
     a.hidden = true; v.rider = a; if (v.pslot) v.pslot.v = null;
     const end = pick(ENDS);
-    yield drive(v, [[9.3, 17.5], ...bfs(RE, 'Wn', end).map((n) => RN[n].slice())]);
+    yield drive(v, [[9.6, v.y], [9.3, 19.5], ...bfs(RE, 'Wn', end).map((n) => RN[n].slice())]);
     VEH.splice(VEH.indexOf(v), 1);
   }
   a.hidden = true; a.state = a.present ? 'off' : 'off';
@@ -1246,14 +1255,15 @@ function* serviceOut(v) {
 }
 function* toLift(v) {
   v.claim = true;
-  yield drive(v, [[v.x, Math.min(v.y + 0.5, 24.5)], [LIFT.x + 0.4, 23.2], [LIFT.x, LIFT.y]]);
+  const pre = v.gspot && v.gspot.row === 'L' ? [[v.x, 28.05], [17.5, 28.05], [17.5, 25.5], [13.5, 25.4]] : [[v.x, Math.min(v.y + 0.5, 24.5)]];
+  yield drive(v, [...pre, [LIFT.x + 0.4, 23.2], [LIFT.x, LIFT.y]]);
   if (v.gspot) { v.gspot.v = null; v.gspot = null; }
   LIFT.v = v; LIFT.target = 6; v.dir = 'x'; v.ox = 0; v.oy = 0; v.claim = false;
 }
 
 /* --- гости: посетители сайта гуляют по шоуруму; заявка — садятся к менеджеру; пишут боту — телефон --- */
 const GUESTS = [];
-const GUEST_SPOTS = [[13.0, 12.6], [14.3, 14.3], [15.2, 13.3], [12.5, 12.2], [16.6, 13.8], [11.95, 13.2], [12.4, 14.9], [21.0, 18.85], [24.0, 19.95], [22.5, 22.9], [25.5, 24.2], [26.2, 22.9]];
+const GUEST_SPOTS = [[13.0, 12.6], [14.3, 14.3], [15.2, 13.3], [12.5, 12.2], [16.6, 13.8], [11.95, 13.2], [12.4, 14.9], [21.2, 18.9], [24.6, 18.9], [27.4, 18.9], [22.0, 22.95], [26.0, 22.95], [23.4, 24.5], [21.0, 27.45]];
 function spawnGuest(source) {
   const g = newPerson({ kind: 'guest', name: 'Гость', source: source || '', look: pick(CLIENT_LOOKS), present: true, x: ENTRY[0], y: ENTRY[1], speed: rnd(0.95, 1.3) });
   GUESTS.push(g);
@@ -2198,7 +2208,7 @@ function build() {
     else if (k === 'zin') zoomAt(cssW / 2, cssH / 2, S.zoom * 1.35);
     else if (k === 'zout') zoomAt(cssW / 2, cssH / 2, S.zoom / 1.35);
     else if (k === 'office') centerOn(16, 14);
-    else if (k === 'finance') { if (S.zoom < 2) zoomAt(cssW / 2, cssH / 2, 2); centerOn(21.6, 12.4); }
+    else if (k === 'finance') { if (S.zoom < 2) zoomAt(cssW / 2, cssH / 2, 2); centerOn(23.5, 13.4); }
     else if (k === 'panel') root.querySelector('[data-gm-panel]').classList.toggle('gm-open');
     else if (k === 'sound') {
       S.sound = !S.sound;
@@ -2226,8 +2236,8 @@ function mount(view) {
     started = true;
     buildStatic();
     if (document.fonts && document.fonts.load) document.fonts.load('8px "Press Start 2P"').then(buildStatic).catch(() => {});
-    S.zoom = cssW >= 1100 ? 2 : cssW >= 700 ? 1.5 : 1;
-    if (cssW >= 1000) centerOn(22.5, 15.5); else if (cssW >= 700) centerOn(20, 16); else centerOn(17.5, 14.5);
+    S.zoom = cssW >= 1250 ? 2 : cssW >= 700 ? 1.5 : 1;
+    if (cssW >= 1000) centerOn(25, 19.5); else if (cssW >= 700) centerOn(21, 19); else centerOn(18, 16);
     let seen = false;
     try { seen = localStorage.getItem('gm.introSeen') === '1'; } catch (e) { /* без хранилища */ }
     startIntro(seen);

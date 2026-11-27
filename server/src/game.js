@@ -110,6 +110,21 @@ const q = {
     FROM requests WHERE channel != 'test' AND archived_at IS NULL AND (status = 'new' OR (status = 'taken' AND taken_at >= ?)) ORDER BY created_at DESC LIMIT 60`)
 };
 
+const waNameQ = db.raw.prepare("SELECT author_name FROM wa_messages WHERE author = ? AND author_name IS NOT NULL AND author_name != '' ORDER BY ts DESC LIMIT 1");
+const phonesOf = (value) => String(value || '').split(/[,;\s]+/).map(digits).filter((x) => x.length >= 8);
+/** Имя для игры: из «Доступов»; если там только номер — имя из WhatsApp (как подписан в группе) */
+function displayName(s, lids) {
+  if (/\p{L}/u.test(s.name || '')) return s.name;
+  for (const phone of phonesOf(s.whatsapp)) {
+    const keys = [phone, ...Object.entries(lids).filter(([, p]) => digits(p) === phone).map(([lid]) => lid)];
+    for (const key of keys) {
+      const name = waNameQ.get(key)?.author_name;
+      if (name && /\p{L}/u.test(name)) return name;
+    }
+  }
+  return s.name || s.email || `#${s.id}`;
+}
+
 /** Кто есть кто: сотрудник по почте, имени или номеру WhatsApp */
 async function staffIndex() {
   const list = activeStaff();
@@ -119,7 +134,7 @@ async function staffIndex() {
   for (const s of list) {
     if (s.email) byEmail.set(low(s.email), s);
     if (s.name) byName.set(low(s.name), s);
-    for (const p of String(s.whatsapp || '').split(/[,;\s]+/).map(digits).filter((x) => x.length >= 8)) byPhone.set(p, s);
+    for (const p of phonesOf(s.whatsapp)) byPhone.set(p, s);
   }
   const byAuthor = (author, authorName) => {
     const a = String(author || '');
@@ -127,7 +142,7 @@ async function staffIndex() {
     return byPhone.get(phone) || byName.get(low(phones.get(phone) || phones.get(a))) || byName.get(low(authorName)) || null;
   };
   const byWho = (email, name) => byEmail.get(low(email)) || byName.get(low(name)) || null;
-  return { list, byAuthor, byWho };
+  return { list, byAuthor, byWho, lids };
 }
 
 function staffView(idx, now, finance) {
@@ -159,7 +174,7 @@ function staffView(idx, now, finance) {
     // Владелец, админ и роли без персонажа — в игре только если отметились на смене
     if (!role || role === 'owner' || role === 'admin') { if (!sh) return null; role = role === 'owner' ? 'owner' : 'manager'; }
     return {
-      id: s.id, name: s.name || s.email || `#${s.id}`, role, roleName: s.roleId === ADMIN_ROLE ? 'Админ' : getRole(s.roleId)?.name || s.roleId,
+      id: s.id, name: displayName(s, idx.lids), role, roleName: s.roleId === ADMIN_ROLE ? 'Админ' : getRole(s.roleId)?.name || s.roleId,
       present: Boolean(sh?.present), since: sh?.since || null, left: sh?.left || null,
       lastAction: last.get(s.id) || null, wallet: wallets.has(s.id) ? wallets.get(s.id) : null
     };

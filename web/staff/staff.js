@@ -775,7 +775,7 @@
     if (gameLoading) return;
     gameLoading = true;
     const script = document.createElement('script');
-    script.src = 'game.js?v=1';
+    script.src = 'game.js?v=2';
     script.onload = () => { gameLoading = false; if (state.tab === 'game' && window.STAFF_GAME) window.STAFF_GAME.mount($('#view')); };
     script.onerror = () => { gameLoading = false; if (state.tab === 'game') $('#view').innerHTML = `<div class="empty">${esc(t('app.loadFailed'))}</div>`; };
     document.head.append(script);
@@ -793,6 +793,8 @@
     // Пока в форме раздела есть несохранённый ввод, фоновое обновление раздел не перерисовывает
     if (background && formsDirty()) return;
     const view = $('#view');
+    // «Игра» — на всю ширину экрана
+    view.classList.toggle('view--wide', state.tab === 'game');
     if (state.tab === 'overview') view.innerHTML = renderOverview();
     if (state.tab === 'fleet') { view.innerHTML = renderFleet(); vehicles.afterRender(); }
     if (state.tab === 'calendar') view.innerHTML = renderCalendar();
