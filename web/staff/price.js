@@ -228,6 +228,7 @@
           <label class="field"><span>${esc(t('pr.to'))}</span><input class="search" type="date" name="to" value="${esc(c.to)}" required></label>
           <button type="submit" class="btn btn--small">${esc(t('pr.calcGo'))}</button>
         </form>
+        <p class="muted jr-small">${esc(t('pr.calcDays'))}</p>
         ${c.error ? `<p class="md-status is-error">${esc(c.error)}</p>` : ''}
         ${r ? (r.quote
           ? `<p class="pr-calc__res"><b>${esc(money(r.quote.total))}</b> · ${esc(t('pr.calcRes', { days: r.days, perDay: money(r.quote.perDay) }))}${r.quote.deposit ? ` · ${esc(t('pr.deposit'))} ${esc(money(r.quote.deposit))}` : ''}</p>`
