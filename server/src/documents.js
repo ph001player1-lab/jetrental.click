@@ -50,6 +50,7 @@ import { wabotSendDocument, wabotSend, wabotStatus, postFleetEvent } from './wab
 import { addStatusEvent, undoEvent, eventReport, setEventWa, getEvent, StatusError } from './vehicleStatus.js';
 import { invalidateFleet } from './fleet.js';
 import { isSold } from './sold.js';
+import { computeDiscount, syncContractDiscount, activeDiscount, dropDocDiscounts, setDecisionHandler, discountSettings, canApprove, DiscountError, KINDS as DISCOUNT_KINDS, OTHER as OTHER_REASON } from './discounts.js';
 
 const DOCS_DIR = path.join(config.dataDir, 'docs');
 const KINDS = ['contract', 'photos', 'return', 'receipt', 'addendum'];
@@ -219,8 +220,36 @@ function cleanContract(data) {
       return { key, ok: e ? Boolean(e.ok) : !EQUIPMENT_DEFAULT_OFF.has(key), ...(key === 'helmets' ? { count: Math.max(0, Math.min(4, Math.round(Number(e?.count ?? 2) || 0))) } : {}) };
     }),
     perDay: int(data.perDay, 0, 1e6), total: int(data.total, 0, 1e8), deposit: int(data.deposit, 0, 1e7), paid: int(data.paid, 0, 1e8),
-    payMethod: str(data.payMethod, 120), requestId: int(data.requestId, 1, 1e9)
+    payMethod: str(data.payMethod, 120), requestId: int(data.requestId, 1, 1e9),
+    ...priceWithDiscount(data, from, to)
   };
+}
+
+/**
+ * Цена по прайсу (baseTotal) и скидка: итог (total) и цена за сутки считает сервер.
+ * Скидка — { kind: percent|amount|price, value, reason, comment }; причина обязательна,
+ * «Другое» — с комментарием.
+ */
+function priceWithDiscount(data, from, to) {
+  const baseTotal = int(data.baseTotal, 0, 1e8);
+  const d = data.discount;
+  if (!d || !d.kind) return { baseTotal, discount: null };
+  if (!baseTotal) throw new DocError('no_base_price');
+  const kind = DISCOUNT_KINDS.includes(d.kind) ? d.kind : null;
+  const value = Number(String(d.value ?? '').replace(/[\s,]/g, ''));
+  const reason = str(d.reason, 60);
+  const comment = str(d.comment, 200);
+  if (!reason) throw new DocError('reason_required');
+  if (reason === OTHER_REASON && !comment) throw new DocError('comment_required');
+  let final;
+  try {
+    ({ final } = computeDiscount(baseTotal, kind, value));
+  } catch (err) {
+    if (err instanceof DiscountError) throw new DocError(err.code);
+    throw err;
+  }
+  const days = from && to ? rentalDays(from.slice(0, 10), to.slice(0, 10)) : 0;
+  return { baseTotal, discount: { kind, value, reason, comment }, total: final, perDay: days ? Math.round(final / days) : null };
 }
 
 function cleanSub(kind, data, contract) {
@@ -294,6 +323,7 @@ export function saveDocument(body, staff) {
     const signatures = changed ? {} : signaturesOf(existing);
     if (changed && Object.keys(signaturesOf(existing)).length) removeSignatureFiles(existing.id);
     q.update.run(lang, json, JSON.stringify(signatures), at, by(staff), existing.id);
+    if (kind === 'contract') syncDiscount(existing.id, data, staff);
     return existing.id;
   }
   // Фото при выдаче — одно на договор
@@ -302,8 +332,34 @@ export function saveDocument(body, staff) {
     if (found) return found.id;
   }
   const number = nextNumber(kind, contract);
-  return Number(q.insert.run(kind, number, contract?.id || null, lang, json, at, staff?.email || null, by(staff), at, by(staff)).lastInsertRowid);
+  const id = Number(q.insert.run(kind, number, contract?.id || null, lang, json, at, staff?.email || null, by(staff), at, by(staff)).lastInsertRowid);
+  if (kind === 'contract') syncDiscount(id, data, staff);
+  return id;
 }
+
+function syncDiscount(id, data, staff) {
+  const doc = getDoc(id);
+  syncContractDiscount(doc, data, data.discount ? { ...data.discount, base: data.baseTotal } : null, staff);
+}
+
+/** Пока скидка ждёт одобрения — договор не подписать, не отправить, технику не выдать */
+function checkNotPending(doc) {
+  const contractId = doc.kind === 'contract' ? doc.id : doc.contract_id;
+  if (activeDiscount(contractId)?.status === 'pending') throw new HttpError(409, 'discount_pending');
+}
+
+// Скидку отклонили — в договоре снова цена по прайсу (подписи снимаются: цена другая)
+setDecisionHandler((d) => {
+  if (d.status !== 'rejected') return;
+  const doc = getDoc(d.docId);
+  if (!doc) return;
+  const data = rowData(doc);
+  const days = data.from && data.to ? rentalDays(data.from.slice(0, 10), data.to.slice(0, 10)) : 0;
+  const next = { ...data, discount: null, total: data.baseTotal ?? data.total, perDay: days && data.baseTotal ? Math.round(data.baseTotal / days) : data.perDay, discountRejected: { by: d.decidedBy, at: d.decidedAt } };
+  removeSignatureFiles(doc.id);
+  q.update.run(doc.lang, JSON.stringify(next), '{}', now(), d.decidedBy, doc.id);
+  dropContractCache();
+});
 
 function removeSignatureFiles(id) {
   for (const who of ['renter', 'company']) fs.rmSync(path.join(DOCS_DIR, String(id), `sign-${who}.png`), { force: true });
@@ -319,6 +375,7 @@ export function deleteDocument(id, staff) {
   dropContractCache();
   for (const d of [...children, doc]) {
     fs.rmSync(path.join(DOCS_DIR, String(d.id)), { recursive: true, force: true });
+    if (d.kind === 'contract') dropDocDiscounts(d.id);
     q.remove.run(d.id);
   }
 }
@@ -385,6 +442,13 @@ function renderData(doc) {
     money: { days, perDay: c.perDay, total: c.total, deposit: c.deposit, paid: c.paid },
     signatures: signaturesForRender(doc)
   };
+  // Скидка: цена по прайсу и строка «Скидка» (причину клиенту не показываем); не одобрена — «черновик»
+  const disc = c.discount ? activeDiscount(contractRow.id) : null;
+  if (disc && disc.status !== 'rejected') {
+    d.money.base = c.baseTotal;
+    d.money.discount = { percent: disc.percent, off: disc.off };
+    if (disc.status === 'pending') d.draft = true;
+  }
   if (doc.kind === 'contract') d.date = fmtDate(bangkokOf(contractRow.created_at));
   if (doc.kind === 'photos') {
     d.date = fmtDate(bangkokOf(contractRow.created_at));
@@ -506,7 +570,7 @@ export function contractsOfClient(phones = [], name = '') {
 
 function contractBrief(row) {
   const d = rowData(row);
-  return { id: row.id, number: row.number, name: d.renter?.name || '', phone: d.renter?.phone || '', model: d.model, plate: d.plate, from: d.from, to: d.to };
+  return { id: row.id, number: row.number, name: d.renter?.name || '', phone: d.renter?.phone || '', model: d.model, plate: d.plate, from: d.from, to: d.to, discount: discountBrief(activeDiscount(row.id)) };
 }
 
 /* ------------------------------------------------------------- WhatsApp */
@@ -538,10 +602,12 @@ async function call(fn) {
   try {
     return await fn();
   } catch (err) {
-    if (err instanceof DocError) throw new HttpError(400, err.code);
+    if (err instanceof DocError || err instanceof DiscountError) throw new HttpError(400, err.code);
     throw err;
   }
 }
+
+const discountBrief = (d) => (d ? { id: d.id, percent: d.percent, off: d.off, status: d.status, reason: d.reason, by: d.by, decidedBy: d.decidedBy } : null);
 
 function issuedOf(row) {
   const e = row.event_id ? getEvent(row.event_id) : null;
@@ -554,6 +620,7 @@ const summary = (row) => {
   const sigs = signaturesOf(row);
   return {
     issued: row.kind === 'contract' ? issuedOf(row) : undefined,
+    discount: row.kind === 'contract' ? discountBrief(activeDiscount(row.id)) : undefined,
     id: row.id, kind: row.kind, number: row.number, lang: row.lang, createdAt: row.created_at, by: row.created_name,
     signed: { renter: sigs.renter || null, company: sigs.company || null },
     sentAt: row.sent_at, sentTo: row.sent_to, photos: row.kind === 'photos' ? (data.photos || []).length : undefined
@@ -590,7 +657,7 @@ export async function docsOne(staff, req, res, url) {
   const contract = doc.kind === 'contract' ? doc : getDoc(doc.contract_id);
   sendJson(res, 200, {
     doc: { ...summary(doc), contractId: contract.id, contractNumber: contract.number, data: rowData(doc), signLink: doc.sign_token && doc.sign_expires > now() ? `${signBase()}/sign/${doc.sign_token}` : null, signExpires: doc.sign_expires },
-    contract: { ...summary(contract), data: rowData(contract) },
+    contract: { ...summary(contract), data: rowData(contract), discountFull: activeDiscount(contract.id) },
     children: q.children.all(contract.id).map(summary)
   });
 }
@@ -601,6 +668,8 @@ export async function docsPrefill(staff, req, res, url) {
   const out = { vehicles: listVehicles().map((v) => ({ id: v.id, plate: v.plate, model: v.model, type: v.type, color: v.color, vin: v.vin, mileage: v.mileage })) };
   out.equipment = Object.fromEntries(Object.entries(EQUIPMENT_BY_TYPE).map(([t, keys]) => [t, keys.map((k) => ({ key: k, ...EQUIPMENT[k], off: EQUIPMENT_DEFAULT_OFF.has(k) }))]));
   out.photoCaptions = Object.entries(PHOTO_CAPTIONS).map(([key, l]) => ({ key, ...l }));
+  const ds = discountSettings();
+  out.discounts = { reasons: ds.reasons, other: OTHER_REASON, approvePct: ds.approvePct, canApprove: canApprove(staff) };
   const vehicle = getVehicle(url.searchParams.get('vehicleId'));
   const from = String(url.searchParams.get('from') || '').slice(0, 10);
   const to = String(url.searchParams.get('to') || '').slice(0, 10);
@@ -649,6 +718,7 @@ export async function docsSign(staff, req, res) {
   const { id, who, png } = await readJson(req, MAX_SIGN_BYTES * 2);
   const doc = getDoc(id);
   if (!doc) throw new HttpError(404, 'unknown_document');
+  checkNotPending(doc);
   await call(() => saveSignature(doc, String(who), png, 'screen'));
   console.log(`Document ${doc.number} (${doc.kind}) signed by ${who} on screen, staff ${staff.email}`);
   sendJson(res, 200, { ok: true });
@@ -677,6 +747,7 @@ export async function docsLink(staff, req, res) {
   const { id, send } = await readJson(req);
   const doc = getDoc(id);
   if (!doc) throw new HttpError(404, 'unknown_document');
+  checkNotPending(doc);
   const token = crypto.randomBytes(24).toString('base64url');
   const expires = new Date(Date.now() + SIGN_DAYS * 86400000).toISOString();
   q.setToken.run(token, expires, doc.id);
@@ -699,6 +770,7 @@ export async function docsSend(staff, req, res) {
   const { id, phone } = await readJson(req);
   const doc = getDoc(id);
   if (!doc) throw new HttpError(404, 'unknown_document');
+  checkNotPending(doc);
   const contract = doc.kind === 'contract' ? doc : getDoc(doc.contract_id);
   const to = await call(() => sendToClient(doc, phone || rowData(contract).renter?.phone));
   console.log(`Document ${doc.number} (${doc.kind}) sent to WhatsApp ${to.slice(0, -4).replace(/\d/g, '•')}${to.slice(-4)} by ${staff.email}`);
@@ -718,6 +790,7 @@ export async function docsIssue(staff, req, res) {
   const doc = getDoc(id);
   if (!doc || doc.kind !== 'contract') throw new HttpError(404, 'unknown_contract');
   if (issuedOf(doc)) throw new HttpError(409, 'already_issued');
+  checkNotPending(doc);
   const c = rowData(doc);
   const vehicle = c.vehicleId ? getVehicle(c.vehicleId) : null;
   if (!vehicle || isSold(vehicle.plate)) throw new HttpError(400, 'no_vehicle');
@@ -905,6 +978,7 @@ export async function publicSign(req, res) {
   const doc = docByToken(token);
   if (!doc) throw new HttpError(404, 'link_expired');
   if (signaturesOf(doc).renter) throw new HttpError(409, 'already_signed');
+  checkNotPending(doc);
   await call(() => saveSignature(doc, 'renter', png, 'link'));
   console.log(`Document ${doc.number} (${doc.kind}) signed by the client via link`);
   const fresh = getDoc(doc.id);

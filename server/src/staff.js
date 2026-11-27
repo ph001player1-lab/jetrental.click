@@ -12,6 +12,7 @@
  * ============================================================================
  */
 
+import { bindDiscountGroup } from './discounts.js';
 import { config } from './config.js';
 import * as db from './db.js';
 import { formatStaffRequest, escapeHtml } from './format.js';
@@ -230,6 +231,8 @@ export async function handleGroupMessage(msg) {
 
   const command = parseCommand(msg.text);
   if (command === 'bind') return bindGroup(msg);
+  // Группа для запросов на скидки (одобряют владелец и админ кнопками)
+  if (command === 'discounts') return bindDiscountGroup(msg);
   if (command === 'test') return createTestRequest(msg);
   if (command === 'summary' && isStaffChat(msg.chat.id)) return sendMorningSummary();
 }

@@ -164,6 +164,7 @@ function reportStatus() {
     me: state.me,
     groupId: config.groupId,
     groupSubject: config.groupSubject,
+    watch: config.watch || [],
     members: state.members,
     lastInboundAt: state.lastInboundAt,
     today: state.today,
@@ -275,9 +276,11 @@ async function handleMessage(msg, type) {
   const ts = toMs(msg.messageTimestamp) || Date.now();
   const inner = content[kind] || {};
 
-  // Рабочая группа: ответы на сообщения и короткие «+», «+14», «беру», «-»
+  // Рабочая группа: ответы на сообщения и короткие «+», «+14», «беру», «-».
+  // Другие группы из списка сервера (например, для скидок) — только ответы на сообщения бота
   if (jid.endsWith('@g.us')) {
-    if (jid !== config.groupId) return;
+    const watched = jid !== config.groupId && (config.watch || []).includes(jid);
+    if (jid !== config.groupId && !watched) return;
     if (msg.key.fromMe) {
       if (!sentIds.has(msg.key.id)) log(`work group: own message ${msg.key.id} (from the company phone) — ignored`);
       return;
@@ -291,11 +294,11 @@ async function handleMessage(msg, type) {
     const quotedId = inner.contextInfo?.stanzaId || null;
     const text = textOf(content);
     const author = await phoneOf(msg.key.participantAlt, msg.key.participant, msg.participant);
-    const takeLike = TAKE_LIKE.test(text) && text.length <= 40;
-    log(`work group: message from +${author || '?'} (${msg.pushName || '-'}), ${quotedId ? 'reply' : 'not a reply'}, ${kind}${takeLike ? `, «${text.trim().slice(0, 20)}»` : ''}${quotedId || takeLike ? ' → bot' : ''}`);
+    const takeLike = !watched && TAKE_LIKE.test(text) && text.length <= 40;
+    log(`${watched ? 'other group' : 'work group'}: message from +${author || '?'} (${msg.pushName || '-'}), ${quotedId ? 'reply' : 'not a reply'}, ${kind}${takeLike ? `, «${text.trim().slice(0, 20)}»` : ''}${quotedId || takeLike ? ' → bot' : ''}`);
     if (!quotedId && !takeLike) return;
     enqueue(() => botRequest('/internal/wabot/message', {
-      kind: 'group', id: msg.key.id, ts: new Date(ts).toISOString(), author, authorJid: msg.key.participant || null,
+      kind: 'group', groupId: jid, id: msg.key.id, ts: new Date(ts).toISOString(), author, authorJid: msg.key.participant || null,
       authorName: msg.pushName || null, text: textOf(content).slice(0, 500), quotedId
     }));
     return;
@@ -600,14 +603,23 @@ http.createServer(async (req, res) => {
       await react(String(jid), String(id), participant, String(emoji || '✅'));
       return send(res, 200, { ok: true });
     }
+    if (req.method === 'POST' && url.pathname === '/watch') {
+      // Группы, где бот читает ответы на свои сообщения (кроме рабочей) — задаёт сервер
+      const { groups } = await readJson(req);
+      config.watch = (Array.isArray(groups) ? groups : []).map(String).filter((g) => g.endsWith('@g.us')).slice(0, 5);
+      saveConfig();
+      log(`watching replies in ${config.watch.length} more group(s)`);
+      reportStatus();
+      return send(res, 200, { ok: true, watch: config.watch });
+    }
     if (req.method === 'POST' && url.pathname === '/config') {
       const { groupId } = await readJson(req);
       if (!groupId) {
-        config = { groupId: null, groupSubject: null };
+        config = { ...config, groupId: null, groupSubject: null };
       } else {
         const group = state.groups.find((g) => g.id === groupId);
         if (!group) return send(res, 400, { error: 'unknown_group' });
-        config = { groupId: group.id, groupSubject: group.subject };
+        config = { ...config, groupId: group.id, groupSubject: group.subject };
       }
       saveConfig();
       log(config.groupId ? `requests go to «${config.groupSubject}»` : 'no work group');

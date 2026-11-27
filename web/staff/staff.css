@@ -1608,3 +1608,16 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
 .crm-issue__row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: end; }
 .crm-free { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 320px; overflow: auto; }
 .crm-free li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; background: var(--surface); }
+
+/* Скидки: договор, «Финансы» */
+.dc-disc { padding: 10px; border-radius: 10px; background: var(--surface-2); }
+.dc-disc [hidden] { display: none; }
+.dc-disc .warn { margin: 0; }
+.dc-form input[readonly] { background: var(--surface-2); color: var(--muted); }
+.dc-banner { display: grid; gap: 6px; padding: 8px 12px; border-radius: 8px; font-size: 14px; }
+.dc-banner--wait { background: var(--reserve-bg); }
+.dc-banner--bad { background: var(--rent-bg); }
+.dc-banner--ok { background: var(--free-bg); }
+.fin-disc-wait { padding: 10px 12px; border-radius: 10px; background: var(--reserve-bg); margin-bottom: 10px; }
+.fin-disc-wait h4 { margin: 0 0 6px; }
+.fin-disc-btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }

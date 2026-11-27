@@ -69,6 +69,7 @@ import { getJournal, fixEvent, getTimesheet, getReconcile, getMedia, importHisto
 import { waStatus, waConfig, waPair, waLogout } from './journal/observer.js';
 import { wabotPortalStatus, wabotPortalSettings, wabotPortalConfig, wabotPortalPair, wabotPortalLogout, wabotSettings, postFleetEvent } from './wabot.js';
 import { groupStatusByPlate } from './journal/reconcile.js';
+import { discountsReport, discountsDecide, discountsSettingsRoute } from './discounts.js';
 import { settingsRoute, settingsService, settingsServiceDelete, settingsPaid, settingsPaymentDelete, settingsAi, settingsDomainsCheck } from './itSettings.js';
 import { docsList, docsOne, docsPrefill, docsSave, docsDelete, docsPdf, docsSign, docsUnsign, docsLink, docsSend, docsPhotoUpload, docsPhotoGet, docsPhotoDelete, contractFor, contractsOfClient, docsIssue, docsUnissue } from './documents.js';
 
@@ -889,6 +890,9 @@ const ROUTES = {
   'POST /api/staff/docs/photo/delete': signedIn(docsPhotoDelete),
   'POST /api/staff/docs/issue': signedIn(docsIssue),
   'POST /api/staff/docs/unissue': signedIn(docsUnissue),
+  'GET /api/staff/discounts': signedIn(discountsReport),
+  'POST /api/staff/discounts/decide': signedIn(discountsDecide),
+  'POST /api/staff/settings/discounts': signedIn(discountsSettingsRoute),
   'GET /api/staff/settings': signedIn(settingsRoute),
   'POST /api/staff/settings/service': signedIn(settingsService),
   'POST /api/staff/settings/service/delete': signedIn(settingsServiceDelete),

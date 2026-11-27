@@ -3,7 +3,8 @@
  * Данные: отчёты рабочей группы WhatsApp (журнал) и — для расходов и сверки —
  * загруженная «Касса» из WS. Суммы в батах, другие валюты — по курсу дня.
  * Блоки по порядку: сводка, касса, залоги, долги клиентов, машины, расходы,
- * прогноз, сверка с WS, деньги в отчётах.
+ * прогноз, сверка с WS, деньги в отчётах. Скидки — из договоров («Документы»):
+ * какие сделки со скидкой, причина, кто дал и кто одобрил.
  */
 (function () {
   'use strict';
@@ -14,10 +15,12 @@
     booking: 'Бронь', issue: 'Выдача', return: 'Возврат', extension: 'Продление', payment: 'Оплата', changed: 'Замена', pickup_task: 'Забрать (задание)'
   };
   const MONTHS = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
-  const SECTIONS = [['sum', 'Сводка'], ['cash', 'Касса'], ['dep', 'Залоги'], ['debt', 'Долги'], ['cars', 'Машины'], ['exp', 'Расходы'], ['fc', 'Прогноз'], ['ws', 'Сверка']];
+  const SECTIONS = [['sum', 'Сводка'], ['disc', 'Скидки'], ['cash', 'Касса'], ['dep', 'Залоги'], ['debt', 'Долги'], ['cars', 'Машины'], ['exp', 'Расходы'], ['fc', 'Прогноз'], ['ws', 'Сверка']];
   const ERRORS = {
     not_cashbook: 'Это не выгрузка «Касса» из WS: нужен файл .xlsx с колонками «Дата», «Назначение платежа», «Приход», «Расход».',
     admin_only: 'Это может только админ.',
+    owner_or_admin_only: 'Одобрить скидку может только владелец или админ.',
+    already_decided: 'По этой скидке уже решили.',
     body_too_large: 'Файл слишком большой (больше 20 МБ).'
   };
   const TEMPLATES = {
@@ -29,7 +32,8 @@
     const { api, esc } = ctx;
     const st = {
       preset: 'month', data: null, failed: false, loading: false, sort: 'revenue', opsAll: false, upload: null,
-      wsOnlyAll: false, groupOnlyAll: false, debtsAll: false, withheldAll: false, loansOpen: false, loansMsg: null
+      wsOnlyAll: false, groupOnlyAll: false, debtsAll: false, withheldAll: false, loansOpen: false, loansMsg: null,
+      disc: null, discAll: false, discMsg: null
     };
 
     // Даты и числа — всегда по-русски, время по Бангкоку
@@ -77,7 +81,9 @@
       st.loading = true;
       ctx.rerender();
       try {
-        st.data = await api(`/finance?from=${from}&to=${to}`);
+        const [data, disc] = await Promise.all([api(`/finance?from=${from}&to=${to}`), api(`/discounts?from=${from}&to=${to}`).catch(() => null)]);
+        st.data = data;
+        st.disc = disc;
         st.failed = false;
       } catch (err) {
         st.failed = ERRORS[err.code] || 'Не удалось загрузить данные. Обновите страницу.';
@@ -133,6 +139,57 @@
       <section class="card fin-sec" id="fin-${id}"><h3>${esc(title)}</h3>${intro ? `<p class="muted jr-small">${intro}</p>` : ''}${body}</section>`;
     const status = (msg) => (msg ? `<p class="md-status is-${msg.kind === 'error' ? 'error' : 'ok'}" role="status">${esc(msg.text)}</p>` : '');
     const template = (key) => `<pre class="fin-template">${esc(TEMPLATES[key])}</pre>`;
+
+    /* ------------------------------------------------------- Скидки */
+
+    async function decide(id, approve) {
+      try {
+        await send('/discounts/decide', JSON.stringify({ id, approve }), 'application/json');
+        st.discMsg = { kind: 'ok', text: approve ? '✓ Скидка одобрена.' : '✓ Скидка отклонена: в договоре снова цена по прайсу.' };
+      } catch (err) {
+        st.discMsg = { kind: 'error', text: ERRORS[err.code] || 'Не удалось сохранить решение.' };
+      }
+      await load();
+    }
+
+    const DISC_STATUS = { pending: '⏳ ждёт одобрения', approved: 'дана', rejected: 'отклонена' };
+    const discKind = (x) => (x.kind === 'percent' ? `${x.value}%` : x.kind === 'amount' ? `−${baht(x.value)}` : `своя цена ${baht(x.value)}`);
+    const contractLink = (x) => (ctx.openContract ? `<button type="button" class="link" data-fin-contract="${x.docId}">${esc(x.number || 'договор')}</button>` : esc(x.number || ''));
+
+    function renderDiscounts() {
+      const d = st.disc;
+      if (!d) return '';
+      const pending = d.pending.length ? `<div class="fin-disc-wait"><h4>⏳ Ждут одобрения (${d.pending.length})</h4><ul class="fin-ops">${d.pending.map((x) => `<li>
+          <div><b>−${esc(x.percent)}%</b> (${esc(discKind(x))}) · ${contractLink(x)} · ${esc(x.client || '—')} ${x.plate ? `<span class="plate">#${esc(x.plate)}</span>` : ''}</div>
+          <div class="fin-op__money">${esc(baht(x.base))} → ${esc(baht(x.final))} · причина: ${esc(x.reason)}${x.comment ? ` — «${esc(x.comment)}»` : ''}</div>
+          <div class="muted jr-small">запросил(а) ${esc(x.by || '—')} · ${esc(when(x.at))}</div>
+          ${d.canApprove ? `<div class="fin-disc-btns"><button type="button" class="btn btn--small btn--primary" data-fin-decide="${x.id}:1">✅ Одобрить</button> <button type="button" class="btn btn--small" data-fin-decide="${x.id}:0">❌ Отклонить</button></div>` : ''}
+        </li>`).join('')}</ul></div>` : '';
+      const t = d.totals;
+      const tiles = `<div class="stats fin-tiles">
+        ${tile('Сделок со скидкой', num(t.count), 'одобренные и выданные без одобрения')}
+        ${tile('Скидок на сумму', baht(t.off), t.base ? `${Math.round((t.off / t.base) * 1000) / 10}% от цены по прайсу` : '')}
+      </div>`;
+      const groupTable = (title, head, rows) => (rows.length ? `<h4>${esc(title)}</h4><div class="table-wrap"><table class="fin-table">
+        <thead><tr><th>${esc(head)}</th><th class="fin-num">Сделок</th><th class="fin-num">Скидка</th></tr></thead>
+        <tbody>${rows.map((r) => `<tr><td>${esc(r.name)}</td><td class="fin-num">${esc(num(r.count))}</td><td class="fin-num">${esc(baht(r.off))}</td></tr>`).join('')}</tbody></table></div>` : '');
+      const list = st.discAll ? d.list : d.list.slice(0, 20);
+      const deals = d.list.length ? `<h4>Сделки со скидкой</h4><div class="table-wrap"><table class="fin-table fin-table--wide fin-table--stack">
+        <thead><tr><th>Когда</th><th>Договор</th><th>Клиент и техника</th><th class="fin-num">По прайсу</th><th class="fin-num">Итог</th><th>Скидка</th><th>Причина</th><th>Кто дал</th><th>Решение</th></tr></thead>
+        <tbody>${list.map((x) => `<tr>
+          <td data-label="Когда">${esc(when(x.at))}</td>
+          <td data-label="Договор">${contractLink(x)}</td>
+          <td data-label="Клиент">${esc(x.client || '—')} ${x.plate ? `<span class="plate">#${esc(x.plate)}</span>` : ''}<div class="muted jr-small">${esc(x.model || '')}</div></td>
+          <td class="fin-num" data-label="По прайсу">${esc(num(x.base))}</td>
+          <td class="fin-num" data-label="Итог"><b>${esc(num(x.final))}</b></td>
+          <td data-label="Скидка"><b>−${esc(x.percent)}%</b><div class="muted jr-small">${esc(discKind(x))}</div></td>
+          <td data-label="Причина">${esc(x.reason)}${x.comment ? `<div class="muted jr-small">«${esc(x.comment)}»</div>` : ''}</td>
+          <td data-label="Кто дал">${esc(x.by || '—')}</td>
+          <td data-label="Решение">${esc(DISC_STATUS[x.status] || x.status)}${x.decidedBy ? `<div class="muted jr-small">${esc(x.decidedBy)}${x.decidedVia ? ` · ${esc({ portal: 'портал', telegram: 'Telegram', whatsapp: 'WhatsApp' }[x.decidedVia] || x.decidedVia)}` : ''}</div>` : ''}</td>
+        </tr>`).join('')}</tbody></table></div>${showAll('discAll', d.list.length, 20)}` : '<p class="muted">За этот период скидок не было.</p>';
+      return section('disc', 'Скидки', `${status(st.discMsg)}${pending}${tiles}${groupTable('По причинам', 'Причина', d.byReason)}${groupTable('Кто давал', 'Сотрудник', d.byStaff)}${deals}`,
+        `Скидки из договоров («Документы»). Больше ${esc(d.settings.approvePct)}% — только с одобрения владельца или админа.`);
+    }
 
     /* ------------------------------------------------------- 1. Сводка */
 
@@ -465,6 +522,7 @@
           <p class="muted jr-small">${esc(day(d.period.from))} — ${esc(day(d.period.to))} (${d.period.days} дн.) · всё в батах, валюты ${d.rates.approximate ? 'по примерному курсу' : `по курсу на ${esc(when(d.rates.at))}`}: ${esc(rates)}</p>
           <nav class="fin-nav" aria-label="Разделы">${nav}</nav>
           ${renderSummary(d)}
+          ${renderDiscounts()}
           ${renderCash(d)}
           ${renderDeposits(d)}
           ${renderDebts(d)}
@@ -482,13 +540,17 @@
       const el = event.target;
       if (!el.closest('.fin')) return false;
       const preset = el.closest('[data-fin-preset]');
-      if (preset) { st.preset = preset.dataset.finPreset; st.upload = null; st.loansMsg = null; load(); return true; }
+      if (preset) { st.preset = preset.dataset.finPreset; st.upload = null; st.loansMsg = null; st.discMsg = null; load(); return true; }
       const go = el.closest('[data-fin-go]');
       if (go) { document.getElementById(`fin-${go.dataset.finGo}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); return true; }
       const sort = el.closest('[data-fin-sort]');
       if (sort) { st.sort = sort.dataset.finSort; ctx.rerender(); return true; }
       const all = el.closest('[data-fin-all]');
       if (all) { st[all.dataset.finAll] = true; ctx.rerender(); return true; }
+      const dec = el.closest('[data-fin-decide]');
+      if (dec) { const [id, ok] = dec.dataset.finDecide.split(':'); dec.disabled = true; decide(Number(id), ok === '1'); return true; }
+      const contract = el.closest('[data-fin-contract]');
+      if (contract) { ctx.openContract(Number(contract.dataset.finContract)); return true; }
       if (el.closest('[data-fin-loans-open]')) { st.loansOpen = true; st.loansMsg = null; ctx.rerender(); return true; }
       if (el.closest('[data-fin-loans-cancel]')) { st.loansOpen = false; ctx.rerender(); return true; }
       return false;

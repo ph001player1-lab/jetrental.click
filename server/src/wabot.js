@@ -21,6 +21,7 @@
  * ============================================================================
  */
 
+import { handleDiscountWaReply, discountWaGroup } from './discounts.js';
 import { config } from './config.js';
 import { HttpError, sendJson, readJson } from './http.js';
 import { can } from './roles.js';
@@ -132,11 +133,25 @@ function saveStatus(body) {
     undecrypted: Array.isArray(body.undecrypted) ? body.undecrypted.slice(-30) : [],
     limitedAt: body.limitedAt || null
   });
+  // Ответы в группе для скидок бот должен читать — сверяем список групп с настройками
+  syncWatch(Array.isArray(body.watch) ? body.watch : []);
   if (status.connected) {
     db.setSetting('wabot_last_ok', status.lastSeenAt);
     // Номер для ссылок wa.me во вкладке «Маркетинг» — номер бота, если ещё не задан
     if (status.me?.id && !marketingSettings().waNumber) saveMarketingSettings({ waNumber: status.me.id });
   }
+}
+
+/** Группы WhatsApp, где бот читает ответы (кроме рабочей): группа для скидок */
+let watchSyncing = false;
+export function syncWatch(current = null) {
+  const wanted = [discountWaGroup()].filter(Boolean);
+  if (current && JSON.stringify([...current].sort()) === JSON.stringify([...wanted].sort())) return;
+  if (watchSyncing || !wabotConfigured) return;
+  watchSyncing = true;
+  wabotCall('POST', '/watch', { groups: wanted })
+    .catch((err) => console.error('WhatsApp bot watch list not set:', err.code || err.message))
+    .finally(() => { watchSyncing = false; });
 }
 
 /* --------------------------------------------------- Запросы к wabot */
@@ -427,6 +442,11 @@ export async function noteTakenInWaGroup(request) {
  */
 async function handleGroupReply(body) {
   const groupId = status.groupId;
+  // Ответ на запрос скидки («+» / «-») — в группе для скидок или в рабочей
+  const fromGroup = body.groupId || groupId;
+  const sayIn = (text) => wabotSend(fromGroup, text, { id: body.id, participant: body.authorJid || undefined, text: String(body.text || '') }).catch(() => null);
+  if (await handleDiscountWaReply(body, sayIn)) return;
+  if (body.groupId && body.groupId !== groupId) return;
   const text = String(body.text || '').trim();
   const author = digits(body.author);
   let name = body.authorName ? String(body.authorName).slice(0, 80) : author ? `+${author}` : 'WhatsApp';

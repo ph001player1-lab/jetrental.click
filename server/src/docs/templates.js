@@ -46,6 +46,9 @@ const L = {
   days: { en: 'Rental days', ru: 'Суток аренды', th: 'จำนวนวันเช่า' },
   perDay: { en: 'Price per day', ru: 'Цена за сутки', th: 'ราคาต่อวัน' },
   total: { en: 'Total price', ru: 'Итого за аренду', th: 'ราคารวม' },
+  priceList: { en: 'Price by tariff', ru: 'Цена по прайсу', th: 'ราคาตามอัตรา' },
+  discount: { en: 'Discount', ru: 'Скидка', th: 'ส่วนลด' },
+  draft: { en: 'DRAFT — discount awaiting approval', ru: 'ЧЕРНОВИК — скидка ждёт одобрения', th: 'ฉบับร่าง — รออนุมัติส่วนลด' },
   deposit: { en: 'Deposit (refundable)', ru: 'Залог (возвращается)', th: 'เงินมัดจำ (คืนได้)' },
   paid: { en: 'Paid', ru: 'Оплачено', th: 'ชำระแล้ว' },
   balance: { en: 'Balance due', ru: 'Осталось оплатить', th: 'คงเหลือที่ต้องชำระ' },
@@ -146,7 +149,7 @@ function head(title, lang, right, d) {
     <img class="logo" src="${LOGO}" alt="Jet Mobility">
     <div class="tt"><h1>${esc(title[lang])}</h1><div class="th1">${esc(title.th)}</div></div>
     <div class="no">${right}</div>
-  </header>${d.sample ? `<div class="wm">${esc(L.sample[lang])} · ${esc(L.sample.th)}</div>` : ''}`;
+  </header>${d.sample ? `<div class="wm">${esc(L.sample[lang])} · ${esc(L.sample.th)}</div>` : d.draft ? `<div class="wm wm--draft">${esc(L.draft[lang])}<br>${esc(L.draft.th)}</div>` : ''}`;
 }
 
 const foot = () => `<footer class="ft"><b>${COMPANY.name}</b> · ${esc(COMPANY.addressTh)} · ${COMPANY.phone} · ${COMPANY.site}</footer>`;
@@ -201,6 +204,8 @@ function contract(d, lang) {
         ${field('pickupPlace', d.period.pickupPlace, lang)}${field('returnPlace', d.period.returnPlace, lang)}</div></div>
       <div><h2>${lbl('charges', lang)}</h2><table class="money">
         <tr><td>${lbl('days', lang)}</td><td class="r">${esc(m.days)}</td></tr>
+        ${m.base && m.discount ? `<tr><td>${lbl('priceList', lang)}</td><td class="r">${money(m.base)}</td></tr>
+        <tr><td><span class="lb">${esc(L.discount[lang])} ${esc(m.discount.percent)}%<small>${esc(L.discount.th)}</small></span></td><td class="r">− ${money(m.discount.off)}</td></tr>` : ''}
         <tr><td>${lbl('perDay', lang)}</td><td class="r">${money(m.perDay)}</td></tr>
         <tr class="em"><td>${lbl('total', lang)}</td><td class="r">${money(m.total)}</td></tr>
         <tr><td>${lbl('deposit', lang)}</td><td class="r">${money(m.deposit)}</td></tr>
@@ -377,6 +382,7 @@ small { display: block; font-family: 'Sarabun', 'Noto Sans', sans-serif; color: 
 .no { display: grid; gap: 4px; justify-items: end; text-align: right; }
 .no .lb { font-size: 9px; color: #555; } .no b { display: block; font-size: 12px; } .no .big { font-size: 15px; color: #b85200; }
 .wm { position: absolute; top: 120mm; left: 0; right: 0; text-align: center; font-size: 64px; font-weight: 700; color: rgba(184,82,0,.08); transform: rotate(-24deg); }
+.wm.wm--draft { font-size: 30px; color: rgba(192, 54, 44, .16); }
 h2 { margin: 4px 0 1px; font-size: 11.5px; display: flex; gap: 6px; align-items: center; }
 h2 .lb small { display: inline; margin-left: 6px; font-size: 10.5px; }
 .lb { font-weight: 600; }

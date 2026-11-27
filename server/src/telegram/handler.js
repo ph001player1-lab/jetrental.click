@@ -3,6 +3,7 @@
  * группа → ассистент сотрудников, кнопки → соответствующий обработчик.
  */
 
+import { handleDiscountCallback } from '../discounts.js';
 import { handleTelegramPrivateMessage, handleTelegramClientCallback } from '../channels/telegram.js';
 import { handleGroupMessage, handleStaffCallback, handleMyChatMember } from '../staff.js';
 import { answerCallback } from './api.js';
@@ -24,6 +25,8 @@ async function handleCallbackQuery(query) {
 
   if (['lang', 'type', 'model', 'heard', 'back'].includes(action)) return handleTelegramClientCallback(query, action, value);
   if (action === 'take' || action === 'decline') return handleStaffCallback(query, action, Number(value));
+  // Скидки: disc:ok:12 / disc:no:12 — одобряют владелец и админ
+  if (action === 'disc') return handleDiscountCallback(query, value, String(query.data).split(':')[2]);
 
   return answerCallback(query);
 }

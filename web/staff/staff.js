@@ -902,6 +902,7 @@
     dateTime,
     shortDate: (iso) => shortDate(iso),
     errorText: (err) => ERRORS[err.code] || t('app.loadFailed'),
+    openContract: (id) => openContract(id),
     rerender: () => { if (state.tab === 'finance') $('#view').innerHTML = finance.render(); }
   });
 

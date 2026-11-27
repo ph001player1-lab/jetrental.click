@@ -79,7 +79,7 @@
           <div class="dc-card__head"><b>${esc(c.number)}</b><span class="muted jr-small">${esc(dmy(c.createdAt?.slice(0, 10)))}</span></div>
           <div>${esc(c.client || t('dc.noClient'))}${c.phone ? ` · <span class="muted">${esc(c.phone)}</span>` : ''}</div>
           <div class="muted">${esc(c.model || '')}${c.plate ? ` · ${esc(c.plate)}` : ''}${c.from ? ` · ${esc(dt(c.from))} – ${esc(dt(c.to))}` : ''}</div>
-          <div class="dc-pills">${statusPills(c)}${c.children.map((x) => `<span class="pill">${KIND_ICON[x.kind]} ${esc(t(`dc.kind.${x.kind}`))}${x.kind === 'receipt' || x.kind === 'addendum' ? ` ${esc(x.number.replace(/^.*\//, '/'))}` : ''}</span>`).join(' ')}</div>
+          <div class="dc-pills">${c.discount ? `<span class="pill ${c.discount.status === 'pending' ? 'pill--reserve' : 'pill--free'}">${c.discount.status === 'pending' ? '⏳ ' : ''}−${esc(c.discount.percent)}%</span> ` : ''}${statusPills(c)}${c.children.map((x) => `<span class="pill">${KIND_ICON[x.kind]} ${esc(t(`dc.kind.${x.kind}`))}${x.kind === 'receipt' || x.kind === 'addendum' ? ` ${esc(x.number.replace(/^.*\//, '/'))}` : ''}</span>`).join(' ')}</div>
         </button>`).join('');
       return `<div class="dc">
         <div class="dc-toolbar">
@@ -158,6 +158,10 @@
         <h3>💰 ${esc(t('dc.money'))}</h3>
         <div class="dc-grid">
           ${fld(t('dc.days'), `<output class="dc-out" data-dc-days>${esc(days(f.from, f.to))}</output>`)}
+          ${fld(t('dc.base'), inp('baseTotal', f.baseTotal ?? '', 'inputmode="numeric" data-dc-money'))}
+        </div>
+        ${discountFields(f)}
+        <div class="dc-grid">
           ${fld(t('dc.perDay'), inp('perDay', f.perDay, 'inputmode="numeric"'))}${fld(t('dc.total'), inp('total', f.total, 'inputmode="numeric"'))}
           ${fld(t('dc.deposit'), inp('deposit', f.deposit, 'inputmode="numeric"'))}${fld(t('dc.paid'), inp('paid', f.paid, 'inputmode="numeric"'))}
           ${fld(t('dc.payMethod'), inp('payMethod', f.payMethod, `placeholder="${esc(t('dc.payHint'))}"`), 'dc-wide')}
@@ -169,12 +173,100 @@
       </form>`;
     }
 
+    /* ------------------------------------------------------------ Скидка */
+
+    const PRESETS = [5, 10, 15, 20];
+    const discSelect = (d) => {
+      if (!d?.kind) return 'none';
+      if (d.kind === 'percent' && PRESETS.includes(Number(d.value))) return `p${Number(d.value)}`;
+      return d.kind === 'percent' ? 'pct' : d.kind;
+    };
+
+    function discountFields(f) {
+      const cfg = st.pre.discounts || { reasons: [], other: 'Другое', approvePct: 10 };
+      const sel = discSelect(f.discount);
+      const opts = [['none', t('dc.discNone')], ...PRESETS.map((p) => [`p${p}`, `${p}%`]), ['pct', t('dc.discPct')], ['amount', t('dc.discAmount')], ['price', t('dc.discPrice')]];
+      const custom = ['pct', 'amount', 'price'].includes(sel);
+      const reasons = [...cfg.reasons, cfg.other];
+      return `<div class="dc-grid dc-disc" data-dc-disc>
+        ${fld(t('dc.discount'), `<select class="search" name="discKind" data-dc-money>${opts.map(([v, l]) => `<option value="${v}"${v === sel ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`)}
+        <label class="field" data-dc-discvalue${custom ? '' : ' hidden'}><span>${esc(t('dc.discValue'))}</span>${inp('discValue', custom ? f.discount?.value : '', 'inputmode="decimal" data-dc-money')}</label>
+        <label class="field" data-dc-discreason${sel === 'none' ? ' hidden' : ''}><span>${esc(t('dc.discReason'))} *</span><select class="search" name="discReason" data-dc-money>
+          <option value="">—</option>${reasons.map((r) => `<option${r === f.discount?.reason ? ' selected' : ''}>${esc(r)}</option>`).join('')}</select></label>
+        <label class="field dc-wide" data-dc-disccomment${sel === 'none' ? ' hidden' : ''}><span>${esc(t('dc.discComment'))}</span>${inp('discComment', f.discount?.comment || '', 'maxlength="200"')}</label>
+        <p class="jr-small dc-wide" data-dc-discnote></p>
+      </div>`;
+    }
+
+    /** Скидка → { kind, value } или null; размер — из списка или своё */
+    function readDiscount(form) {
+      const sel = form.elements.discKind?.value || 'none';
+      if (sel === 'none') return null;
+      const value = sel.startsWith('p') && sel !== 'pct' && sel !== 'price' ? Number(sel.slice(1)) : Number(String(form.elements.discValue.value).replace(/[\s,]/g, ''));
+      const kind = sel.startsWith('p') && sel !== 'price' ? 'percent' : sel;
+      return { kind, value, reason: form.elements.discReason.value, comment: form.elements.discComment.value };
+    }
+
+    /** Пересчёт итога на лету: цена по прайсу − скидка; сверх порога — предупреждение об одобрении */
+    function recalcMoney(form) {
+      const sel = form.elements.discKind?.value || 'none';
+      const box = form.querySelector('[data-dc-disc]');
+      if (!box) return;
+      box.querySelector('[data-dc-discvalue]').hidden = !['pct', 'amount', 'price'].includes(sel);
+      box.querySelector('[data-dc-discreason]').hidden = sel === 'none';
+      box.querySelector('[data-dc-disccomment]').hidden = sel === 'none';
+      const note = box.querySelector('[data-dc-discnote]');
+      const d = readDiscount(form);
+      // Цены по прайсу нет (вписали вручную) — берём прежний итог как цену без скидки
+      if (d && !String(form.elements.baseTotal.value).trim() && String(form.elements.total.value).trim()) form.elements.baseTotal.value = form.elements.total.value;
+      const base = Number(String(form.elements.baseTotal.value).replace(/[\s,]/g, ''));
+      const nDays = Number(form.querySelector('[data-dc-days]')?.textContent) || 0;
+      form.elements.total.readOnly = Boolean(d);
+      form.elements.perDay.readOnly = Boolean(d);
+      if (!d) {
+        note.textContent = '';
+        note.className = 'jr-small dc-wide';
+        return;
+      }
+      if (!(base > 0)) { note.textContent = t('dc.err.no_base_price'); note.className = 'jr-small dc-wide warn'; return; }
+      let final = d.kind === 'percent' ? Math.round(base * (1 - d.value / 100)) : d.kind === 'amount' ? Math.round(base - d.value) : Math.round(d.value);
+      if (!(d.value > 0) || !(final >= 0) || final >= base) { note.textContent = t('dc.err.not_a_discount'); note.className = 'jr-small dc-wide warn'; return; }
+      const pct = Math.round(((base - final) / base) * 1000) / 10;
+      form.elements.total.value = final;
+      if (nDays) form.elements.perDay.value = Math.round(final / nDays);
+      const cfg = st.pre.discounts || {};
+      const needs = pct > (cfg.approvePct ?? 10) && !cfg.canApprove;
+      note.textContent = `${t('dc.discPreview', { base: money(base), pct, off: money(base - final), final: money(final) })}${needs ? ` ${t('dc.discNeedApproval', { pct: cfg.approvePct ?? 10 })}` : ''}`;
+      note.className = `jr-small dc-wide ${needs ? 'warn' : 'muted'}`;
+    }
+
+    /** Скидка договора: ждёт одобрения / отклонена / одобрена */
+    function discountBanner(c) {
+      const d = c.discountFull;
+      const rej = c.data.discountRejected;
+      if (d?.status === 'pending') {
+        const can = st.pre.discounts?.canApprove;
+        return `<div class="dc-banner dc-banner--wait">${esc(t('dc.discPending', { pct: d.percent, by: d.by || '' }))}
+          <div class="muted jr-small">${esc(d.reason)}${d.comment ? ` — «${esc(d.comment)}»` : ''}</div>
+          ${can ? `<div class="dc-actions"><button type="button" class="btn btn--small btn--primary" data-dc-decide="${d.id}:1">✅ ${esc(t('dc.discApprove'))}</button>
+            <button type="button" class="btn btn--small" data-dc-decide="${d.id}:0">❌ ${esc(t('dc.discReject'))}</button></div>` : ''}</div>`;
+      }
+      if (!d && rej) return `<div class="dc-banner dc-banner--bad">${esc(t('dc.discRejected', { by: rej.by || '' }))}</div>`;
+      if (d?.status === 'approved') return `<div class="dc-banner dc-banner--ok">${esc(t('dc.discApproved', { pct: d.percent, off: money(d.off), reason: d.reason, by: d.decidedBy ? ` · ${d.decidedBy}` : '' }))}</div>`;
+      return '';
+    }
+    const pendingDiscount = () => st.one?.contract.discountFull?.status === 'pending';
+
     /** Кнопки документа: PDF, подписи, ссылка, WhatsApp, удалить */
     function docActions(d) {
       const pdfReady = st.list?.pdfReady;
       const sign = (who) => (d.signed[who]
         ? `<span class="pill pill--free">✍️ ${esc(t(`dc.who.${who}`))} · ${esc(dt(d.signed[who].at))}${d.signed[who].via === 'link' ? ` · ${esc(t('dc.viaLink'))}` : ''}</span>`
         : canEdit() ? `<button type="button" class="btn btn--small" data-dc-sign="${d.id}:${who}">✍️ ${esc(t(`dc.signBy.${who}`))}</button>` : '');
+      if (pendingDiscount()) {
+        return `<div class="dc-actions"><button type="button" class="btn btn--small" data-dc-pdf="${d.id}"${pdfReady ? '' : ' disabled'}>📄 PDF</button>
+          <span class="muted jr-small">⏳ ${esc(t('dc.discWait'))}</span></div>`;
+      }
       return `<div class="dc-actions">
         <button type="button" class="btn btn--small" data-dc-pdf="${d.id}"${pdfReady ? '' : ' disabled'}>📄 PDF</button>
         ${d.kind === 'receipt' ? '' : sign('renter')}${sign('company')}
@@ -291,7 +383,7 @@
           <h2 class="dc-title">${c ? `${esc(c.number)}` : esc(t('dc.newContract'))}</h2>
         </div>
         ${st.msg ? `<p class="md-status is-${st.msg.kind}" role="status">${esc(st.msg.text)}</p>` : ''}
-        ${c ? `<section class="card dc-sec"><h3>📄 ${esc(t('dc.kind.contract'))}</h3>${docActions(c)}${issueBlock(c)}</section>` : ''}
+        ${c ? `<section class="card dc-sec"><h3>📄 ${esc(t('dc.kind.contract'))}</h3>${discountBanner(c)}${docActions(c)}${issueBlock(c)}</section>` : ''}
         ${contractForm()}
         ${c ? `${photosBlock()}${subBlock('receipt')}${subBlock('return')}${subBlock('addendum')}` : ''}
       </div>`;
@@ -300,6 +392,7 @@
     function render() {
       if (st.failed) return `<div class="dc"><div class="card empty">${esc(t('app.loadFailed'))}</div></div>`;
       if (!st.list || !st.pre) return `<div class="dc"><div class="card empty">${esc(t('app.loading'))}</div></div>`;
+      if (st.view === 'edit') setTimeout(() => { const form = document.querySelector('[data-dc-form]'); if (form && form.elements.discKind?.value !== 'none') recalcMoney(form); }, 0);
       if (st.view === 'edit' && st.pendingQuote) {
         st.pendingQuote = false;
         setTimeout(() => { const form = document.querySelector('[data-dc-form]'); if (form) refreshQuote(form, true); }, 0);
@@ -316,6 +409,7 @@
           ${canEdit() ? `<button type="button" class="link jr-small dc-del" data-dc-unissue="${c.id}">${esc(t('dc.unissue'))}</button>` : ''}</div>`;
       }
       if (!canEdit()) return '';
+      if (pendingDiscount()) return '';
       if (!d.vehicleId || !d.to) return `<p class="muted jr-small">${esc(t('dc.issueNeed'))}</p>`;
       const today = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
       const reserve = d.from && d.from.slice(0, 10) > today;
@@ -338,6 +432,7 @@
           mileage: g('mileage'), fuel: g('fuel'),
           equipment: (st.pre.equipment[type] || []).map((it) => ({ key: it.key, ok: Boolean(form.elements[`eq_${it.key}`]?.checked), ...(it.key === 'helmets' ? { count: g('helmets') } : {}) })),
           perDay: g('perDay'), total: g('total'), deposit: g('deposit'), paid: g('paid'), payMethod: g('payMethod'),
+          baseTotal: g('baseTotal'), discount: readDiscount(form),
           requestId: g('requestId') || st.form.requestId || null
         }
       };
@@ -363,10 +458,12 @@
         if (p.quote?.total) {
           form.elements.perDay.value = p.quote.perDay;
           form.elements.total.value = p.quote.total;
+          form.elements.baseTotal.value = p.quote.total;
           if (p.quote.deposit) form.elements.deposit.value = p.quote.deposit;
           st.quoteNote = t('dc.priceFrom', { days: p.quote.days, total: money(p.quote.total) });
         } else st.quoteNote = t('dc.noPrice');
         if (note) note.textContent = st.quoteNote;
+        recalcMoney(form);
       } catch { /* цену впишут вручную */ }
     }
 
@@ -556,6 +653,13 @@
         }, t('dc.deleted'));
         return true;
       }
+      const decide = el.closest('[data-dc-decide]');
+      if (decide) {
+        const [id, ok] = decide.dataset.dcDecide.split(':');
+        decide.disabled = true;
+        act(() => api('/discounts/decide', { body: { id: Number(id), approve: ok === '1' } }), t('dc.discDecided'));
+        return true;
+      }
       const issue = el.closest('[data-dc-issue]');
       if (issue) {
         const d = st.one.contract.data;
@@ -595,6 +699,7 @@
       if (!el.closest?.('.dc')) return false;
       if (el.matches('[data-dc-vehicle]')) { refreshQuote(el.form, true); return true; }
       if (el.matches('[data-dc-dates]')) { refreshQuote(el.form, false); return true; }
+      if (el.matches('[data-dc-money]')) { recalcMoney(el.form); return true; }
       if (el.matches('[data-dc-request]')) { fillFromRequest(el.form, el.value); return true; }
       if (el.matches('[data-dc-caption]')) { st.photoCaption = el.value; return true; }
       if (el.matches('[data-dc-photos]')) {
@@ -621,6 +726,7 @@
 
     let searchTimer = null;
     function onInput(event) {
+      if (event.target.matches?.('[data-dc-money]')) { recalcMoney(event.target.form); return true; }
       if (!event.target.matches?.('[data-dc-search]')) return false;
       st.q = event.target.value.trim();
       clearTimeout(searchTimer);

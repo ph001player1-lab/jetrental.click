@@ -2,14 +2,15 @@
  * Вкладка «Настройки» (только админ): связь (Telegram, WhatsApp-бот для
  * клиентов, наблюдатель рабочей группы), домены и сертификаты, ключи
  * («задан / не задан» — сами ключи только на сервере), сервисы и оплаты
- * с напоминаниями в Telegram, модель ИИ для «＋ Операция» и лимит расходов.
+ * с напоминаниями в Telegram, модель ИИ для «＋ Операция» и лимит расходов,
+ * скидки (порог одобрения, куда слать запросы, список причин).
  * Сервер — itSettings.js; WhatsApp — те же адреса /wabot и /wa, что раньше
  * были в «Маркетинге» и «Журнале» (там теперь ссылка сюда).
  */
 (function () {
   'use strict';
 
-  const VIEWS = [['links', '🔌 Связь'], ['pay', '💳 Сервисы и оплаты'], ['domains', '🌐 Домены и сайты'], ['keys', '🔑 Ключи'], ['ai', '🤖 Модель ИИ']];
+  const VIEWS = [['links', '🔌 Связь'], ['pay', '💳 Сервисы и оплаты'], ['domains', '🌐 Домены и сайты'], ['keys', '🔑 Ключи'], ['ai', '🤖 Модель ИИ'], ['disc', '💸 Скидки']];
   const KIND = { server: '🖥 Сервер', domain: '🌐 Домен', subscription: '🔁 Подписка', service: '🧩 Сервис', other: '📦 Другое' };
   const PERIOD = { month: 'в месяц', quarter: 'в квартал', half: 'раз в полгода', year: 'в год', once: 'разово' };
   const AHEAD = { month: 'месяц', quarter: 'квартал', half: 'полгода', year: 'год' };
@@ -27,6 +28,8 @@
     name_required: 'Укажите название.', bad_cost: 'Сумма — числом.', bad_amount: 'Сумма оплаты — числом больше нуля.', bad_date: 'Дата — в формате ДД.ММ.ГГГГ.',
     bad_url: 'Ссылка должна начинаться с https://', unknown_service: 'Сервис не найден — обновите страницу.', unknown_payment: 'Оплата не найдена — обновите страницу.',
     bad_model: 'Выберите модель из списка.', bad_limit: 'Лимит — числом (0 — без лимита).', admin_only: 'Только для админа.',
+    bad_percent: 'Процент — числом от 0 до 100.', bad_channels: 'Выберите, куда слать запросы.', no_reasons: 'Нужна хотя бы одна причина.',
+    no_tg_group: 'Рабочая группа Telegram не привязана (/bind в группе).',
     not_waiting_for_link: 'Код можно получить, только пока показывается QR-код.', unknown_group: 'Группа не найдена — обновите страницу.', wabot_unreachable: 'Бот не отвечает на сервере.'
   };
 
@@ -90,6 +93,7 @@
       if (st.view === 'domains') body = renderDomains();
       if (st.view === 'keys') body = renderKeys();
       if (st.view === 'ai') body = renderAi();
+      if (st.view === 'disc') body = renderDiscounts();
       return `<div class="set"><div class="chips set-views">${chips}</div>${body}</div>`;
     }
 
@@ -346,6 +350,44 @@ bash /opt/kokon/app/deploy/update.sh</pre>
       </section>`;
     }
 
+    /* ------------------------------------------------------------ Скидки */
+
+    function renderDiscounts() {
+      const s = st.data.discounts;
+      const w = st.wabot;
+      const ch = (v, label) => `<label class="mk-radio"><input type="radio" name="channels" value="${v}"${s.channels === v ? ' checked' : ''}> ${esc(label)}</label>`;
+      const tgLine = s.tgChat
+        ? `✅ Группа Telegram: <b>${esc(s.tgTitle || 'привязана')}</b> <button type="button" class="link jr-small" data-set-disc-unbind>отвязать</button>`
+        : `⚠️ Группа Telegram не выбрана. Добавьте бота в группу и напишите там <code>/discounts</code>${s.staffTgGroup ? ' — или используйте рабочую группу' : ''}.`;
+      const waConnected = w && w.status === 'connected';
+      const groups = waConnected ? (w.groups || []).map((g) => `<option value="${esc(g.id)}"${g.id === s.waGroup ? ' selected' : ''}>${esc(`${g.subject} (${g.size})`)}</option>`).join('') : '';
+      const waField = waConnected
+        ? `<label class="field"><span>Группа WhatsApp для скидок</span><select class="search" name="waGroup"><option value="">— не выбрана —</option>${groups}</select></label>
+           <p class="mk-tip">Пишет номер клиентского бота ${esc(phoneText(w.me?.id))}. Одобрить — ответить на сообщение «+», отклонить — «-». Нет группы в списке — добавьте туда номер бота.</p>`
+        : '<p class="warn">WhatsApp-бот не подключён (вкладка «Связь») — группу WhatsApp выбрать нельзя.</p>';
+      return `<section class="card set-sec"><h3>💸 Скидки</h3>
+        <form class="mk-form" data-set-disc>
+          <label class="field"><span>Нужно одобрение, если скидка больше, %</span><input class="search" name="approvePct" inputmode="decimal" value="${esc(s.approvePct)}"></label>
+          <p class="mk-tip">Больше этого — запрос владельцу и админам, пока не одобрят, договор не подписать и технику не выдать. Владелец и админ дают любую скидку сразу.</p>
+          <label class="field"><span>Сообщать в группу о скидках больше, %</span><input class="search" name="notifyPct" inputmode="decimal" value="${esc(s.notifyPct)}"></label>
+          <div class="mk-label">Куда писать о скидках</div>
+          ${ch('tg', 'Telegram')}${ch('wa', 'WhatsApp')}${ch('both', 'Telegram и WhatsApp')}
+          <p class="mk-text">${tgLine}</p>
+          ${!s.tgChat && s.staffTgGroup ? '<button type="button" class="btn btn--small" data-set-disc-staff>Использовать рабочую группу Telegram</button>' : ''}
+          <p class="mk-tip">В Telegram под запросом — кнопки «Одобрить / Отклонить». Нажать могут владелец и админы с Telegram ID во вкладке «Доступы». Одобрить можно и в портале: «Финансы» → «Скидки».</p>
+          ${waField}
+          <label class="field"><span>Причины скидки (по одной в строке; «Другое» — всегда есть, с комментарием)</span><textarea class="search" name="reasons" rows="8">${esc(s.reasons.join('\n'))}</textarea></label>
+          <button type="submit" class="btn btn--primary btn--small">Сохранить</button>
+          ${status(st.msg)}
+        </form>
+      </section>`;
+    }
+
+    async function saveDisc(body, okText) {
+      await act(async () => { const r = await api('/settings/discounts', { body }); st.data.discounts = { ...st.data.discounts, ...r.settings }; }, okText);
+      ctx.rerender();
+    }
+
     /* ---------------------------------------------------------- События */
 
     async function act(fn, okText, where = 'msg') {
@@ -401,6 +443,11 @@ bash /opt/kokon/app/deploy/update.sh</pre>
           .finally(() => { st.checking = false; ctx.rerender(); });
         return true;
       }
+      if (el.closest('[data-set-disc-staff]')) { saveDisc({ tgUseStaff: true }, 'Запросы на скидки — в рабочую группу Telegram.'); return true; }
+      if (el.closest('[data-set-disc-unbind]')) {
+        if (window.confirm('Отвязать группу Telegram для скидок?')) saveDisc({ tgUnbind: true }, 'Группа Telegram для скидок отвязана.');
+        return true;
+      }
       if (el.closest('[data-set-wabot-logout]')) {
         if (window.confirm('Отвязать номер компании от бота? Бот перестанет отвечать клиентам, пока номер не привяжут снова.')) linkAction('/wabot/logout', {}, 'Номер отвязан.');
         return true;
@@ -443,6 +490,12 @@ bash /opt/kokon/app/deploy/update.sh</pre>
       if (form.matches('[data-set-ai]')) {
         act(async () => { const r = await api('/settings/ai', { body: { model: f.get('model'), limitUsd: f.get('limitUsd') } }); Object.assign(st.data.ai, r.ai); }, 'Сохранено.')
           .then(() => ctx.rerender());
+        return true;
+      }
+      if (form.matches('[data-set-disc]')) {
+        const body = { approvePct: f.get('approvePct'), notifyPct: f.get('notifyPct'), channels: f.get('channels') || 'tg', reasons: f.get('reasons') };
+        if (form.elements.waGroup) body.waGroup = f.get('waGroup') || null;
+        saveDisc(body, 'Сохранено.');
         return true;
       }
       if (form.matches('[data-set-wabot-mode]')) {
