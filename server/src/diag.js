@@ -9,6 +9,8 @@
  *   GET /diag/logs?service=bot|wabot|observer&minutes=60&q=текст&limit=500
  *   GET /diag/requests?limit=10             — последние заявки: кто и как взял
  *   GET /diag/chat?key=wa:66…               — состояние диалога бота с клиентом
+ *   GET /diag/media?days=60&kind=issue&q=текст&limit=50 — фото наблюдателя (список)
+ *   GET /diag/media/file?id=N               — само фото (для поиска образцов документов)
  * ============================================================================
  */
 
@@ -22,6 +24,7 @@ import { wabotStatus, wabotSettings } from './wabot.js';
 import { observerStatus } from './journal/observer.js';
 import { getStaffChatId } from './staff.js';
 import { version } from './serverStats.js';
+import { mediaFile } from './journal/journal.js';
 
 const TOKEN = process.env.DIAG_TOKEN || '';
 const botHost = (() => { try { return new URL(config.publicBaseUrl).host.toLowerCase(); } catch { return ''; } })();
@@ -130,6 +133,36 @@ export async function handleDiag(req, res, url) {
         key, language: db.getChatLanguage(key), session: db.getSession(key), pausedUntil: setting(`pause:${key}`) || null,
         pendingChoices: choices, source: ref
       });
+    }
+    case '/diag/media': {
+      // Список фото из рабочей группы: когда, к какому отчёту, начало подписи
+      const days = Math.min(400, Math.max(1, Number(url.searchParams.get('days')) || 60));
+      const kind = String(url.searchParams.get('kind') || '').replace(/[^a-z_]/g, '').slice(0, 30);
+      const since = new Date(Date.now() - days * 86400000).toISOString();
+      const rows = db.raw.prepare(`
+        SELECT m.id, m.created_at, m.mime, m.bytes, m.sensitive, m.report_id,
+               w.ts, w.kind, w.text, r.kind AS report_kind, r.text AS report_text
+        FROM wa_media m
+        LEFT JOIN wa_messages w ON w.id = m.message_id
+        LEFT JOIN wa_messages r ON r.id = m.report_id
+        WHERE COALESCE(w.ts, m.created_at) >= ?
+        ORDER BY m.id DESC`).all(since);
+      const list = rows
+        .filter((r) => !kind || r.kind === kind || r.report_kind === kind)
+        .filter((r) => !q || `${r.text || ''} ${r.report_text || ''}`.toLowerCase().includes(q))
+        .slice(0, Math.min(200, limit))
+        .map((r) => ({
+          id: r.id, ts: r.ts || r.created_at, mime: r.mime, kb: Math.round((r.bytes || 0) / 1024),
+          kind: r.report_kind || r.kind || null, sensitive: Boolean(r.sensitive),
+          text: String(r.report_text || r.text || '').replace(/\+?\d[\d\s-]{7,}\d/g, '…').slice(0, 120)
+        }));
+      return sendJson(res, 200, list);
+    }
+    case '/diag/media/file': {
+      const file = mediaFile(url.searchParams.get('id'));
+      if (!file) return sendJson(res, 404, { error: 'Not found' });
+      res.writeHead(200, { 'Content-Type': file.mime || 'image/jpeg', 'Cache-Control': 'no-store' });
+      return fs.createReadStream(file.path).pipe(res);
     }
     default:
       return sendJson(res, 404, { error: 'Not found' });
