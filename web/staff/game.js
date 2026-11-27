@@ -64,7 +64,7 @@ function phuketMinutes() { const d = new Date(nowMs() + 7 * 3600000); return d.g
 
 /* ---------- изометрия ---------- */
 const HW = 16, HH = 8;            // половина плитки 32×16
-const MW = 52, MH = 42;           // карта в плитках
+const MW = 70, MH = 60;           // карта в плитках
 const OX = MH * HW + 40, OY = 110;
 const WORLD_W = (MW + MH) * HW + 80, WORLD_H = (MW + MH) * HH + 170;
 let dropOff = 0;                  // сдвиг вверх для интро (падение плиток и объектов)
@@ -79,7 +79,7 @@ const tFill = (x0, y0, x1, y1, t) => { for (let y = y0; y <= y1; y++) for (let x
 const isWater = (t) => t === T.SEA || t === T.SHALLOW;
 (function buildMap() {
   for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
-    const dx = (x + 0.5 - 22) / 21, dy = (y + 0.5 - 19.5) / 18.5;
+    const dx = (x + 0.5 - 33) / 32, dy = (y + 0.5 - 29) / 28;
     const n = 0.07 * Math.sin(x * 0.9 + y * 0.3) + 0.06 * Math.cos(y * 0.8 - x * 0.2);
     map[y * MW + x] = dx ** 4 + dy ** 4 < 1 - n ? T.GRASS : T.SEA;
   }
@@ -87,7 +87,7 @@ const isWater = (t) => t === T.SEA || t === T.SHALLOW;
   for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
     const i = y * MW + x;
     if (land[i] === T.GRASS) {
-      let shore = x >= 35;
+      let shore = x >= 58;
       for (let j = -1; j <= 1 && !shore; j++) for (let k = -1; k <= 1; k++) if ((land[(y + j) * MW + x + k] ?? T.SEA) === T.SEA || y + j < 0 || y + j >= MH) shore = true;
       if (shore) map[i] = T.SAND;
     } else {
@@ -101,7 +101,11 @@ const isWater = (t) => t === T.SEA || t === T.SHALLOW;
   }
   // кольцевая дорога, выезды «в город», к пляжу
   tFill(8, 7, 32, 7, T.ROAD); tFill(8, 31, 32, 31, T.ROAD); tFill(8, 7, 8, 31, T.ROAD); tFill(32, 7, 32, 31, T.ROAD);
-  tFill(2, 19, 7, 19, T.ROAD); tFill(22, 2, 22, 6, T.ROAD); tFill(14, 32, 14, 36, T.ROAD); tFill(33, 24, 38, 24, T.ROAD);
+  // город вокруг: дороги-кольца без тупиков в море (техника всегда на виду)
+  tFill(3, 19, 7, 19, T.ROAD); tFill(22, 3, 22, 6, T.ROAD); tFill(14, 3, 40, 3, T.ROAD);
+  tFill(33, 7, 50, 7, T.ROAD); tFill(33, 24, 58, 24, T.ROAD); tFill(33, 31, 40, 31, T.ROAD);
+  tFill(40, 3, 40, 50, T.ROAD); tFill(50, 7, 50, 50, T.ROAD); tFill(3, 13, 3, 40, T.ROAD);
+  tFill(3, 40, 50, 40, T.ROAD); tFill(14, 50, 50, 50, T.ROAD); tFill(14, 32, 14, 50, T.ROAD); tFill(26, 32, 26, 50, T.ROAD);
   // зоны компании: офис и финансы, гараж и стоянка сервиса, стоянки машин и байков
   tFill(9, 16, 18, 19, T.PAVE); tFill(19, 16, 26, 16, T.PAVE); tFill(17, 20, 18, 23, T.PAVE); tFill(11, 25, 16, 25, T.PAVE);
   tFill(11, 10, 18, 15, T.WOOD); tFill(19, 10, 25, 15, T.CARPET);
@@ -242,7 +246,7 @@ const waves = [];
 const foam = [];
 (function buildSea() {
   let guard = 0;
-  while (waves.length < 240 && guard++ < 5000) {
+  while (waves.length < 420 && guard++ < 9000) {
     const x = rnd(-6, MW + 4), y = rnd(-6, MH + 4);
     const t = tAt(Math.floor(x), Math.floor(y));
     if (!isWater(t)) continue;
@@ -671,48 +675,24 @@ addObj({ x: 31.45, y: 20.1, draw() {
   isoBox(31.45, 20.1, 0.6, 0.45, 9, '#f4efe4', '#ddd6c6', '#c7c0b0');
   isoBox(31.45, 20.1, 0.8, 0.62, 2, '#e74c3c', '#c0392b', '#a93226', 12);
 } });
-// пляж: зонтики и шезлонги, места для купания
-const BEACH = [];
-for (const [x, y, c] of [[36.6, 11.6, '#e74c3c'], [37.1, 15.4, '#2e86de'], [36.7, 19.2, '#f39c12'], [37.6, 28.4, '#16a085'], [36.9, 32.6, '#8e44ad'], [38.6, 22.4, '#e67e22']]) {
-  addObj({ x, y, draw() { drawUmbrella({ x, y, c }); } });
-  box(x - 0.6, y + 0.4, 0.75, 0.3, 2, '#f3efe6');
-  BEACH.push({ p: [x - 0.6, y + 0.35], kind: 'lie', who: null });
-}
-for (const p of [[44.0, 13.6], [44.6, 17.6], [44.2, 21.6], [43.9, 26.0]]) BEACH.push({ p, kind: 'swim', who: null });
-
-/* ---------- город и природа ---------- */
-(function decor() {
-  const roadNear = (x, y, r) => { for (let j = -r; j <= r; j++) for (let k = -r; k <= r; k++) if (tAt(Math.floor(x) + k, Math.floor(y) + j) === T.ROAD) return true; return false; };
-  const ringInside = (x, y) => x > 7.5 && x < 33.5 && y > 6.5 && y < 32.5;
-  const ROOF = ['#c0392b', '#d35400', '#16a085', '#2c3e50', '#8e44ad'];
-  const WALLS = ['#f6f1e7', '#fdebd0', '#e8f6f3', '#fef9e7', '#f2f3f4'];
-  let i = 0;
-  for (let y = 2; y < 39; y += 2) for (let x = 2; x < 35; x += 2) {
-    const jx = x + hash(x, y) * 1.2, jy = y + hash(y, x) * 1.2;
-    const t = tAt(Math.floor(jx), Math.floor(jy));
-    if (ringInside(jx, jy) || roadNear(jx, jy, 1) || t !== T.GRASS) continue;
-    const r = hash(x * 3, y * 5);
-    if (r < 0.45 && (x < 7 || y < 6 || y > 33)) addObj({ x: jx, y: jy, c: WALLS[i % 5], roof: ROOF[i++ % 5], draw: drawHouse });
-    else if (r < 0.75) addObj({ x: jx, y: jy, draw: drawTree });
-    else addObj({ x: jx, y: jy, h: 16 + Math.floor(r * 10), lean: r > 0.85 ? -1 : 1, seed: r * 9, draw: drawPalm });
-  }
-  for (const [x, y] of [[27.5, 11.5], [29.6, 13.6], [28.4, 15.2], [9.8, 23.4], [9.6, 26.8], [9.8, 29.8], [34.4, 9.5], [34.6, 13.0], [34.4, 16.8], [34.6, 28.5], [39.5, 9.8], [39.8, 30.8], [40.5, 17.0]]) {
-    addObj({ x, y, h: 17 + Math.floor(hash(x * 7, y) * 8), lean: hash(y, x) > 0.5 ? 1 : -1, seed: x, draw: drawPalm });
-  }
-})();
 
 /* ---------- дороги: граф ---------- */
-// Кольцо вокруг территории, съезды к рядам стоянок (R1–R4), подъезд (E→DW), дорога к сервису (DW–G), выезды «в город»
+// Кольцо вокруг территории компании, съезды к рядам стоянок (R1–R4), подъезд (E→DW), дорога к сервису (DW–G)
+// и город вокруг: кольца и улицы. Тупиков в море нет — техника всегда на виду.
 const RN = {
   A: [8.5, 7.5], N: [22.5, 7.5], B: [32.5, 7.5], R1: [32.5, 18.9], R2: [32.5, 22.95], E: [32.5, 24.5], R3: [32.5, 27.45], R4: [32.5, 30.2],
-  C: [32.5, 31.5], G: [17.5, 31.5], S: [14.5, 31.5], D: [8.5, 31.5], Wn: [8.5, 19.5], WX: [2.3, 19.5], NX: [22.5, 2.3], SX: [14.5, 36.2],
-  BX: [38.6, 24.5], DW: [17.5, 24.5]
+  C: [32.5, 31.5], K: [26.5, 31.5], G: [17.5, 31.5], S: [14.5, 31.5], D: [8.5, 31.5], Wn: [8.5, 19.5], DW: [17.5, 24.5],
+  N3: [22.5, 3.5], NW3: [14.5, 3.5], NE3: [40.5, 3.5], B2: [40.5, 7.5], B3: [50.5, 7.5], E2: [40.5, 24.5], E3: [50.5, 24.5], BX: [58.5, 24.5],
+  C2: [40.5, 31.5], W3n: [3.5, 13.5], W3: [3.5, 19.5], W40: [3.5, 40.5], S4: [14.5, 40.5], M40: [26.5, 40.5], E40: [40.5, 40.5], F40: [50.5, 40.5],
+  S5: [14.5, 50.5], M50: [26.5, 50.5], E50: [40.5, 50.5], F50: [50.5, 50.5]
 };
 const RE = {
-  A: ['N', 'Wn'], N: ['A', 'B', 'NX'], B: ['N', 'R1'], R1: ['B', 'R2'], R2: ['R1', 'E'], E: ['R2', 'R3', 'DW', 'BX'], R3: ['E', 'R4'], R4: ['R3', 'C'],
-  C: ['R4', 'G'], G: ['C', 'S', 'DW'], S: ['G', 'D', 'SX'], D: ['S', 'Wn'], Wn: ['D', 'A', 'WX'], WX: ['Wn'], NX: ['N'], SX: ['S'], BX: ['E'], DW: ['E', 'G']
+  A: ['N', 'Wn'], N: ['A', 'B', 'N3'], B: ['N', 'R1', 'B2'], R1: ['B', 'R2'], R2: ['R1', 'E'], E: ['R2', 'R3', 'DW', 'E2'], R3: ['E', 'R4'], R4: ['R3', 'C'],
+  C: ['R4', 'K', 'C2'], K: ['C', 'G', 'M40'], G: ['K', 'S', 'DW'], S: ['G', 'D', 'S4'], D: ['S', 'Wn'], Wn: ['D', 'A', 'W3'], DW: ['E', 'G'],
+  N3: ['N', 'NW3', 'NE3'], NW3: ['N3'], NE3: ['N3', 'B2'], B2: ['B', 'NE3', 'B3', 'E2'], B3: ['B2', 'E3'], E2: ['E', 'B2', 'E3', 'C2'], E3: ['E2', 'B3', 'BX', 'F40'],
+  BX: ['E3'], C2: ['C', 'E2', 'E40'], W3n: ['W3'], W3: ['W3n', 'Wn', 'W40'], W40: ['W3', 'S4'], S4: ['S', 'W40', 'M40', 'S5'], M40: ['K', 'S4', 'E40', 'M50'],
+  E40: ['C2', 'M40', 'F40', 'E50'], F40: ['E3', 'E40', 'F50'], S5: ['S4', 'M50'], M50: ['M40', 'S5', 'E50'], E50: ['E40', 'M50', 'F50'], F50: ['F40', 'E50']
 };
-const ENDS = ['WX', 'NX', 'SX'];
 function bfs(graph, from, to) {
   if (from === to) return [from];
   const prev = { [from]: null }, q = [from];
@@ -722,11 +702,68 @@ function bfs(graph, from, to) {
   }
   return [from];
 }
-// пешеходные точки снаружи: дорожки, проходы между рядами, полоса у въезда, пляж
+const EDGES = [];
+for (const [a, list] of Object.entries(RE)) for (const c of list) if (a < c) EDGES.push([a, c]);
+// катается по кольцу и улицам; подъезд к стоянкам (DW) — только по делу
+const CRUISE_EDGES = EDGES.filter(([a, c]) => a !== 'DW' && c !== 'DW');
+
+/* ---------- город: дома вдоль улиц (у каждого — место для машины) и природа ---------- */
+const inYard = (x, y) => x > 7.2 && x < 33.8 && y > 6.2 && y < 32.8;
+const HOUSES = [];
+(function town() {
+  const ROOF = ['#c0392b', '#d35400', '#16a085', '#2c3e50', '#8e44ad', '#b9770e'];
+  const WALLS = ['#f6f1e7', '#fdebd0', '#e8f6f3', '#fef9e7', '#f2f3f4', '#fadbd8'];
+  const grassAround = (x, y) => {
+    for (let j = -1; j <= 1; j++) for (let k = -1; k <= 1; k++) if (tAt(Math.floor(x + k * 0.7), Math.floor(y + j * 0.7)) !== T.GRASS) return false;
+    return true;
+  };
+  let i = 0;
+  for (const [a, c] of EDGES) {
+    const A = RN[a], C = RN[c];
+    const L = dist(A, C);
+    if (L < 3) continue;
+    const ux = (C[0] - A[0]) / L, uy = (C[1] - A[1]) / L, nx = -uy, ny = ux;
+    for (let s = 1.8; s < L - 1.4; s += 2.8) {
+      for (const side of [1, -1]) {
+        const rx = A[0] + ux * s, ry = A[1] + uy * s;
+        const hx = rx + nx * side * 2.0, hy = ry + ny * side * 2.0;
+        if (inYard(hx, hy) || !grassAround(hx, hy) || HOUSES.some((h) => Math.hypot(h.x - hx, h.y - hy) < 2.4)) continue;
+        const spot = [rx + nx * side * 0.95, ry + ny * side * 0.95];
+        if (tAt(Math.floor(spot[0]), Math.floor(spot[1])) !== T.GRASS) continue;
+        HOUSES.push({ x: hx, y: hy, c: WALLS[i % WALLS.length], roof: ROOF[i++ % ROOF.length], edge: [a, c], road: [rx, ry], spot, dir: Math.abs(ux) > Math.abs(uy) ? 'x' : 'y', v: null, owner: null });
+      }
+    }
+  }
+  for (const h of HOUSES) addObj({ x: h.x, y: h.y, c: h.c, roof: h.roof, draw: drawHouse });
+  const nearRoad = (x, y) => { for (let j = -1; j <= 1; j++) for (let k = -1; k <= 1; k++) if (tAt(Math.floor(x) + k, Math.floor(y) + j) === T.ROAD) return true; return false; };
+  for (let y = 1; y < MH - 1; y += 2.2) for (let x = 1; x < MW - 1; x += 2.2) {
+    const jx = x + hash(Math.round(x * 10), Math.round(y * 10)) * 1.3, jy = y + hash(Math.round(y * 10), Math.round(x * 10)) * 1.3;
+    const t = tAt(Math.floor(jx), Math.floor(jy));
+    if (inYard(jx, jy) || nearRoad(jx, jy) || HOUSES.some((h) => Math.hypot(h.x - jx, h.y - jy) < 1.6)) continue;
+    const r = hash(Math.round(jx * 7), Math.round(jy * 5));
+    if (t === T.SAND && jx > 57 && r < 0.3) addObj({ x: jx, y: jy, h: 17 + Math.floor(r * 30), lean: r > 0.15 ? 1 : -1, seed: r * 9, draw: drawPalm });
+    else if (t === T.GRASS && r < 0.22) addObj({ x: jx, y: jy, draw: drawTree });
+    else if (t === T.GRASS && r < 0.36) addObj({ x: jx, y: jy, h: 16 + Math.floor(r * 20), lean: r > 0.3 ? -1 : 1, seed: r * 9, draw: drawPalm });
+  }
+  for (const [x, y] of [[27.5, 11.5], [29.6, 13.6], [28.4, 15.2], [9.8, 23.4], [9.6, 26.8], [9.8, 29.8]]) {
+    addObj({ x, y, h: 17 + Math.floor(hash(x * 7, y) * 8), lean: hash(y, x) > 0.5 ? 1 : -1, seed: x, draw: drawPalm });
+  }
+})();
+
+// пляж на восточном берегу: зонтики, шезлонги, места для купания
+const BEACH = [];
+for (const [x, y, c] of [[60.5, 12.8, '#e74c3c'], [61.0, 16.4, '#2e86de'], [60.6, 20.6, '#f39c12'], [61.2, 28.2, '#16a085'], [60.8, 32.4, '#8e44ad'], [61.0, 36.6, '#e67e22']]) {
+  addObj({ x, y, draw() { drawUmbrella({ x, y, c }); } });
+  box(x - 0.6, y + 0.4, 0.75, 0.3, 2, '#f3efe6');
+  BEACH.push({ p: [x - 0.6, y + 0.35], kind: 'lie', who: null });
+}
+for (const p of [[66.3, 17.5], [66.6, 22.5], [66.4, 28.5], [66.1, 33.5]]) BEACH.push({ p, kind: 'swim', who: null });
+
+/* ---------- пешеходные точки ---------- */
 const WN = {
   DO: [16.5, 16.75], CW: [10.3, 18.4], CE: [17.8, 16.9], GS: [17.75, 21.3], LW: [18.5, 18.9], CWl: [18.5, 22.95], DWW: [17.8, 23.6],
   GAS: [17.5, 25.6], GA: [13.5, 25.6], S1: [31.35, 18.9], BK: [31.4, 21.0], S2: [31.35, 23.4], GT: [31.35, 24.5], MK: [31.4, 25.8],
-  BL1: [31.35, 27.45], BL2: [31.35, 30.2], BW1: [18.35, 27.45], BW2: [18.35, 30.2], RX: [33.6, 24.5], BE: [35.8, 24.5]
+  BL1: [31.35, 27.45], BL2: [31.35, 30.2], BW1: [18.35, 27.45], BW2: [18.35, 30.2], RX: [33.6, 24.5], BE: [58.9, 24.5]
 };
 const WE = {
   DO: ['CW', 'CE'], CW: ['DO'], CE: ['DO', 'GS', 'LW'], GS: ['CE', 'LW', 'CWl', 'DWW'], LW: ['CE', 'GS', 'S1'], CWl: ['GS', 'DWW', 'S2'],
@@ -736,7 +773,7 @@ const WE = {
 };
 const zoneOf = (p) => (p[0] >= 11 && p[0] < 26 && p[1] >= 10 && p[1] < 16 ? 'office'
   : p[0] >= 11 && p[0] < 17 && p[1] >= 20 && p[1] < 25 ? 'garage'
-    : p[0] >= 34.8 ? 'beach' : 'out');
+    : p[0] >= 58.5 ? 'beach' : 'out');
 function nearestWN(p) {
   let best = 'DO', bd = Infinity;
   for (const [k, q] of Object.entries(WN)) { const d = dist(p, q); if (d < bd) { bd = d; best = k; } }
@@ -813,13 +850,15 @@ function newVehicle(c) {
     id: c.id, model: c.model || 'Техника', type: c.type, color: colorOf(c), plate: c.plate || '',
     x: RN.E[0], y: RN.E[1], ox: 0, oy: 0, dir: 'y', sgn: 1, z: 0, path: [], cb: null, node: null, prev: null,
     speed: SPEED[c.type] || 1.6, status: c.status, slot: null, gspot: null, err: null,
-    cruise: false, away: 0, park: 0, hidden: false, rider: null, claim: false, data: c
+    cruise: false, mode: null, atHouse: null, park: 0, hidden: false, rider: null, claim: false, data: c
   };
   VEH.push(v); VEH_BY_ID.set(c.id, v);
   return v;
 }
 function removeVehicle(v) {
   leaveSlot(v); leaveGarage(v);
+  if (v.atHouse) v.atHouse.v = null;
+  if (v.homeH && v.homeH.owner === v) v.homeH.owner = null;
   const i = VEH.indexOf(v); if (i >= 0) VEH.splice(i, 1);
   VEH_BY_ID.delete(v.id);
 }
@@ -832,35 +871,83 @@ function leaveGarage(v) {
   if (LIFT.v === v) { LIFT.v = null; LIFT.target = 0; }
 }
 function setCruise(v, from, to) {
-  v.cruise = true; v.prev = from; v.node = to; v.path = [RN[to].slice()]; v.cb = () => cruiseNext(v);
+  v.cruise = true; v.mode = 'cruise'; v.prev = from; v.node = to; v.path = [RN[to].slice()]; v.cb = () => cruiseNext(v);
+}
+/* --- дома на острове: на ночь техника в аренде стоит у «своего» дома, днём иногда заезжает к любому --- */
+// У каждой машины своё «время сна»: вечером уезжает к дому, утром выезжает (часы Пхукета)
+function isNight(v) {
+  if (v.sleepAt === undefined) { v.sleepAt = (20.5 + hash(Number(v.id) || 1, 11) * 3) * 60; v.wakeAt = (6.5 + hash(Number(v.id) || 1, 13) * 3) * 60; }
+  return S.sim >= v.sleepAt || S.sim < v.wakeAt;
+}
+function homeHouse(v) {
+  if (v.homeH && v.homeH.owner === v) return v.homeH;
+  const free = HOUSES.filter((h) => !h.owner);
+  const h = free.length ? free[Math.floor(hash(Number(v.id) || 7, 5) * free.length)] : pick(HOUSES);
+  if (!h.owner) h.owner = v;
+  v.homeH = h;
+  return h;
+}
+const spotFree = (h, v) => !h.v || h.v === v;
+// Встать у дома сразу (первая загрузка ночью, техника без места на стоянке)
+function parkAtHouse(v, h, why) {
+  if (!spotFree(h, v)) h = HOUSES.find((x) => !x.v) || h;
+  if (v.atHouse && v.atHouse !== h) v.atHouse.v = null;
+  h.v = v; v.atHouse = h; v.mode = 'house'; v.houseWhy = why; v.cruise = false; v.path = []; v.cb = null;
+  v.x = h.spot[0]; v.y = h.spot[1]; v.dir = h.dir; v.sgn = 1; v.ox = 0; v.oy = 0; v.hidden = false;
+  v.until = why === 'visit' ? S.gt + rnd(25, 90) : null;
+}
+// Доехать до дома: от узла дороги — до ближайшего конца улицы, по улице к дому, к месту у дома
+function goHouse(v, h, why) {
+  if (!spotFree(h, v)) return false;
+  const [a, c] = h.edge;
+  const pa = bfs(RE, v.node, a), pc = bfs(RE, v.node, c);
+  const nodes = (pa.length <= pc.length ? pa : pc).slice(1).map((n) => RN[n].slice());
+  h.v = v; v.atHouse = h; v.mode = 'toHouse'; v.houseWhy = why; v.cruise = false;
+  v.path = [...nodes, h.road.slice(), h.spot.slice()];
+  v.cb = () => parkAtHouse(v, h, why);
+  return true;
+}
+// Уехать от дома на улицу: fn — что дальше (по умолчанию кататься)
+function leaveHouse(v, fn) {
+  const h = v.atHouse;
+  if (!h) { if (fn) fn(); return; }
+  h.v = null; v.atHouse = null;
+  const [k, o] = Math.random() < 0.5 ? h.edge : [h.edge[1], h.edge[0]];
+  v.mode = 'cruise'; v.node = k; v.prev = o;
+  v.path = [h.road.slice(), RN[k].slice()];
+  v.cb = fn || (() => { v.cruise = true; cruiseNext(v); });
 }
 function cruiseNext(v) {
   const n = v.node;
   if (!v.cruise) return;
-  if (ENDS.includes(n)) { v.hidden = true; v.away = S.gt + rnd(8, 25); return; }
+  if (v.status === 'rent' && isNight(v) && goHouse(v, homeHouse(v), 'night')) return;
   if (n === 'BX' && !v.beachDone) { v.beachDone = true; v.park = S.gt + rnd(5, 14); return; }
   v.beachDone = false;
+  if (v.status === 'rent' && Math.random() < 0.1) {
+    const free = HOUSES.filter((h) => !h.v && !h.owner);
+    if (free.length && goHouse(v, pick(free), 'visit')) return;
+  }
   const opts = RE[n].filter((m) => m !== v.prev && m !== 'DW');
-  const next = pick(opts.length ? opts : RE[n]);
+  const next = pick(opts.length ? opts : RE[n].filter((m) => m !== 'DW'));
   v.prev = n; v.node = next; v.path = [RN[next].slice()]; v.cb = () => cruiseNext(v);
 }
-// Машина в аренде «катается» по острову (маршрут условный)
+// Машина в аренде «катается» по острову (маршрут условный) или стоит у дома
 function startCruise(v, randomPlace) {
   leaveSlot(v); leaveGarage(v);
-  v.hidden = false; v.away = 0; v.park = 0; v.z = 0;
+  v.hidden = false; v.park = 0; v.z = 0;
   if (randomPlace) {
-    const edges = [['A', 'N'], ['N', 'B'], ['B', 'R1'], ['R1', 'E'], ['E', 'C'], ['C', 'S'], ['S', 'D'], ['D', 'Wn'], ['Wn', 'A'], ['E', 'BX'], ['Wn', 'WX'], ['N', 'NX'], ['S', 'SX']];
-    const [a, c] = pick(edges);
+    if (isNight(v)) { parkAtHouse(v, homeHouse(v), 'night'); return; }
+    const [a, c] = pick(CRUISE_EDGES);
     const t = Math.random();
     v.x = lerp(RN[a][0], RN[c][0], t); v.y = lerp(RN[a][1], RN[c][1], t);
-    if (Math.random() < 0.3) { v.cruise = true; v.hidden = true; v.away = S.gt + rnd(2, 20); v.node = c; v.prev = a; v.path = []; return; }
     setCruise(v, a, c);
   } else setCruise(v, v.prev || 'DW', v.node || 'E');
 }
 // перехватить технику у «катания по острову»: fn вызовется, когда она доедет до узла дороги
 function takeControl(v, fn) {
   v.cruise = false;
-  if (v.hidden) { v.hidden = false; v.away = 0; const e = pick(ENDS); v.x = RN[e][0]; v.y = RN[e][1]; v.node = e; v.prev = e; v.path = []; v.cb = null; fn(); return; }
+  if (v.mode === 'toHouse' && v.atHouse) { const h = v.atHouse, why = v.houseWhy; v.cb = () => { parkAtHouse(v, h, why); leaveHouse(v, fn); }; return; }
+  if (v.mode === 'house' && v.atHouse) { leaveHouse(v, fn); return; }
   if (v.park) { v.park = 0; fn(); return; }
   if (v.path.length && v.node) { v.cb = fn; return; }
   if (!v.node) { v.node = 'E'; v.x = RN.E[0]; v.y = RN.E[1]; }
@@ -896,21 +983,24 @@ function nearPoint(v) {
   if (!s) return [v.x + 0.6, v.y + 0.4];
   return [s.x + (v.type === 'car' ? 0.6 : 0.27), LANE[s.lane].y];
 }
-// Сразу поставить технику туда, где она по статусу (первая загрузка, большие изменения)
+// Сразу поставить технику туда, где она по статусу (первая загрузка, большие изменения).
+// Ничего не прячем: нет места на стоянке или в сервисе — встаёт у дома на острове
 function placeVehicle(v) {
-  v.claim = false; v.rider = null; v.path = []; v.cb = null; v.cruise = false; v.hidden = false; v.park = 0; v.away = 0; v.z = 0; v.sparks = false;
-  if (v.status === 'rent') { startCruise(v, true); return; }
+  v.claim = false; v.rider = null; v.path = []; v.cb = null; v.cruise = false; v.hidden = false; v.park = 0; v.z = 0; v.sparks = false;
+  if (v.status === 'rent') { if (v.atHouse) { v.atHouse.v = null; v.atHouse = null; } startCruise(v, true); return; }
+  if (v.atHouse) { v.atHouse.v = null; v.atHouse = null; }
+  v.mode = null;
   if (v.status === 'service') {
     leaveSlot(v);
     if (v.gspot || LIFT.v === v) return;
     const g = GWAIT.find((x) => !x.v);
     if (g) { g.v = v; v.gspot = g; v.x = g.x; v.y = g.y; v.dir = g.dir; return; }
-    v.hidden = true; return;
+    parkAtHouse(v, HOUSES.find((h) => !h.v) || HOUSES[0], 'overflow'); return;
   }
   leaveGarage(v);
   if (v.slot) { v.x = v.slot.x; v.y = v.slot.y; return; }
-  const s = freeSlot(v);
-  if (s) parkAt(v, s); else v.hidden = true;
+  const s2 = freeSlot(v);
+  if (s2) parkAt(v, s2); else parkAtHouse(v, HOUSES.find((h) => !h.v) || HOUSES[0], 'overflow');
 }
 
 /* ---------- люди ---------- */
@@ -954,23 +1044,51 @@ function assignHomes() {
   (groups.marketing || []).forEach((a, i) => { a.home = { p: [31.4, 25.8 + i * 0.4], pose: 'megaphone', face: 1 }; });
   (groups.delivery || []).forEach((a, i) => { a.home = { p: [31.4, 20.9 + i * 0.35], pose: 'stand', face: -1 }; });
 }
-function staffBike(a, slot) {
-  const v = { id: `bike${a.sid}`, model: `скутер: ${a.name}`, type: 'scooter', color: BIKES[a.sid % BIKES.length], plate: '', x: slot.x, y: slot.y, ox: 0, oy: 0,
-    dir: 'x', sgn: 1, z: 0, path: [], cb: null, node: null, prev: null, speed: 1.9, status: 'staff', staffOf: a, slot: null, pslot: slot, hidden: false, rider: null };
-  slot.v = v; VEH.push(v);
+// Скутер сотрудника: на работе — на стоянке сотрудников, вне смены — у его дома на острове
+function staffBike(a) {
+  let v = VEH.find((x) => x.staffOf === a);
+  if (v) return v;
+  v = { id: `bike${a.sid}`, model: `скутер: ${a.name}`, type: 'scooter', color: BIKES[a.sid % BIKES.length], plate: '', x: 0, y: 0, ox: 0, oy: 0,
+    dir: 'x', sgn: 1, z: 0, path: [], cb: null, node: null, prev: null, speed: 1.9, status: 'staff', staffOf: a, slot: null, pslot: null, atHouse: null, hidden: false, rider: null };
+  VEH.push(v);
   return v;
+}
+function staffHouse(a) {
+  if (a.house && a.house.owner === a) return a.house;
+  const free = HOUSES.filter((h) => !h.owner);
+  const h = free.length ? free[Math.floor(hash(Number(a.sid) * 3 + 1, 17) * free.length)] : HOUSES[0];
+  if (!h.owner) h.owner = a;
+  a.house = h;
+  return h;
+}
+function bikeToPark(v) {
+  if (v.atHouse) { v.atHouse.v = null; v.atHouse = null; }
+  if (!v.pslot) { const slot = STAFFPARK.find((s) => !s.v); if (slot) { slot.v = v; v.pslot = slot; } }
+  if (v.pslot) { v.x = v.pslot.x; v.y = v.pslot.y; } v.dir = 'x'; v.mode = null; v.path = [];
+}
+function bikeToHouse(v, a) {
+  if (v.pslot) { v.pslot.v = null; v.pslot = null; }
+  parkAtHouse(v, staffHouse(a), 'home');
 }
 function dropStaffBike(a) {
   const v = VEH.find((x) => x.staffOf === a);
   if (!v) return;
   if (v.pslot) v.pslot.v = null;
+  if (v.atHouse) v.atHouse.v = null;
+  if (a.house && a.house.owner === a) a.house.owner = null;
   VEH.splice(VEH.indexOf(v), 1);
 }
 function placeStaff(a) {
+  const v = staffBike(a);
   if (a.present) {
     a.state = 'work'; a.hidden = false; a.x = a.home.p[0]; a.y = a.home.p[1]; a.pose = a.home.pose; a.face = a.home.face; a.path = [];
-    if (!VEH.some((x) => x.staffOf === a)) { const slot = STAFFPARK.find((s) => !s.v); if (slot) staffBike(a, slot); }
-  } else { a.state = 'off'; a.hidden = true; a.path = []; dropStaffBike(a); if (a.home.desk) DESKS[a.home.desk].on = false; }
+    bikeToPark(v);
+  } else { a.state = 'off'; a.hidden = true; a.path = []; bikeToHouse(v, a); if (a.home.desk) DESKS[a.home.desk].on = false; }
+}
+// маршрут от дома (по улице до узла) к узлу target и обратно
+function houseToNode(h, target) {
+  const pa = bfs(RE, h.edge[0], target), pc = bfs(RE, h.edge[1], target);
+  return [h.road.slice(), ...(pa.length <= pc.length ? pa : pc).map((n) => RN[n].slice())];
 }
 
 /* ---------- лента, пузыри, эффекты ---------- */
@@ -1049,7 +1167,7 @@ const CLIENT_LOOKS = [
   { skin: '#c68a5e', hair: '#2d1d12', shirt: '#e84393', pants: '#34495e' }, { skin: '#f5d0b0', hair: '#8b4b23', shirt: '#00b894', pants: '#dfe6e9' },
   { skin: '#8d5a3b', hair: '#111111', shirt: '#fdcb6e', pants: '#2d3436' }, { skin: '#f3c7a1', hair: '#e8e1c4', shirt: '#74b9ff', pants: '#636e72' }
 ];
-const ENTRY = [35.8, 24.6];
+const ENTRY = [36.5, 24.6];
 function newClient(extra = {}) {
   return newPerson({ kind: 'client', name: 'Клиент', look: pick(CLIENT_LOOKS), speed: 1.15, present: true, x: ENTRY[0], y: ENTRY[1], ...extra });
 }
@@ -1059,13 +1177,14 @@ const SHOWROOM = [[13.0, 12.6], [14.3, 14.3], [15.2, 13.3], [12.5, 12.2], [16.6,
 /* --- приход и уход (отметки в группе WhatsApp, как табель) --- */
 function* arrive(a) {
   a.present = true; a.state = 'arriving'; a.hidden = true;
+  // едет из дома на острове на своём скутере
+  const v = staffBike(a);
+  if (!v.atHouse) bikeToHouse(v, a);
+  const h = v.atHouse;
+  h.v = null; v.atHouse = null; v.mode = null;
   const slot = STAFFPARK.find((s) => !s.v) || STAFFPARK[0];
-  dropStaffBike(a);
-  const v = staffBike(a, slot);
-  const end = pick(ENDS);
-  v.x = RN[end][0]; v.y = RN[end][1]; v.node = end; v.rider = a;
-  const nodes = bfs(RE, end, 'Wn').slice(1).map((n) => RN[n].slice());
-  yield drive(v, [...nodes, [9.3, 19.5], [9.6, slot.y], [slot.x, slot.y]]);
+  slot.v = v; v.pslot = slot; v.rider = a;
+  yield drive(v, [...houseToNode(h, 'Wn'), [9.3, 19.5], [9.6, slot.y], [slot.x, slot.y]]);
   v.rider = null; v.dir = 'x'; v.sgn = 1;
   a.hidden = false; a.x = slot.x + 0.55; a.y = slot.y + 0.2; a.pose = 'stand';
   bubble(a, '👋');
@@ -1090,15 +1209,18 @@ function* leave(a) {
   a.state = 'leaving';
   if (a.home.desk) DESKS[a.home.desk].on = false;
   bubble(a, '👋');
-  const v = VEH.find((x) => x.staffOf === a);
-  if (v) {
-    yield walk(a, walkRoute([a.x, a.y], [v.x + 0.55, v.y + 0.2]));
-    a.hidden = true; v.rider = a; if (v.pslot) v.pslot.v = null;
-    const end = pick(ENDS);
-    yield drive(v, [[9.6, v.y], [9.3, 19.5], ...bfs(RE, 'Wn', end).map((n) => RN[n].slice())]);
-    VEH.splice(VEH.indexOf(v), 1);
-  }
-  a.hidden = true; a.state = a.present ? 'off' : 'off';
+  // уезжает домой: скутер остаётся у дома на острове до следующей смены
+  const v = staffBike(a);
+  if (v.atHouse) bikeToPark(v);
+  yield walk(a, walkRoute([a.x, a.y], [v.x + 0.55, v.y + 0.2]));
+  a.hidden = true; v.rider = a;
+  if (v.pslot) { v.pslot.v = null; v.pslot = null; }
+  const h = staffHouse(a);
+  h.v = v;
+  yield drive(v, [[9.6, v.y], [9.3, 19.5], ...houseToNode(h, 'Wn').reverse(), h.spot.slice()]);
+  v.rider = null;
+  parkAtHouse(v, h, 'home');
+  a.hidden = true; a.state = 'off';
 }
 /* --- отдых: 30 минут без действий — санук, на пляж (очередь задач видна над головой) --- */
 const BEACH_SPOTS = () => BEACH;
@@ -1171,7 +1293,8 @@ function* issueScene(v, who) {
   let pts;
   if (v.slot) { pts = routeFromSlot(v); leaveSlot(v); }
   else if (v.gspot || LIFT.v === v) { pts = routeFromGarage(v); leaveGarage(v); }
-  else { v.hidden = false; v.x = RN.DW[0]; v.y = RN.DW[1]; v.node = 'E'; v.prev = 'DW'; pts = [RN.E.slice()]; }
+  else if (v.atHouse) { const h = v.atHouse; h.v = null; v.atHouse = null; v.mode = null; v.node = h.edge[0]; v.prev = h.edge[1]; pts = [h.road.slice(), RN[h.edge[0]].slice()]; }
+  else { v.node = 'E'; v.prev = 'DW'; pts = [RN.E.slice()]; }
   v.z = 0;
   yield drive(v, pts);
   v.claim = false;
@@ -1255,10 +1378,11 @@ function* serviceOut(v) {
 }
 function* toLift(v) {
   v.claim = true;
+  LIFT.v = v; LIFT.target = 0; // подъёмник занят сразу, чтобы вторая машина не поехала туда же
   const pre = v.gspot && v.gspot.row === 'L' ? [[v.x, 28.05], [17.5, 28.05], [17.5, 25.5], [13.5, 25.4]] : [[v.x, Math.min(v.y + 0.5, 24.5)]];
   yield drive(v, [...pre, [LIFT.x + 0.4, 23.2], [LIFT.x, LIFT.y]]);
   if (v.gspot) { v.gspot.v = null; v.gspot = null; }
-  LIFT.v = v; LIFT.target = 6; v.dir = 'x'; v.ox = 0; v.oy = 0; v.claim = false;
+  LIFT.target = 6; v.dir = 'x'; v.ox = 0; v.oy = 0; v.claim = false;
 }
 
 /* --- гости: посетители сайта гуляют по шоуруму; заявка — садятся к менеджеру; пишут боту — телефон --- */
@@ -1560,11 +1684,9 @@ function moveAlong(e, dt, speed) {
 }
 const mechanicWorking = () => staffList().some((a) => a.role === 'service' && a.present && !a.hidden && a.state === 'work' && !a.busy && atHome(a));
 function updateVehicle(v, dt) {
-  if (v.hidden && v.away && v.cruise && S.gt > v.away) {
-    v.hidden = false; v.away = 0;
-    const e = pick(ENDS);
-    v.x = RN[e][0]; v.y = RN[e][1]; v.prev = e; v.node = e; v.path = [];
-    cruiseNext(v);
+  // у дома: в аренде — утром (или после короткой остановки) снова на дороги
+  if (v.mode === 'house' && v.atHouse && !v.claim && v.status === 'rent' && !v.staffOf && dt > 0) {
+    if ((v.houseWhy === 'visit' && S.gt > v.until) || (v.houseWhy === 'night' && !isNight(v)) || v.houseWhy === 'overflow') leaveHouse(v);
   }
   if (v.park && S.gt > v.park) { v.park = 0; cruiseNext(v); }
   if (v.path.length && !v.hidden) {
@@ -2029,7 +2151,8 @@ function cardHtml(sel) {
   const e = sel.e;
   if (sel.kind === 'veh') {
     const st = STATUS_RU[e.status] || e.status;
-    const where = e.slot ? (['O', 'Q'].includes(e.slot.row) ? 'у дороги (стоянка заполнена)' : 'стоянка компании') : e.gspot || LIFT.v === e ? 'сервис' : e.park ? 'у пляжа' : e.hidden ? 'где-то на острове' : 'едет по острову';
+    const where = e.slot ? 'стоянка компании' : e.gspot ? (e.gspot.row === 'L' ? 'стоянка сервиса' : 'в гараже') : LIFT.v === e ? 'на подъёмнике в сервисе' : e.park ? 'у пляжа'
+      : e.mode === 'house' ? ({ night: 'стоит у дома на ночь', visit: 'заехал к дому', overflow: 'у дома — стоянка заполнена' }[e.houseWhy] || 'у дома') : e.mode === 'toHouse' ? (e.houseWhy === 'night' ? 'едет домой на ночь' : 'едет к дому') : 'едет по острову';
     const d = e.data || {};
     return `${x}<div class="gm-sub">${TYPE_RU[e.type] || 'Техника'} · ${esc(e.plate)}</div><h2>${TYPE_ICON[e.type] || '🚗'} ${esc(e.model)}</h2>
       <span class="gm-pill gm-${e.status}">${esc(st)}</span>${e.err ? `<span class="gm-pill gm-${e.err.level === 'error' ? 'bad' : 'warn'}">⚠ ${esc(e.err.text)}</span>` : ''}
@@ -2249,5 +2372,11 @@ function mount(view) {
   if (!running) { running = true; poll(); }
   if (!looping) { looping = true; last = 0; requestAnimationFrame(frame); }
 }
-window.STAFF_GAME = { mount };
+// для тестов: где сейчас техника (без личных данных)
+const debugState = () => ({
+  houses: HOUSES.length,
+  vehicles: VEH.map((v) => ({ id: v.id, status: v.status, staff: Boolean(v.staffOf), mode: v.mode || null, why: v.houseWhy || null, hidden: Boolean(v.hidden),
+    slot: Boolean(v.slot), garage: Boolean(v.gspot) || LIFT.v === v, x: v.x, y: v.y, tile: tAt(Math.floor(v.x), Math.floor(v.y)) }))
+});
+window.STAFF_GAME = { mount, debugState };
 })();
