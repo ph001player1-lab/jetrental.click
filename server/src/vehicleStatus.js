@@ -67,6 +67,11 @@ db.raw.exec(`
   CREATE INDEX IF NOT EXISTS vehicle_checks_plate ON vehicle_checks (plate_key);
 `);
 
+// Клиент события (арендатор), договор, из которого выдали, и отмена события
+for (const [col, type] of [['client_name', 'TEXT'], ['client_phone', 'TEXT'], ['doc_id', 'INTEGER'], ['undone_at', 'TEXT'], ['undone_by', 'TEXT']]) {
+  if (!db.raw.prepare('PRAGMA table_info(vehicle_events)').all().some((c) => c.name === col)) db.raw.exec(`ALTER TABLE vehicle_events ADD COLUMN ${col} ${type}`);
+}
+
 const q = {
   reports: db.raw.prepare(`
     SELECT m.id, m.ts, m.kind, m.data, m.author_name, p.plate, p.role
@@ -74,12 +79,13 @@ const q = {
     WHERE m.kind IN (${REPORT_KINDS.map(() => '?').join(',')}) AND m.status != 'ignored' AND p.role != 'mention'
       AND instr(m.text, '${PORTAL_MARK}') = 0
     ORDER BY m.ts`),
-  events: db.raw.prepare('SELECT * FROM vehicle_events ORDER BY at'),
+  events: db.raw.prepare('SELECT * FROM vehicle_events WHERE undone_at IS NULL ORDER BY at'),
   event: db.raw.prepare('SELECT * FROM vehicle_events WHERE id = ?'),
-  addEvent: db.raw.prepare(`INSERT INTO vehicle_events (plate_key, plate, kind, date_from, date_to, note, by_email, by_name, at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+  addEvent: db.raw.prepare(`INSERT INTO vehicle_events (plate_key, plate, kind, date_from, date_to, note, by_email, by_name, at, client_name, client_phone, doc_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+  undo: db.raw.prepare('UPDATE vehicle_events SET undone_at = ?, undone_by = ? WHERE id = ? AND undone_at IS NULL'),
   setWa: db.raw.prepare('UPDATE vehicle_events SET wa_status = ?, wa_error = ? WHERE id = ?'),
-  lastEvents: db.raw.prepare('SELECT * FROM vehicle_events WHERE plate_key = ? ORDER BY id DESC LIMIT ?'),
+  lastEvents: db.raw.prepare('SELECT * FROM vehicle_events WHERE plate_key = ? AND undone_at IS NULL ORDER BY id DESC LIMIT ?'),
   checks: db.raw.prepare('SELECT * FROM vehicle_checks ORDER BY id'),
   addCheck: db.raw.prepare(`INSERT INTO vehicle_checks (plate_key, status, choice, portal_sig, ws_sig, note, by_email, by_name, at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
@@ -104,7 +110,8 @@ function histories() {
     items.push({ plate: r.plate, ts: Date.parse(r.ts), kind: r.kind, role: r.role, from: isIso(f.from) ? f.from : null, to: isIso(f.to) ? f.to : null, src: 'group', ref: r.id, by: r.author_name || null });
   }
   for (const e of q.events.all()) {
-    items.push({ plate: e.plate_key, ts: Date.parse(e.at), kind: `p_${e.kind}`, role: 'main', from: e.date_from, to: e.date_to, src: 'portal', ref: e.id, by: e.by_name || e.by_email });
+    const client = e.client_name || e.client_phone ? { name: e.client_name || '', phone: e.client_phone || '' } : null;
+    items.push({ plate: e.plate_key, ts: Date.parse(e.at), kind: `p_${e.kind}`, role: 'main', from: e.date_from, to: e.date_to, src: 'portal', ref: e.id, by: e.by_name || e.by_email, client, docId: e.doc_id || null });
   }
   items.sort((a, b) => a.ts - b.ts);
 
@@ -119,7 +126,8 @@ function histories() {
     const close = () => { if (st.rent) { st.rents.push({ from: st.rent.start, to: it.ts }); st.rent = null; } };
     const open = () => {
       close();
-      st.rent = { start: it.ts, until: it.to };
+      // Кто арендует: событие портала (клиент, договор) или отчёт группы (клиент — по CRM)
+      st.rent = { start: it.ts, until: it.to, src: it.src, ref: it.ref, client: it.client || null, docId: it.docId || null };
       // Выдача по брони: бронь на эти дни выполнена
       const day = dayOf(it.ts);
       st.bookings = st.bookings.filter((b) => !(b.from <= addDays(day, 1) && b.to >= addDays(day, -1)));
@@ -137,7 +145,7 @@ function histories() {
       case 'booking': case 'p_reserve':
         if (it.role === 'main' || it.src === 'portal') {
           const from = it.from || dayOf(it.ts);
-          st.bookings.push({ from, to: it.to && it.to >= from ? it.to : from, at: it.ts });
+          st.bookings.push({ from, to: it.to && it.to >= from ? it.to : from, at: it.ts, src: it.src, ref: it.ref, client: it.client || null, docId: it.docId || null });
         }
         break;
       default: break;
@@ -220,6 +228,11 @@ export function portalSnapshot(units, now = Date.now()) {
       if (wsStatus) source = { kind: 'ws' };
     }
     const freeFrom = freeFromAt(effective, now, windowTo);
+    // У кого техника: текущая аренда, иначе бронь сейчас или ближайшая
+    const bookingNow = bookings.find((b) => dayStart(b.from) <= now) || null;
+    const holderOf = (x, kind, from) => (x ? { kind, from, to: x.until ?? x.to ?? null, src: x.src, ref: x.ref, client: x.client, docId: x.docId } : null);
+    const holder = h.rent ? holderOf(h.rent, 'rent', dayOf(h.rent.start))
+      : holderOf(bookingNow || bookings.find((b) => dayStart(b.from) > now), 'reserve', (bookingNow || bookings.find((b) => dayStart(b.from) > now))?.from);
     return {
       id: u.id, vehicleId: u.id, plate: u.plate, model: u.model || '', wsModel: u.wsName || '', type: u.type || null,
       status, portalStatus, wsStatus, needsCheck,
@@ -230,7 +243,7 @@ export function portalSnapshot(units, now = Date.now()) {
       freeWeek: isFreeBetween(effective, now, now + 7 * DAY_MS),
       needsRepair: u.status === 'Needs Repair', overdue: overdue && status === 'rent', until,
       nextBooking: bookings.find((b) => dayStart(b.from) > now) || null,
-      last: h.last, history: [...h.log].reverse(), deposit: null, tariffs: [],
+      last: h.last, history: [...h.log].reverse(), deposit: null, tariffs: [], holder,
       segments: effective.map((x) => ({ kind: x.kind, from: new Date(x.from).toISOString(), to: new Date(x.to).toISOString() }))
     };
   });
@@ -313,16 +326,32 @@ export function addStatusEvent(vehicle, input, staff, now = Date.now()) {
     if (to < today) throw new StatusError('date_past');
   }
   const note = String(input.note ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, 300) || null;
-  const info = q.addEvent.run(key, vehicle.plate, kind, from, to, note, staff.email, staff.name || staff.email, new Date(now).toISOString());
+  const clean = (v, max) => String(v ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max) || null;
+  // Клиент — для выдачи и брони (кто арендует; номер — в отчёт группы строкой Contact, по ней CRM найдёт клиента)
+  const withClient = kind === 'rent' || kind === 'reserve';
+  const info = q.addEvent.run(key, vehicle.plate, kind, from, to, note, staff.email, staff.name || staff.email, new Date(now).toISOString(),
+    withClient ? clean(input.clientName, 100) : null, withClient ? clean(input.clientPhone, 40) : null, Number(input.docId) || null);
   invalidateStatuses();
   console.log(`Vehicle ${vehicle.plate}: status «${kind}» set in the portal by ${staff.email}`);
   return q.event.get(Number(info.lastInsertRowid));
 }
 
 export const setEventWa = (id, status, error = null) => q.setWa.run(status, error, id);
+export const getEvent = (id) => q.event.get(Number(id) || 0) || null;
 export const recentEvents = (plate, n = 5) => q.lastEvents.all(keyOf(plate), n).map((e) => ({
-  id: e.id, kind: e.kind, from: e.date_from, to: e.date_to, note: e.note || '', by: e.by_name || e.by_email, at: e.at, wa: e.wa_status, waError: e.wa_error
+  id: e.id, kind: e.kind, from: e.date_from, to: e.date_to, note: e.note || '', by: e.by_name || e.by_email, at: e.at, wa: e.wa_status, waError: e.wa_error,
+  client: e.client_name || '', docId: e.doc_id || null
 }));
+
+/** Отменить событие портала (ошибочная выдача из договора и т. п.): статусы считаются без него */
+export function undoEvent(id, staff) {
+  const e = getEvent(id);
+  if (!e || e.undone_at) throw new StatusError('not_found');
+  q.undo.run(new Date().toISOString(), staff.name || staff.email, e.id);
+  invalidateStatuses();
+  console.log(`Vehicle ${e.plate}: portal event #${e.id} («${e.kind}») undone by ${staff.email}`);
+  return e;
+}
 
 /** Текст для рабочей группы — в формате отчётов (журнал его узнаёт), с меткой портала */
 export function eventReport(e, vehicleName) {
@@ -331,6 +360,8 @@ export function eventReport(e, vehicleName) {
   const lines = [`${head}`, `#${e.plate} ${vehicleName || ''}`.trim()];
   if (e.date_from) lines.push(`From: ${dm(e.date_from)}`);
   if (e.date_to) lines.push(`To: ${dm(e.date_to)}`);
+  // Клиент — строкой Contact, как в отчётах (CRM свяжет аренду с клиентом)
+  if (e.client_name || e.client_phone) lines.push(`Contact: ${[e.client_name, e.client_phone].filter(Boolean).join(' ')}`);
   if (e.note) lines.push(e.note);
   lines.push(`${PORTAL_MARK}${e.id} · ${e.by_name || e.by_email}]`);
   return lines.join('\n');

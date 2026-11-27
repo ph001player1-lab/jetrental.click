@@ -219,13 +219,49 @@
       <p class="muted jr-small">«Постоянный» ставится сам, если клиент брал 2 раза и больше. «Чёрный список» — портал предупредит в журнале и на главной, если клиент снова появится в брони или выдаче.</p>`;
     }
 
+    // Переход в карточку техники в «Парке»
+    const fleetLink = (plate) => (plate && ctx.can('fleet.view') ? ` <button type="button" class="link jr-small" data-crm-vehicle="${esc(plate)}">🚗 открыть в «Парке»</button>` : '');
+
     function nowBlock(card) {
       const n = card.now;
       const parts = [];
-      if (n.rent) parts.push(`<li><b>В аренде:</b> ${esc(n.rent.model || '')} ${plates(n.rent.plates)} · ${esc(short(n.rent.from))} — ${esc(short(n.rent.to))}${n.rent.deposit ? ` · залог ${esc(baht(n.rent.deposit))}` : ''}${journalLink(n.rent.plates[0])}</li>`);
-      for (const b of n.bookings) parts.push(`<li><b>Бронь:</b> ${esc(b.model || '')} ${plates(b.plates)} · ${esc(short(b.from))} — ${esc(short(b.to))}${b.total ? ` · ${esc(baht(b.total))}` : ''}${b.prepaid ? `, предоплата ${esc(baht(b.prepaid))}` : ''}${journalLink(b.plates[0])}</li>`);
+      if (n.rent) parts.push(`<li><b>В аренде:</b> ${esc(n.rent.model || '')} ${plates(n.rent.plates)} · ${esc(short(n.rent.from))} — ${esc(short(n.rent.to))}${n.rent.deposit ? ` · залог ${esc(baht(n.rent.deposit))}` : ''}${fleetLink(n.rent.plates[0])}${journalLink(n.rent.plates[0])}</li>`);
+      for (const b of n.bookings) parts.push(`<li><b>Бронь:</b> ${esc(b.model || '')} ${plates(b.plates)} · ${esc(short(b.from))} — ${esc(short(b.to))}${b.total ? ` · ${esc(baht(b.total))}` : ''}${b.prepaid ? `, предоплата ${esc(baht(b.prepaid))}` : ''}${fleetLink(b.plates[0])}${journalLink(b.plates[0])}</li>`);
       for (const x of n.debts) parts.push(`<li class="crm-debt"><b>${x.overdue ? `Просрочен долг (${x.late} дн.)` : 'Долг'}:</b> ${esc(baht(x.amount))} · ${plates(x.plates)} · срок ${esc(short(x.due))}${x.note ? ` · «${esc(x.note)}»` : ''}${journalLink(x.plates[0])}</li>`);
       return parts.length ? `<ul class="crm-nowlist">${parts.join('')}</ul>` : '<p class="muted">Сейчас ни аренды, ни брони, ни долгов.</p>';
+    }
+
+    /** Выдать или забронировать технику клиенту, новый договор */
+    function actionsBlock(card) {
+      const btns = [];
+      if (ctx.canSetStatus()) btns.push('<button type="button" class="btn btn--small btn--primary" data-crm-issue>＋ Выдать или забронировать технику</button>');
+      if (ctx.canDocsEdit()) btns.push('<button type="button" class="btn btn--small" data-crm-newdoc>📄 Новый договор</button>');
+      if (!btns.length) return '';
+      return `<div class="crm-actions">${btns.join('')}</div>${st.issue ? issueForm(card) : ''}`;
+    }
+
+    function issueForm() {
+      const f = st.issue;
+      const list = f.from && f.to ? ctx.freeVehicles(f.from, f.to, f.type) : null;
+      const opts = (list || []).map((v) => `<li><span><b>${esc(v.model)}</b> <span class="plate">#${esc(v.plate)}</span>${v.price ? ` <span class="muted jr-small">· ${esc(baht(v.price))}/сутки</span>` : ''}</span>
+        <button type="button" class="btn btn--small" data-crm-pick="${v.vehicleId}">Выбрать</button></li>`).join('');
+      return `<form class="crm-issue" data-crm-issueform>
+        <div class="chips">${[['rent', 'Выдача сейчас'], ['reserve', 'Бронь']].map(([k, l]) => `<button type="button" class="chip" data-crm-issuekind="${k}" aria-pressed="${f.kind === k}">${l}</button>`).join('')}</div>
+        <div class="crm-issue__row">
+          ${f.kind === 'reserve' ? `<label class="field"><span>С</span><input class="search" type="date" name="from" value="${esc(f.from)}" min="${ctx.today()}"></label>` : ''}
+          <label class="field"><span>${f.kind === 'reserve' ? 'По' : 'До'}</span><input class="search" type="date" name="to" value="${esc(f.to || '')}" min="${ctx.today()}"></label>
+          <label class="field"><span>Тип</span><select class="search" name="type">${[['all', 'Все'], ['scooter', 'Скутеры'], ['motorcycle', 'Мотоциклы'], ['car', 'Автомобили']].map(([k, l]) => `<option value="${k}"${f.type === k ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+          <button type="button" class="btn btn--small" data-crm-issueclose>Отмена</button>
+        </div>
+        ${list === null ? '<p class="muted jr-small">Выберите даты — покажу свободную на них технику.</p>' : list.length ? `<ul class="crm-free">${opts}</ul>` : '<p class="muted">На эти даты ничего свободного.</p>'}
+      </form>`;
+    }
+
+    function contractsBlock(card) {
+      if (!card.contracts?.length) return '';
+      return `<section class="card fin-sec"><h3>Договоры</h3><ul class="crm-rentals">${card.contracts.map((d) => `
+        <li><button type="button" class="link" data-crm-doc="${d.id}">📄 ${esc(d.number)}</button> · ${esc(d.model || '')} ${d.plate ? `<span class="plate">#${esc(d.plate)}</span>` : ''}
+          ${d.from ? `<span class="muted jr-small">${esc(short(d.from.slice(0, 10)))} — ${esc(d.to ? short(d.to.slice(0, 10)) : '…')}</span>` : ''}</li>`).join('')}</ul></section>`;
     }
 
     function rentalsBlock(card) {
@@ -294,7 +330,8 @@
             ${tagsBlock(card)}
             ${status(st.msg)}
           </section>
-          <section class="card fin-sec"><h3>Сейчас</h3>${nowBlock(card)}</section>
+          <section class="card fin-sec"><h3>Сейчас</h3>${nowBlock(card)}${actionsBlock(card)}</section>
+          ${contractsBlock(card)}
           <section class="card fin-sec"><h3>Итоги</h3>
             <div class="stats crm-stats">
               <div class="stat"><div class="stat__label">Аренд</div><div class="stat__value">${esc(num(s.rentals))}</div></div>
@@ -351,7 +388,31 @@
         return true;
       }
       const open = el.closest('[data-crm-open]');
-      if (open) { st.msg = null; openCard(open.dataset.crmOpen); return true; }
+      if (open) { st.msg = null; st.issue = null; openCard(open.dataset.crmOpen); return true; }
+      const veh = el.closest('[data-crm-vehicle]');
+      if (veh) { ctx.openVehicle(veh.dataset.crmVehicle); return true; }
+      const doc = el.closest('[data-crm-doc]');
+      if (doc) { ctx.openContract(Number(doc.dataset.crmDoc)); return true; }
+      if (el.closest('[data-crm-newdoc]')) {
+        const c = st.card?.client;
+        ctx.newContract({ renter: { name: c?.name || '', phone: c?.phones?.[0] ? `+${String(c.phones[0]).replace(/^\+/, '')}` : '' } });
+        return true;
+      }
+      if (el.closest('[data-crm-issue]')) { st.issue = st.issue ? null : { kind: 'rent', from: ctx.today(), to: '', type: 'all' }; ctx.rerender(); return true; }
+      if (el.closest('[data-crm-issueclose]')) { st.issue = null; ctx.rerender(); return true; }
+      const ik = el.closest('[data-crm-issuekind]');
+      if (ik && st.issue) { st.issue.kind = ik.dataset.crmIssuekind; if (st.issue.kind === 'rent') st.issue.from = ctx.today(); ctx.rerender(); return true; }
+      const pick = el.closest('[data-crm-pick]');
+      if (pick && st.issue) {
+        const c = st.card?.client;
+        const f = st.issue;
+        const id = st.openId;
+        ctx.openStatus(Number(pick.dataset.crmPick), f.kind, {
+          from: f.kind === 'reserve' ? f.from : '', to: f.to, clientName: c?.name || '',
+          clientPhone: c?.phones?.[0] ? `+${String(c.phones[0]).replace(/^\+/, '')}` : ''
+        }, () => { st.issue = null; st.msg = { kind: 'ok', text: 'Статус техники сохранён — он появится в «Парке» и в группе.' }; openCard(id); });
+        return true;
+      }
       if (el.closest('[data-crm-back]')) {
         st.openId = null;
         st.card = null;
@@ -388,6 +449,14 @@
     }
 
     function onChange(event) {
+      // Выдача / бронь: даты и тип — список свободной техники обновляется
+      const issue = event.target.closest?.('[data-crm-issueform]');
+      if (issue && st.issue) {
+        const f = new FormData(issue);
+        Object.assign(st.issue, { from: f.get('from') || st.issue.from, to: f.get('to') || '', type: f.get('type') || 'all' });
+        ctx.rerender();
+        return true;
+      }
       const input = event.target.closest?.('[data-crm-import]');
       if (!input) return false;
       importFile(input.files?.[0]);
@@ -414,7 +483,7 @@
       return false;
     }
 
-    return { load, render, onClick, onInput, onChange, onSubmit };
+    return { load, render, onClick, onInput, onChange, onSubmit, open: (id) => { st.issue = null; st.msg = null; openCard(id); } };
   }
 
   window.STAFF_CRM = { create };

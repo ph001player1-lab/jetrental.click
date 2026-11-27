@@ -46,7 +46,10 @@ import { quotePlate } from './pricing.js';
 import { rentalDays } from './format.js';
 import { renderDocument, LANGS, docTitle, COMPANY } from './docs/templates.js';
 import { htmlToPdf, PdfError, chromiumPath } from './docs/pdf.js';
-import { wabotSendDocument, wabotSend, wabotStatus } from './wabot.js';
+import { wabotSendDocument, wabotSend, wabotStatus, postFleetEvent } from './wabot.js';
+import { addStatusEvent, undoEvent, eventReport, setEventWa, getEvent, StatusError } from './vehicleStatus.js';
+import { invalidateFleet } from './fleet.js';
+import { isSold } from './sold.js';
 
 const DOCS_DIR = path.join(config.dataDir, 'docs');
 const KINDS = ['contract', 'photos', 'return', 'receipt', 'addendum'];
@@ -81,6 +84,9 @@ db.raw.exec(`
   );
 `);
 
+// Выдача по договору: событие статуса «В аренде» / «Бронь», которое поставили из договора
+if (!db.raw.prepare('PRAGMA table_info(documents)').all().some((c) => c.name === 'event_id')) db.raw.exec('ALTER TABLE documents ADD COLUMN event_id INTEGER');
+
 const q = {
   contracts: db.raw.prepare("SELECT * FROM documents WHERE kind = 'contract' ORDER BY id DESC LIMIT ?"),
   children: db.raw.prepare('SELECT * FROM documents WHERE contract_id = ? ORDER BY id'),
@@ -92,6 +98,7 @@ const q = {
   setSignatures: db.raw.prepare('UPDATE documents SET signatures = ? WHERE id = ?'),
   setToken: db.raw.prepare('UPDATE documents SET sign_token = ?, sign_expires = ? WHERE id = ?'),
   setSent: db.raw.prepare('UPDATE documents SET sent_at = ?, sent_to = ? WHERE id = ?'),
+  setEvent: db.raw.prepare('UPDATE documents SET event_id = ? WHERE id = ?'),
   remove: db.raw.prepare('DELETE FROM documents WHERE id = ?'),
   counter: db.raw.prepare('INSERT INTO doc_counters (key, n) VALUES (?, 1) ON CONFLICT(key) DO UPDATE SET n = n + 1 RETURNING n')
 };
@@ -280,6 +287,7 @@ export function saveDocument(body, staff) {
   const data = kind === 'contract' ? cleanContract(body.data || {}) : cleanSub(kind, body.data || {}, rowData(contract));
   if (kind === 'photos' && existing) data.photos = rowData(existing).photos || [];
   const json = JSON.stringify(data);
+  dropContractCache();
   if (existing) {
     // Поменяли подписанный документ — подписи больше не действуют
     const changed = existing.data !== json || existing.lang !== lang;
@@ -308,6 +316,7 @@ export function deleteDocument(id, staff) {
   if (Object.keys(signaturesOf(doc)).length && !can(staff, 'access.admin')) throw new DocError('signed_admin_only');
   const children = doc.kind === 'contract' ? q.children.all(doc.id) : [];
   if (children.some((c) => Object.keys(signaturesOf(c)).length) && !can(staff, 'access.admin')) throw new DocError('signed_admin_only');
+  dropContractCache();
   for (const d of [...children, doc]) {
     fs.rmSync(path.join(DOCS_DIR, String(d.id)), { recursive: true, force: true });
     q.remove.run(d.id);
@@ -450,6 +459,56 @@ function saveSignature(doc, who, png, via) {
 
 const signBase = () => (process.env.SIGN_BASE_URL || `https://${config.site.jetmobilityHosts.find((h) => !h.startsWith('www.') && h.includes('.')) || 'jetmobility.org'}`).replace(/\/+$/, '');
 
+/* ------------------------------------------- Договор к аренде (для «Парка», CRM) */
+
+const allContracts = db.raw.prepare("SELECT id, number, data, created_at FROM documents WHERE kind = 'contract' ORDER BY id DESC");
+const keyOfPlate = (plate) => String(plate || '').replace(/\D/g, '');
+// Договоры с разобранными данными — на несколько секунд (в «Парке» их ищут для каждой машины)
+let contractCache = null;
+const contractRows = () => {
+  if (!contractCache || Date.now() - contractCache.at > 5000) contractCache = { at: Date.now(), rows: allContracts.all().map((row) => ({ row, d: rowData(row) })) };
+  return contractCache.rows;
+};
+const dropContractCache = () => { contractCache = null; };
+
+/**
+ * Договор, который относится к аренде или брони техники: ссылка из события
+ * (docId) или договор этой техники, чьи даты пересекаются с from–to (последний).
+ */
+export function contractFor(plate, from, to, docId = null) {
+  if (docId) {
+    const row = getDoc(docId);
+    if (row?.kind === 'contract') return contractBrief(row);
+  }
+  const key = keyOfPlate(plate);
+  if (!key) return null;
+  for (const { row, d } of contractRows()) {
+    if (keyOfPlate(d.plate) !== key || !d.from || !d.to) continue;
+    const a = d.from.slice(0, 10);
+    const b = d.to.slice(0, 10);
+    if ((!to || a <= to) && (!from || b >= from)) return contractBrief(row);
+  }
+  return null;
+}
+
+/** Договоры клиента (по телефону или имени) — для карточки клиента */
+export function contractsOfClient(phones = [], name = '') {
+  const keys = new Set(phones.map((p) => String(p || '').replace(/\D/g, '').slice(-9)).filter((p) => p.length >= 8));
+  const nm = String(name || '').trim().toLowerCase();
+  const out = [];
+  for (const { row, d } of contractRows()) {
+    const phone = String(d.renter?.phone || '').replace(/\D/g, '').slice(-9);
+    if ((phone && keys.has(phone)) || (nm && nm.length > 3 && String(d.renter?.name || '').trim().toLowerCase() === nm)) out.push(contractBrief(row));
+    if (out.length >= 20) break;
+  }
+  return out;
+}
+
+function contractBrief(row) {
+  const d = rowData(row);
+  return { id: row.id, number: row.number, name: d.renter?.name || '', phone: d.renter?.phone || '', model: d.model, plate: d.plate, from: d.from, to: d.to };
+}
+
 /* ------------------------------------------------------------- WhatsApp */
 
 const CAPTION = {
@@ -484,10 +543,17 @@ async function call(fn) {
   }
 }
 
+function issuedOf(row) {
+  const e = row.event_id ? getEvent(row.event_id) : null;
+  if (!e || e.undone_at) return null;
+  return { eventId: e.id, kind: e.kind, from: e.date_from, to: e.date_to, at: e.at, by: e.by_name || e.by_email, wa: e.wa_status };
+}
+
 const summary = (row) => {
   const data = rowData(row);
   const sigs = signaturesOf(row);
   return {
+    issued: row.kind === 'contract' ? issuedOf(row) : undefined,
     id: row.id, kind: row.kind, number: row.number, lang: row.lang, createdAt: row.created_at, by: row.created_name,
     signed: { renter: sigs.renter || null, company: sigs.company || null },
     sentAt: row.sent_at, sentTo: row.sent_to, photos: row.kind === 'photos' ? (data.photos || []).length : undefined
@@ -637,6 +703,59 @@ export async function docsSend(staff, req, res) {
   const to = await call(() => sendToClient(doc, phone || rowData(contract).renter?.phone));
   console.log(`Document ${doc.number} (${doc.kind}) sent to WhatsApp ${to.slice(0, -4).replace(/\d/g, '•')}${to.slice(-4)} by ${staff.email}`);
   sendJson(res, 200, { ok: true, to });
+}
+
+/* --------------------------------------- Выдача техники по договору (статус) */
+
+/**
+ * POST /api/staff/docs/issue { id } — по договору ставим статус техники: выдача сегодня
+ * («В аренде» до даты возврата) или бронь на даты договора, с клиентом; событие — в группу.
+ * Подтверждение спрашивает портал; отменить — /docs/unissue.
+ */
+export async function docsIssue(staff, req, res) {
+  needEdit(staff);
+  const { id } = await readJson(req);
+  const doc = getDoc(id);
+  if (!doc || doc.kind !== 'contract') throw new HttpError(404, 'unknown_contract');
+  if (issuedOf(doc)) throw new HttpError(409, 'already_issued');
+  const c = rowData(doc);
+  const vehicle = c.vehicleId ? getVehicle(c.vehicleId) : null;
+  if (!vehicle || isSold(vehicle.plate)) throw new HttpError(400, 'no_vehicle');
+  if (!c.to) throw new HttpError(400, 'date_required');
+  const today = bangkokNow().slice(0, 10);
+  const from = (c.from || '').slice(0, 10);
+  const kind = from && from > today ? 'reserve' : 'rent';
+  let event;
+  try {
+    event = addStatusEvent(vehicle, { kind, from, to: c.to.slice(0, 10), clientName: c.renter?.name, clientPhone: c.renter?.phone, note: doc.number, docId: doc.id }, staff);
+  } catch (err) {
+    if (err instanceof StatusError) throw new HttpError(400, err.code);
+    throw err;
+  }
+  q.setEvent.run(event.id, doc.id);
+  invalidateFleet();
+  const name = vehicle.clientModel || `${vehicle.brand} ${vehicle.model}`.trim();
+  const wa = await postFleetEvent(eventReport(event, name));
+  setEventWa(event.id, wa.status, wa.error || null);
+  console.log(`Contract ${doc.number}: ${vehicle.plate} set «${kind}» by ${staff.email}`);
+  sendJson(res, 200, { ok: true, kind, wa: wa.status });
+}
+
+/** POST /api/staff/docs/unissue { id } — отменить выдачу по договору (ошибка): статус как до неё */
+export async function docsUnissue(staff, req, res) {
+  needEdit(staff);
+  const { id } = await readJson(req);
+  const doc = getDoc(id);
+  const issued = doc ? issuedOf(doc) : null;
+  if (!issued) throw new HttpError(404, 'not_issued');
+  const e = undoEvent(issued.eventId, staff);
+  q.setEvent.run(null, doc.id);
+  invalidateFleet();
+  // В группу — что выдачу отменили (с той же меткой портала: журнал это не считает)
+  const vehicle = getVehicle(rowData(doc).vehicleId);
+  const name = vehicle ? (vehicle.clientModel || `${vehicle.brand} ${vehicle.model}`.trim()) : '';
+  const wa = await postFleetEvent(`Cancelled\n#${e.plate} ${name}`.trim() + `\n${doc.number}\n[portal #${e.id} · ${staff.name || staff.email}]`);
+  sendJson(res, 200, { ok: true, wa: wa.status });
 }
 
 /* ----------------------------------------------------- Фото при выдаче */

@@ -525,8 +525,24 @@ async function buildIndex(now = Date.now()) {
   }
   for (const c of clients.values()) c.dupes = [...(dupes.get(c.id) || new Map())].map(([id, reason]) => ({ id, reason }));
 
-  cache = { at: now, clients, shared: maps.shared };
+  cache = { at: now, clients, shared: maps.shared, reportClient, maps };
   return cache;
+}
+
+const clientBrief = (c) => (c ? { id: c.id, name: c.name, phone: c.phones?.[0] || null } : null);
+
+/** Клиент отчёта группы (по строке Contact): { id, name, phone } или null — для «Арендатора» в «Парке» */
+export async function clientOfReport(reportId, now = Date.now()) {
+  const idx = await buildIndex(now);
+  return clientBrief(idx.clients.get(idx.reportClient.get(reportId)));
+}
+
+/** Клиент по телефону или @telegram: { id, name, phone } или null */
+export async function clientByContact(contact, now = Date.now()) {
+  if (!contact) return null;
+  const idx = await buildIndex(now);
+  const id = idx.maps.finalId(idx.maps.match(contactKeys(contact)) || 0);
+  return clientBrief(idx.clients.get(id));
 }
 
 /* ---------------------------------------------------------------- Список */

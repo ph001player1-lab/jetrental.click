@@ -46,14 +46,20 @@
       if (rerender) ctx.rerender();
     }
 
-    function openNew() {
+    /** Новый договор; prefill — из «Парка» (техника, даты) или из карточки клиента (клиент) */
+    function openNew(prefill = {}) {
       const now = new Date(Date.now() + 7 * 3600000).toISOString();
       st.view = 'edit';
       st.id = null;
       st.one = null;
       st.sub = null;
       st.msg = null;
-      st.form = { lang: uiLang() === 'ru' ? 'ru' : 'en', from: `${now.slice(0, 10)}T12:00`, to: '', renter: {}, equipment: null, fuel: 4 };
+      st.quoteNote = null;
+      st.form = { lang: uiLang() === 'ru' ? 'ru' : 'en', from: `${now.slice(0, 10)}T12:00`, to: '', equipment: null, fuel: 4, ...prefill, renter: { ...(prefill.renter || {}) } };
+      Object.keys(st.form).forEach((k) => { if (st.form[k] === undefined) delete st.form[k]; });
+      if (!st.form.from) st.form.from = `${now.slice(0, 10)}T12:00`;
+      // Техника уже выбрана — подставим её данные и цену, как только форма появится
+      st.pendingQuote = Boolean(prefill.vehicleId);
       ctx.rerender();
     }
 
@@ -285,7 +291,7 @@
           <h2 class="dc-title">${c ? `${esc(c.number)}` : esc(t('dc.newContract'))}</h2>
         </div>
         ${st.msg ? `<p class="md-status is-${st.msg.kind}" role="status">${esc(st.msg.text)}</p>` : ''}
-        ${c ? `<section class="card dc-sec"><h3>📄 ${esc(t('dc.kind.contract'))}</h3>${docActions(c)}</section>` : ''}
+        ${c ? `<section class="card dc-sec"><h3>📄 ${esc(t('dc.kind.contract'))}</h3>${docActions(c)}${issueBlock(c)}</section>` : ''}
         ${contractForm()}
         ${c ? `${photosBlock()}${subBlock('receipt')}${subBlock('return')}${subBlock('addendum')}` : ''}
       </div>`;
@@ -294,7 +300,26 @@
     function render() {
       if (st.failed) return `<div class="dc"><div class="card empty">${esc(t('app.loadFailed'))}</div></div>`;
       if (!st.list || !st.pre) return `<div class="dc"><div class="card empty">${esc(t('app.loading'))}</div></div>`;
+      if (st.view === 'edit' && st.pendingQuote) {
+        st.pendingQuote = false;
+        setTimeout(() => { const form = document.querySelector('[data-dc-form]'); if (form) refreshQuote(form, true); }, 0);
+      }
       return st.view === 'edit' ? renderEditor() : renderList();
+    }
+
+    /** Выдача по договору: статус техники «В аренде» (или «Бронь») — с подтверждением и отменой */
+    function issueBlock(c) {
+      const d = c.data;
+      if (c.issued) {
+        const i = c.issued;
+        return `<div class="dc-issued">🔑 ${esc(t(i.kind === 'reserve' ? 'dc.issuedReserve' : 'dc.issuedRent', { from: dmy(i.from), to: dmy(i.to), at: ctx.dateTime(i.at), by: i.by || '' }))}
+          ${canEdit() ? `<button type="button" class="link jr-small dc-del" data-dc-unissue="${c.id}">${esc(t('dc.unissue'))}</button>` : ''}</div>`;
+      }
+      if (!canEdit()) return '';
+      if (!d.vehicleId || !d.to) return `<p class="muted jr-small">${esc(t('dc.issueNeed'))}</p>`;
+      const today = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
+      const reserve = d.from && d.from.slice(0, 10) > today;
+      return `<button type="button" class="btn btn--small btn--primary" data-dc-issue="${c.id}">🔑 ${esc(t(reserve ? 'dc.issueReserve' : 'dc.issueRent'))}</button>`;
     }
 
     /* ------------------------------------------------------------ Форма */
@@ -531,6 +556,23 @@
         }, t('dc.deleted'));
         return true;
       }
+      const issue = el.closest('[data-dc-issue]');
+      if (issue) {
+        const d = st.one.contract.data;
+        const today = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
+        const reserve = d.from && d.from.slice(0, 10) > today;
+        const ask = t(reserve ? 'dc.issueAskReserve' : 'dc.issueAskRent', { vehicle: `${d.model || ''} · ${d.plate || ''}`, from: dmy(d.from?.slice(0, 10)), to: dmy(d.to?.slice(0, 10)), client: d.renter?.name || '—' });
+        if (!window.confirm(ask)) return true;
+        issue.disabled = true;
+        act(() => api('/docs/issue', { body: { id: Number(issue.dataset.dcIssue) } }), (r) => t(r.kind === 'reserve' ? 'dc.issuedOkReserve' : 'dc.issuedOkRent') + (r.wa === 'sent' ? ` ${t('dc.toGroup')}` : ''));
+        return true;
+      }
+      const unissue = el.closest('[data-dc-unissue]');
+      if (unissue) {
+        if (!window.confirm(t('dc.unissueAsk'))) return true;
+        act(() => api('/docs/unissue', { body: { id: Number(unissue.dataset.dcUnissue) } }), t('dc.unissued'));
+        return true;
+      }
       const subNew = el.closest('[data-dc-subnew]');
       if (subNew) { st.sub = { kind: subNew.dataset.dcSubnew, id: null, doc: null }; ctx.rerender(); return true; }
       const subEdit = el.closest('[data-dc-subedit]');
@@ -607,7 +649,10 @@
     /** Пока правят договор или открыт документ — фон вкладку не перерисовывает */
     const canRefresh = () => st.view === 'list' && !document.activeElement?.matches?.('[data-dc-search]');
 
-    return { load, render, onClick, onChange, onInput, onSubmit, canRefresh, openContract: (id) => { st.view = 'edit'; loadOne(id); } };
+    return {
+      load, render, onClick, onChange, onInput, onSubmit, canRefresh, openNew,
+      openContract: (id) => { st.view = 'edit'; st.sub = null; st.msg = null; loadOne(id).catch(() => null); }
+    };
   }
 
   window.STAFF_DOCS = { create };

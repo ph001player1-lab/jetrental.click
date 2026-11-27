@@ -1400,7 +1400,9 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
 .vh-onlyprob[aria-pressed="true"] { background: var(--warn); border-color: var(--warn); color: #fff; }
 .vh-table-wrap { margin-top: 10px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--surface); }
 /* Шире экрана — прокрутка вбок внутри таблицы (тогда подписи закреплены внутри неё) */
-.vh-table-wrap--scroll { overflow-x: auto; }
+/* Шире экрана — таблица листается в своей рамке и вбок, и вниз; подписи столбцов закреплены в ней (как в «Прайсе») */
+.vh-table-wrap--scroll { overflow: auto; max-height: calc(100vh - var(--vh-head-top, 120px) - 24px); max-height: calc(100dvh - var(--vh-head-top, 120px) - 24px - var(--safe-bottom)); }
+@media (max-width: 720px) { .vh-table-wrap--scroll { max-height: calc(100dvh - var(--vh-head-top, 120px) - 96px - var(--safe-bottom)); } }
 .vh-table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .vh-table th, .vh-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
 .vh-table thead th {
@@ -1595,3 +1597,14 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
   .dc-grid { grid-template-columns: 1fr 1fr; }
   .dc-pad { height: 180px; }
 }
+
+/* Арендатор в «Парке», кнопки карточки, выдача по договору, выдача из CRM */
+.vh-renter-line { margin: 4px 0 0; font-size: 13px; }
+.vh-renter-td { min-width: 130px; max-width: 200px; font-size: 13px; overflow-wrap: anywhere; }
+.vh-card-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.dc-issued { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; padding: 6px 10px; border-radius: 8px; background: var(--free-bg); color: var(--text); font-size: 13px; }
+.crm-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.crm-issue { display: grid; gap: 8px; margin-top: 10px; padding: 10px; border-radius: 10px; background: var(--surface-2); }
+.crm-issue__row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: end; }
+.crm-free { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 320px; overflow: auto; }
+.crm-free li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; background: var(--surface); }

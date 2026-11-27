@@ -1003,8 +1003,28 @@
 
   const crm = window.STAFF_CRM.create({
     api, esc, can,
+    today: () => bkkToday(),
+    canSetStatus: () => Boolean(state.fleet?.canSetStatus),
+    canDocsEdit: () => can('docs.edit'),
+    openVehicle: (plate) => openVehicle(plate),
+    openContract: (id) => openContract(id),
+    newContract: (prefill) => newContract(prefill),
+    // Смена статуса техники из карточки клиента (окно «Парка»)
+    openStatus: (vehicleId, kind, prefill, onSaved) => vehicles.openStatus(vehicleId, kind, prefill, async (r) => { await loadData(); onSaved?.(r); }),
+    freeVehicles: (from, to, type) => freeVehicles(from, to, type),
     rerender: () => { if (state.tab === 'crm') $('#view').innerHTML = crm.render(); }
   });
+
+  /** Свободная на даты техника (по занятости портала): [{ vehicleId, model, plate, price }] */
+  function freeVehicles(from, to, type = 'all') {
+    const a = Date.parse(`${from}T00:00:00+07:00`);
+    const b = Date.parse(`${to}T00:00:00+07:00`) + DAY_MS;
+    if (!(b > a)) return [];
+    return cars().filter((c) => c.vehicleId && (type === 'all' || c.type === type) && !c.needsRepair && c.status !== 'service')
+      .filter((c) => !(c.segments || []).some((s) => Date.parse(s.from) < b && Date.parse(s.to) > a))
+      .map((c) => ({ vehicleId: c.vehicleId, model: carName(c), plate: c.plate, price: state.fleet?.tariffs?.[c.id]?.tiers?.find(Boolean) || null }))
+      .sort((x, y) => x.model.localeCompare(y.model));
+  }
 
   /* ------------------------------------------------------ Вкладка «Доступы» */
 
@@ -1130,7 +1150,7 @@
       if (state.filters.type !== 'all' && car.type !== state.filters.type) return false;
       if (state.filters.status !== 'all' && car.status !== state.filters.status) return false;
       if (!q) return true;
-      return [car.plate, car.model, car.wsModel].some((v) => String(v || '').toLowerCase().includes(q))
+      return [car.plate, car.model, car.wsModel, car.renter?.name, car.renter?.phone].some((v) => String(v || '').toLowerCase().includes(q))
         || String(car.plate).replace(/\D/g, '').includes(q.replace(/\D/g, '') || '\u0000');
     });
   }
@@ -1417,8 +1437,40 @@
     },
     rerender: () => render(),
     openInvestor: (id) => openInvestor(id),
-    reload: async () => { await loadData(); render(); }
+    reload: async () => { await loadData(); render(); },
+    statusFilter: () => state.filters.status,
+    canDocs: () => can('docs.view') || can('docs.edit'),
+    canDocsEdit: () => can('docs.edit'),
+    canCrm: () => can('crm.view'),
+    openContract: (id) => openContract(id),
+    newContract: (prefill) => newContract(prefill),
+    openClient: (id) => openClient(id)
   });
+
+  /* ------------------------- Переходы между «Парком», CRM и «Документами» */
+
+  function openContract(id) {
+    setTab('docs');
+    docs.openContract(id);
+  }
+
+  function newContract(prefill = {}) {
+    setTab('docs');
+    docs.openNew(prefill);
+  }
+
+  function openClient(id) {
+    setTab('crm');
+    crm.open(id);
+  }
+
+  /** Карточка техники в «Парке»: только она в списке, раскрыта */
+  function openVehicle(plate) {
+    state.filters = { q: String(plate || ''), type: 'all', status: 'all' };
+    const car = cars().find((c) => c.plate === plate);
+    if (car) state.expanded.add(car.id);
+    setTab('fleet');
+  }
 
 
 
@@ -1456,6 +1508,7 @@
           <span class="pill pill--${car.status}"><span class="dot dot--${car.status}"></span>${esc(vehicles.statusText(car))}</span>
         </div>
         ${vehicles.wsLine(car)}
+        ${vehicles.renterLine(car)}
         ${vehicles.investorLine(car)}
         ${vehicles.problemBadges(car)}
         <div class="car__meta">

@@ -57,7 +57,7 @@ import { soldList, markSold, unmarkSold, markSoldList, isSold, SoldError } from 
 import { listVehicles, saveVehicle, deleteVehicle, fleetLog, getVehicle, setRepair, FleetError } from './fleetStore.js';
 import { addStatusEvent, eventReport, setEventWa, recentEvents, invalidateStatuses, sameModel, addCheck, StatusError } from './vehicleStatus.js';
 import { marketingReport, marketingDetails, saveSource, deleteSource, placeSource, saveSettings, allSources, MarketingError } from './marketing.js';
-import { crmList, crmClient, saveClient, setTags, addNote, mergeClients, importClients, CrmError } from './crm.js';
+import { crmList, crmClient, saveClient, setTags, addNote, mergeClients, importClients, CrmError, clientOfReport, clientByContact } from './crm.js';
 import { importCashbook } from './cashbook.js';
 import { serverReport, serverStatusRoute, saveServerSettings, alertAdminsOnce } from './serverStats.js';
 import { listTickets, ticketsBadge, createTicket, uploadShot, getShot, setTicketStatus, markSeen, deleteTicket } from './tickets.js';
@@ -70,7 +70,7 @@ import { waStatus, waConfig, waPair, waLogout } from './journal/observer.js';
 import { wabotPortalStatus, wabotPortalSettings, wabotPortalConfig, wabotPortalPair, wabotPortalLogout, wabotSettings, postFleetEvent } from './wabot.js';
 import { groupStatusByPlate } from './journal/reconcile.js';
 import { settingsRoute, settingsService, settingsServiceDelete, settingsPaid, settingsPaymentDelete, settingsAi, settingsDomainsCheck } from './itSettings.js';
-import { docsList, docsOne, docsPrefill, docsSave, docsDelete, docsPdf, docsSign, docsUnsign, docsLink, docsSend, docsPhotoUpload, docsPhotoGet, docsPhotoDelete } from './documents.js';
+import { docsList, docsOne, docsPrefill, docsSave, docsDelete, docsPdf, docsSign, docsUnsign, docsLink, docsSend, docsPhotoUpload, docsPhotoGet, docsPhotoDelete, contractFor, contractsOfClient, docsIssue, docsUnissue } from './documents.js';
 
 const COOKIE = 'jr_staff';
 const MAX_ATTEMPTS = 5;
@@ -334,8 +334,12 @@ async function fleet(req, res) {
   try { catalog = (await getFleet()).catalog; } catch { /* без каталога — без проверок фото */ }
   const today = todayIso();
   const wsOn = Boolean(sync.enabled && ws);
-  cars = cars.map((car) => ({
+  // Арендатор (текущая аренда или бронь): договор → клиент в событии портала → клиент отчёта группы (CRM)
+  const contacts = can(staff, 'clients.view');
+  const renters = fleetView ? await Promise.all(cars.map((car) => renterOf(car).catch(() => null))) : [];
+  cars = cars.map((car, i) => ({
     ...car,
+    renter: renters[i] ? { ...renters[i], phone: contacts ? renters[i].phone : null } : null,
     problems: fleetView ? vehicleIssues(car, { vehicle: vehicleById.get(car.vehicleId), entry: catalog.get(car.model), tariff: prices.tariffs?.[car.id], wsOn, today }) : []
   }));
   sendJson(res, 200, {
@@ -363,6 +367,24 @@ async function fleet(req, res) {
     group: Object.fromEntries([...groupStatusByPlate()].map(([plate, g]) => [plate, { status: g.status, at: g.at, kind: g.kind }])),
     ...prices
   });
+}
+
+/** Кто арендует (или забронировал) технику: { name, phone, source, clientId, contract } или null */
+async function renterOf(car) {
+  const h = car.holder;
+  if (!h) return null;
+  const contract = contractFor(car.plate, h.from, h.to, h.docId);
+  let client = null;
+  if (h.client) client = await clientByContact(h.client.phone).catch(() => null);
+  else if (h.src === 'group') client = await clientOfReport(h.ref).catch(() => null);
+  const name = contract?.name || h.client?.name || client?.name || '';
+  const phone = contract?.phone || h.client?.phone || client?.phone || '';
+  if (!name && !phone) return contract ? { name: '', phone: '', source: 'contract', clientId: null, contract: { id: contract.id, number: contract.number }, kind: h.kind } : null;
+  return {
+    name, phone, kind: h.kind, clientId: client?.id || null,
+    source: contract ? 'contract' : h.client ? 'portal' : 'group',
+    contract: contract ? { id: contract.id, number: contract.number } : null
+  };
 }
 
 /** POST /api/staff/fleet/check { vehicleId, choice: portal|ws, note? } — проверка расхождения (владелец, админ) */
@@ -659,7 +681,10 @@ async function crmListRoute(staff, req, res, url) {
 /** GET /api/staff/crm/client?id= — карточка клиента */
 async function crmClientRoute(staff, req, res, url) {
   needAny(staff, ['crm.view']);
-  sendJson(res, 200, await crmCall(() => crmClient(url.searchParams.get('id'))));
+  const card = await crmCall(() => crmClient(url.searchParams.get('id')));
+  // Договоры клиента из «Документов» (по телефону или имени)
+  if (can(staff, 'docs.view') || can(staff, 'docs.edit')) card.contracts = contractsOfClient(card.client?.phones || [], card.client?.name);
+  sendJson(res, 200, card);
 }
 
 /** Изменения в CRM — только с правом «CRM: меняет» */
@@ -862,6 +887,8 @@ const ROUTES = {
   'POST /api/staff/docs/photo': signedIn(docsPhotoUpload),
   'GET /api/staff/docs/photo': signedIn(docsPhotoGet),
   'POST /api/staff/docs/photo/delete': signedIn(docsPhotoDelete),
+  'POST /api/staff/docs/issue': signedIn(docsIssue),
+  'POST /api/staff/docs/unissue': signedIn(docsUnissue),
   'GET /api/staff/settings': signedIn(settingsRoute),
   'POST /api/staff/settings/service': signedIn(settingsService),
   'POST /api/staff/settings/service/delete': signedIn(settingsServiceDelete),

@@ -39,6 +39,15 @@
     /* --------------------------------------------- Данные карточки (для всех) */
 
     /** Блок в раскрытой карточке WS-машины: данные из портала и кнопки */
+    /** Кнопки в карточке: сменить статус, новый договор / открыть договор аренды */
+    function cardActions(car) {
+      const btns = [];
+      if (ctx.canSetStatus() && car.vehicleId) btns.push(`<button type="button" class="btn btn--small" data-vh-status="${car.vehicleId}">🔄 ${esc(t('fs.change'))}</button>`);
+      if (ctx.canDocs() && car.renter?.contract) btns.push(`<button type="button" class="btn btn--small" data-vh-doc="${car.renter.contract.id}">📄 ${esc(t('fl.openContract', { no: car.renter.contract.number }))}</button>`);
+      if (ctx.canDocsEdit() && car.vehicleId) btns.push(`<button type="button" class="btn btn--small" data-vh-newdoc="${car.id}">📄 ${esc(t('fl.newContract'))}</button>`);
+      return btns.length ? `<div class="vh-card-actions">${btns.join('')}</div>` : '';
+    }
+
     function cardBlock(car) {
       const v = car.vehicleId ? byId(car.vehicleId) : byPlate(car.plate);
       if (!v) {
@@ -47,7 +56,7 @@
           ${canEdit() ? `<button type="button" class="btn btn--small btn--primary" data-vh-add-ws="${esc(car.id)}">＋ ${esc(t('vh.addFromWs'))}</button>` : ''}
         </div>`;
       }
-      return `<div class="vh-block">${details(v)}${actions(v)}</div>`;
+      return `<div class="vh-block">${cardActions(car)}${details(v)}${actions(v)}</div>`;
     }
 
     /** Инвестор машины — видят только владелец и админ (у них есть список инвесторов) */
@@ -345,6 +354,18 @@
       return `<div class="muted jr-small">${esc(t('fs.last', { what: kind, at: ctx.dateTime(l.at), src: t(`fs.src.${l.src}`) }))}${l.by ? ` · ${esc(l.by)}` : ''}</div>`;
     }
 
+    /** Арендатор текущей аренды или брони: имя, телефон, договор, карточка клиента */
+    function renterHtml(car, short = false) {
+      const r = car.renter;
+      if (!r) return '';
+      const who = [r.name, r.phone].filter(Boolean).join(' · ') || t('fl.renterUnknown');
+      const doc = r.contract && ctx.canDocs() ? ` <button type="button" class="link jr-small" data-vh-doc="${r.contract.id}">📄 ${esc(r.contract.number)}</button>` : '';
+      const crm = r.clientId && ctx.canCrm() ? ` <button type="button" class="link jr-small" data-vh-client="${r.clientId}">${esc(t('fl.clientCard'))}</button>` : '';
+      if (short) return `<span class="vh-renter">${esc(who)}</span>${doc}`;
+      return `<div class="vh-renter-line">👤 ${esc(t(r.kind === 'reserve' ? 'fl.bookedBy' : 'fl.rentedBy'))}: <b>${esc(who)}</b>${doc}${crm}</div>`;
+    }
+    const showRenterCol = () => !['free', 'service'].includes(ctx.statusFilter());
+
     function statusText(car) {
       if (car.status === 'rent' && car.overdue) return t('fl.rentOverdue', { date: dm(car.until) });
       if (car.status === 'rent' && car.until) return `${ctx.statusName('rent')} ${t('fl.until', { date: dm(car.until) })}`;
@@ -361,6 +382,7 @@
           <td><b>${esc(car.model || car.wsModel || '—')}</b><div class="muted jr-small"><span class="car__plate vh-plate-m">${esc(car.plate || '—')}</span>${TYPE_ICON[car.type] || ''} ${esc(v ? `${v.brand} ${v.model}`.trim() : car.wsModel || '')}</div></td>
           <td><span class="pill pill--${car.status}">${esc(statusText(car))}</span><div class="muted jr-small vh-src-t">${esc(sourceText(car))}</div>
             ${car.needsCheck && canCheck() ? `<button type="button" class="btn btn--small vh-check-btn" data-vh-check="${car.vehicleId}">🔍 ${esc(t('ck.btn'))}</button>` : ''}</td>
+          ${showRenterCol() ? `<td class="vh-renter-td">${renterHtml(car, true)}</td>` : ''}
           <td class="vh-col-x">${car.ws ? (car.ws.status === car.status ? '<span class="vh-ok">✓</span>' : `<span class="warn">⚠️ ${esc(ctx.statusName(car.ws.status))}</span>`) : fleet().ws?.enabled ? '<span class="warn">—</span>' : ''}</td>
           <td class="num vh-col-x">${tariff(car) ? esc(ctx.money(tariff(car))) : '—'}</td>
           <td class="num vh-col-x">${v?.mileage !== null && v?.mileage !== undefined ? esc(num(v.mileage)) : ''}</td>
@@ -369,6 +391,7 @@
           <td>${problemBadges(car, true)}</td>
           <td><div class="vh-td-actions">
             ${ctx.canSetStatus() && car.vehicleId ? `<button type="button" class="icon-btn icon-btn--plain" data-vh-status="${car.vehicleId}" title="${esc(t('fs.change'))}" aria-label="${esc(t('fs.change'))}">🔄</button>` : ''}
+            ${ctx.canDocsEdit() && car.vehicleId ? `<button type="button" class="icon-btn icon-btn--plain" data-vh-newdoc="${car.id}" title="${esc(t('fl.newContract'))}" aria-label="${esc(t('fl.newContract'))}">📄</button>` : ''}
             ${canEdit() && car.vehicleId ? `<button type="button" class="icon-btn icon-btn--plain" data-vh-edit="${car.vehicleId}" title="${esc(t('vh.edit'))}" aria-label="${esc(t('vh.edit'))}">✏️</button>` : ''}
             ${car.model && ctx.canEditModel() ? `<button type="button" class="icon-btn icon-btn--plain" data-vh-model="${esc(car.model)}" title="${esc(t('vh.photoDesc'))}" aria-label="${esc(t('vh.photoDesc'))}">🖼</button>` : ''}
             ${canEdit() && car.vehicleId ? `<button type="button" class="icon-btn icon-btn--plain" data-vh-archive="${car.vehicleId}" title="${esc(t('vh.toArchive'))}" aria-label="${esc(t('vh.toArchive'))}">🗄</button>` : ''}
@@ -376,7 +399,7 @@
         </tr>`;
       }).join('');
       return `<div class="vh-table-wrap"><table class="vh-table">
-        <thead><tr><th class="vh-col-p">${esc(t('fl.th.plate'))}</th><th>${esc(t('fl.th.model'))}</th><th>${esc(t('fl.th.status'))}</th><th class="vh-col-x">WS</th>
+        <thead><tr><th class="vh-col-p">${esc(t('fl.th.plate'))}</th><th>${esc(t('fl.th.model'))}</th><th>${esc(t('fl.th.status'))}</th>${showRenterCol() ? `<th>${esc(t('fl.th.renter'))}</th>` : ''}<th class="vh-col-x">WS</th>
           <th class="num vh-col-x">${esc(t('fl.th.price'))}</th><th class="num vh-col-x">${esc(t('fl.th.mileage'))}</th><th class="vh-col-x">${esc(t('fl.th.service'))}</th>${showInvestorCol() ? `<th class="vh-col-x">${esc(t('vh.f.investor'))}</th>` : ''}<th>${esc(t('fl.th.problems'))}</th><th></th></tr></thead>
         <tbody>${rows}</tbody></table></div>`;
     }
@@ -449,11 +472,17 @@
     function statusForm(d) {
       const v = d.vehicle;
       const k = d.kind || 'rent';
+      const p = d.prefill || {};
+      const val = (x) => (x ? ` value="${esc(x)}"` : '');
       const dates = k === 'rent'
-        ? `<label class="field"><span>${esc(t('fs.until'))}</span><input class="search" type="date" name="to" min="${ctx.today()}"></label>`
+        ? `<label class="field"><span>${esc(t('fs.until'))}</span><input class="search" type="date" name="to" min="${ctx.today()}"${val(p.to)}></label>`
         : k === 'reserve'
-          ? `<label class="field"><span>${esc(t('fs.from'))}</span><input class="search" type="date" name="from" min="${ctx.today()}"></label>
-             <label class="field"><span>${esc(t('fs.to'))}</span><input class="search" type="date" name="to" min="${ctx.today()}"></label>` : '';
+          ? `<label class="field"><span>${esc(t('fs.from'))}</span><input class="search" type="date" name="from" min="${ctx.today()}"${val(p.from)}></label>
+             <label class="field"><span>${esc(t('fs.to'))}</span><input class="search" type="date" name="to" min="${ctx.today()}"${val(p.to)}></label>` : '';
+      // Кто берёт технику — для выдачи и брони (виден в «Парке», уходит в отчёт группы строкой Contact)
+      const client = k === 'rent' || k === 'reserve' ? `
+            <label class="field"><span>${esc(t('fs.client'))}</span><input class="search" name="clientName" maxlength="100" autocomplete="off"${val(p.clientName)}></label>
+            <label class="field"><span>${esc(t('fs.clientPhone'))}</span><input class="search" name="clientPhone" inputmode="tel" maxlength="40" placeholder="+66 81 234 5678"${val(p.clientPhone)}></label>` : '';
       return `
         <form class="sheet__body vh-form" data-vh-status-form novalidate>
           <div class="sheet__head">
@@ -463,8 +492,8 @@
           <div class="chips vh-kinds" role="group" aria-label="${esc(t('fs.title'))}">
             ${STATUS_KINDS.map((x) => `<button type="button" class="chip" data-vh-kind="${x}" aria-pressed="${x === k}"><span class="dot dot--${x}"></span>${esc(t(`fs.kind.${x}`))}</button>`).join('')}
           </div>
-          <div class="vh-grid">${dates}
-            <label class="field vh-wide"><span>${esc(t('fs.note'))}</span><input class="search" name="note" maxlength="300" placeholder="${esc(t('fs.notePh'))}"></label>
+          <div class="vh-grid">${dates}${client}
+            <label class="field vh-wide"><span>${esc(t('fs.note'))}</span><input class="search" name="note" maxlength="300" placeholder="${esc(t('fs.notePh'))}"${val(p.note)}></label>
           </div>
           <p class="muted jr-small">${esc(t(fleet().eventsToGroup ? 'fs.tipGroup' : 'fs.tipNoGroup'))}</p>
           <div data-vh-dmsg></div>
@@ -482,9 +511,10 @@
       st.msg = null;
       refreshDialogMsg();
       try {
-        const r = await api('/fleet/status', { body: { vehicleId: d.vehicle.id, kind: d.kind, ...data } });
+        const r = await api('/fleet/status', { body: { vehicleId: d.vehicle.id, kind: d.kind, ...data, docId: d.prefill?.docId || null } });
         st.saving = false;
         closeDialog();
+        d.onSaved?.(r);
         st.msg = { kind: r.wa === 'failed' ? 'error' : 'ok', text: `${t('fs.saved', { plate: d.vehicle.plate })} ${t(`fs.wa.${r.wa}`)}` };
         await ctx.reload();
       } catch (err) {
@@ -577,7 +607,7 @@
     /* ------------------------------------------------------- События */
 
     function onClick(event) {
-      const el = event.target.closest('[data-vh-new], [data-vh-edit], [data-vh-add-ws], [data-vh-archive], [data-vh-archive-edit], [data-vh-restore], [data-vh-delete], [data-vh-close], [data-vh-archive-box] > summary, [data-vh-view], [data-vh-onlyprob], [data-vh-onlycheck], [data-vh-check], [data-vh-status], [data-vh-kind], [data-vh-model]');
+      const el = event.target.closest('[data-vh-new], [data-vh-edit], [data-vh-add-ws], [data-vh-archive], [data-vh-archive-edit], [data-vh-restore], [data-vh-delete], [data-vh-close], [data-vh-archive-box] > summary, [data-vh-view], [data-vh-onlyprob], [data-vh-onlycheck], [data-vh-check], [data-vh-status], [data-vh-kind], [data-vh-model], [data-vh-doc], [data-vh-client], [data-vh-newdoc]');
       if (!el) return false;
       const d = el.dataset;
       if (el.matches('summary')) { st.archiveOpen = !el.parentElement.open; return false; }
@@ -596,7 +626,30 @@
       }
       if (d.vhModel) { ctx.openModel(d.vhModel); return true; }
       if (d.vhStatus) { const v = byId(d.vhStatus); if (v) openDialog({ type: 'status', vehicle: v, kind: 'rent' }); return true; }
-      if (d.vhKind) { if (st.dialog?.type === 'status') openDialog({ ...st.dialog, kind: d.vhKind }); return true; }
+      if (d.vhDoc) { ctx.openContract(Number(d.vhDoc)); return true; }
+      if (d.vhClient) { ctx.openClient(Number(d.vhClient)); return true; }
+      if (d.vhNewdoc) {
+        // Новый договор: техника выбрана; клиент и даты — из текущей брони или аренды, если есть
+        const car = (fleet().cars || []).find((c) => String(c.id) === String(d.vhNewdoc));
+        if (car) {
+          const h = car.holder;
+          ctx.newContract({
+            vehicleId: car.vehicleId,
+            from: h?.kind === 'reserve' && h.from ? `${h.from}T12:00` : undefined,
+            to: h?.to ? `${h.to}T12:00` : undefined,
+            renter: car.renter ? { name: car.renter.name, phone: car.renter.phone || '' } : undefined
+          });
+        }
+        return true;
+      }
+      if (d.vhKind) {
+        if (st.dialog?.type === 'status') {
+          const form = document.querySelector('#vh-dialog [data-vh-status-form]');
+          const typed = form ? Object.fromEntries(new FormData(form)) : {};
+          openDialog({ ...st.dialog, kind: d.vhKind, prefill: { ...(st.dialog.prefill || {}), ...typed } });
+        }
+        return true;
+      }
       if ('vhNew' in d) openDialog({ kind: 'vehicle', vehicle: null });
       else if (d.vhEdit) openDialog({ kind: 'vehicle', vehicle: byId(d.vhEdit) });
       else if (d.vhAddWs) openDialog({ kind: 'vehicle', vehicle: fromWs(d.vhAddWs) });
@@ -633,7 +686,15 @@
 
     return {
       cardBlock, toolbar, renderNotInWs, renderArchive, renderTable, problemBadges, wsLine, investorLine, lastLine, historyBlock, statusText, filterProblems, view, afterRender,
-      onClick, onSubmit, onChange, canEdit, dialogOpen: () => Boolean(st.dialog)
+      renterLine: (car) => renterHtml(car),
+      onClick, onSubmit, onChange, canEdit, dialogOpen: () => Boolean(st.dialog),
+      /** Смена статуса из другой вкладки (CRM, договор): вид, даты, клиент заполнены; onSaved — после сохранения */
+      openStatus: (vehicleId, kind = 'rent', prefill = {}, onSaved = null) => {
+        const v = byId(vehicleId);
+        if (!v) return false;
+        openDialog({ type: 'status', vehicle: v, kind, prefill, onSaved });
+        return true;
+      }
     };
   }
 
