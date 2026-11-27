@@ -1807,3 +1807,9 @@ button.gm-box:hover { background: rgba(40, 50, 66, .9); }
   .gm-card { left: 8px; right: 8px; width: auto; top: auto; bottom: 54px; max-height: 60%; }
   .gm-hint { display: none; }
 }
+
+/* «Финансы» → «ИИ-касса» (тест) */
+.fin-ai--off { opacity: .55; }
+.fin-ai-moves { margin: 2px 0; padding-left: 18px; font-size: 14px; display: grid; gap: 2px; }
+.fin-ai-src > summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+.fin-ops .fin-ai-moves li { display: block; border: 0; padding: 0; }

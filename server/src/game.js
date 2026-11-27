@@ -28,6 +28,7 @@ import { financeReport } from './finance.js';
 import { allSources } from './marketing.js';
 import { lidPhones, OPERATION_KINDS } from './journal/journal.js';
 import { siteOnline, botChatsSince, botChatsActive } from './gameLive.js';
+import { ledgerSnapshot } from './groupFinance.js';
 
 const BANGKOK_MS = 7 * 3600000;
 const EVENTS_BACK_MS = 30 * 60000;
@@ -228,6 +229,24 @@ function eventsSince(idx, sinceIso, sinceMs) {
   return out.sort((a, b) => String(a.at).localeCompare(String(b.at)));
 }
 
+/** Сейфы и кошельки: из «ИИ-кассы» (сообщения группы, тест), пока там пусто — из отчёта «Финансов» */
+function gameFinance(finance, idx) {
+  let ai = null;
+  try { ai = ledgerSnapshot(); } catch (err) { console.error('Game ledger failed:', err.message); }
+  if (ai?.ready) {
+    return {
+      source: 'ai', cashToday: ai.op, depositsHeld: ai.dep, revenueToday: finance?.revenueToday || 0, depositCars: finance?.depositCars || 0,
+      wallets: ai.staff.map((s) => ({ name: s.name, staffId: idx.byWho(null, s.name)?.id || null, thb: s.thb }))
+    };
+  }
+  if (!finance) return null;
+  return {
+    source: 'report', cashToday: finance.cashToday, revenueToday: finance.revenueToday, depositsHeld: finance.depositsHeld, depositCars: finance.depositCars,
+    wallets: finance.holders.filter((h) => h.onHand !== null && h.onHand !== undefined && Math.round(h.onHand) !== 0)
+      .map((h) => ({ name: h.name, staffId: idx.byWho(null, h.name)?.id || null, thb: Math.round(h.onHand) }))
+  };
+}
+
 /** GET /api/staff/game/state?since=ISO */
 export async function gameState(staff, req, res, url) {
   if (!can(staff, 'game.view')) throw new HttpError(403, 'no_section_access');
@@ -247,11 +266,7 @@ export async function gameState(staff, req, res, url) {
       id: r.id, at: r.created_at, channel: r.channel, kind: r.kind || null, what: r.model || r.vehicle_type || '',
       from: r.date_from, to: r.date_to, status: r.status, takenBy: r.taken_by_name || null, takenAt: r.taken_at || null, site: r.site_host || null
     })),
-    finance: finance ? {
-      cashToday: finance.cashToday, revenueToday: finance.revenueToday, depositsHeld: finance.depositsHeld, depositCars: finance.depositCars,
-      wallets: finance.holders.filter((h) => h.onHand !== null && h.onHand !== undefined && Math.round(h.onHand) !== 0)
-        .map((h) => ({ name: h.name, staffId: idx.byWho(null, h.name)?.id || null, thb: Math.round(h.onHand) }))
-    } : null,
+    finance: gameFinance(finance, idx),
     site: siteView(now),
     chats: botChatsActive(now),
     events: eventsSince(idx, iso(sinceMs), sinceMs)

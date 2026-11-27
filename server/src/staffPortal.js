@@ -62,6 +62,7 @@ import { recognizeContractPhotos, AiError } from './ai/recognize.js';
 import { renterOf, parsePhotos, contractProposal } from './ai/proposal.js';
 import { mediaCounts, fleetMediaList, fleetMediaFile } from './vehicleMedia.js';
 import { gameState } from './game.js';
+import { financeAiLog, financeAiIgnore, financeAiRetry } from './groupFinance.js';
 import { opDrafts, opDraftCreate, opDraftGet, opDraftPhotoAdd, opDraftPhotoGet, opDraftPhotoDelete, opDraftUpdate, opDraftCancel, opDraftRecognize, opDraftManual,
   opDraftApply, opDraftAttach, opVehicle, expensesList, expensePhoto, expenseDelete, moneyDelete } from './operations.js';
 import { importCashbook } from './cashbook.js';
@@ -880,6 +881,10 @@ const ROUTES = {
   'POST /api/staff/access/import': signedIn(accessImport),
   'GET /api/staff/finance': signedIn(finance),
   'POST /api/staff/finance/cashbook': signedIn(financeCashbook),
+  // «ИИ-касса»: сообщения группы про деньги, разобранные ИИ (тест)
+  'GET /api/staff/finance/ai-log': signedIn(financeAiLog),
+  'POST /api/staff/finance/ai-log/ignore': signedIn(financeAiIgnore),
+  'POST /api/staff/finance/ai-log/retry': signedIn(financeAiRetry),
   'POST /api/staff/fleet/sold': signedIn(fleetSold),
   'POST /api/staff/fleet/vehicle': signedIn(fleetVehicle),
   'POST /api/staff/fleet/status': signedIn(fleetStatusRoute),

@@ -30,15 +30,16 @@ export function photoContent(images, text) {
 }
 
 /** Запрос → разобранный JSON. Возвращает { result, model, usd } */
-export async function askStructured({ system, content, schema, purpose, staff }) {
+export async function askStructured({ system, content, schema, purpose, staff, model: wanted = null, effort = 'medium' }) {
   const allowed = aiAllowed();
   if (!allowed.ok) throw new AiError(allowed.code);
-  const { model } = aiSettings();
+  // Модель — из «Настроек»; задача может попросить свою (например, подешевле для текста)
+  const model = wanted || aiSettings().model;
   const params = {
     model,
     max_tokens: 16000,
     system,
-    output_config: { effort: 'medium', format: { type: 'json_schema', schema } },
+    output_config: { effort, format: { type: 'json_schema', schema } },
     messages: [{ role: 'user', content }]
   };
   let response;

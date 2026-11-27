@@ -40,6 +40,7 @@ import { startJournal } from './journal/start.js';
 import { whatsappEnabled, knownPhoneNumberId } from './whatsapp/api.js';
 import { verifySignature, processWebhook, whatsappStatus } from './whatsapp/webhook.js';
 import { handleDiag } from './diag.js';
+import { startGroupFinance } from './groupFinance.js';
 
 const STARTED_AT = new Date();
 
@@ -186,6 +187,8 @@ server.listen(config.port, () => {
   startInvestors();
   startItSettings();
   startJournal();
+  // ИИ читает сообщения группы про деньги → «Финансы», раздел «ИИ-касса» (тест)
+  startGroupFinance();
 
   if (telegramEnabled) {
     // Сразу после запуска контейнера сеть бывает ещё не готова — пробуем ещё 5 раз

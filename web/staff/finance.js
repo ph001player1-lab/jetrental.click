@@ -15,7 +15,7 @@
     booking: 'Бронь', issue: 'Выдача', return: 'Возврат', extension: 'Продление', payment: 'Оплата', changed: 'Замена', pickup_task: 'Забрать (задание)'
   };
   const MONTHS = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
-  const SECTIONS = [['sum', 'Сводка'], ['disc', 'Скидки'], ['cash', 'Касса'], ['dep', 'Залоги'], ['debt', 'Долги'], ['cars', 'Машины'], ['exp', 'Расходы'], ['fc', 'Прогноз'], ['ws', 'Сверка']];
+  const SECTIONS = [['sum', 'Сводка'], ['disc', 'Скидки'], ['cash', 'Касса'], ['ai', 'ИИ-касса'], ['dep', 'Залоги'], ['debt', 'Долги'], ['cars', 'Машины'], ['exp', 'Расходы'], ['fc', 'Прогноз'], ['ws', 'Сверка']];
   const ERRORS = {
     not_cashbook: 'Это не выгрузка «Касса» из WS: нужен файл .xlsx с колонками «Дата», «Назначение платежа», «Приход», «Расход».',
     admin_only: 'Это может только админ.',
@@ -33,7 +33,7 @@
     const st = {
       preset: 'month', data: null, failed: false, loading: false, sort: 'revenue', opsAll: false, upload: null,
       wsOnlyAll: false, groupOnlyAll: false, debtsAll: false, withheldAll: false, loansOpen: false, loansMsg: null,
-      disc: null, discAll: false, discMsg: null, receipts: null, receiptsAll: false
+      disc: null, discAll: false, discMsg: null, receipts: null, receiptsAll: false, ai: null, aiAll: false, aiPortalAll: false
     };
 
     // Даты и числа — всегда по-русски, время по Бангкоку
@@ -81,9 +81,10 @@
       st.loading = true;
       ctx.rerender();
       try {
-        const [data, disc, receipts] = await Promise.all([api(`/finance?from=${from}&to=${to}`), api(`/discounts?from=${from}&to=${to}`).catch(() => null),
-          api(`/expenses?from=${from}&to=${to}`).catch(() => null)]);
+        const [data, disc, receipts, ai] = await Promise.all([api(`/finance?from=${from}&to=${to}`), api(`/discounts?from=${from}&to=${to}`).catch(() => null),
+          api(`/expenses?from=${from}&to=${to}`).catch(() => null), api(`/finance/ai-log?from=${from}&to=${to}`).catch(() => null)]);
         st.data = data;
+        st.ai = ai;
         st.disc = disc;
         st.receipts = receipts;
         st.failed = false;
@@ -505,6 +506,67 @@
         <p class="muted jr-small">Наличные — сверка «группа ↔ касса офиса» в блоке «Касса».</p>`, intro);
     }
 
+    /* -------------------------------------------- ИИ-касса: сообщения группы про деньги (тест) */
+
+    const AI_ACC = { op: 'операционный сейф', dep: 'залоговый сейф' };
+    const aiAccount = (k) => (String(k).startsWith('staff:') ? String(k).slice(6) : AI_ACC[k] || k);
+    const AI_METHOD = { cash: 'наличные', transfer: 'перевод', card: 'карта' };
+    function aiLine(l) {
+      if (l.balance) return `<li>📌 остаток — ${esc(l.account)}: <b>${esc(baht(l.thb))}</b></li>`;
+      const extra = [l.purpose, AI_METHOD[l.method] || '', l.note].filter(Boolean).join(' · ');
+      return `<li>${esc(l.from || '?')} → ${esc(l.to || '?')}: <b>${esc(baht(l.thb))}</b>${extra ? ` <span class="muted">${esc(extra)}</span>` : ''}</li>`;
+    }
+    function renderAi() {
+      const a = st.ai;
+      if (!a) return '';
+      const b = a.balances;
+      const c = (k) => a.counts[k]?.n || 0;
+      const usd = Object.values(a.counts).reduce((s, x) => s + (x.usd || 0), 0);
+      const blocked = a.blocked === 'ai_no_key' ? 'ИИ выключен: нет ключа ANTHROPIC_API_KEY — сообщения ждут в очереди.'
+        : a.blocked === 'ai_limit' ? 'Месячный лимит ИИ исчерпан — сообщения ждут в очереди. Поднять лимит: «Настройки» → «Модель ИИ».' : '';
+      const onHand = b.staff.reduce((s, x) => s + x.thb, 0);
+      const tiles = `<div class="stats fin-tiles">
+        ${tile('Операционный сейф', baht(b.op), 'по сообщениям и «＋ Операция»')}
+        ${tile('Залоговый сейф', baht(b.dep), 'по сообщениям и «＋ Операция»')}
+        ${tile('На руках у сотрудников', baht(onHand), `${b.staff.length} чел.`)}
+      </div>`;
+      const people = b.staff.length ? `<div class="table-wrap"><table class="fin-table"><thead><tr><th>Сотрудник</th><th class="fin-num">На руках</th><th>Последнее движение</th></tr></thead>
+        <tbody>${b.staff.map((s) => `<tr><td>${esc(s.name)}</td><td class="fin-num ${s.thb < 0 ? 'fin-less' : ''}">${esc(baht(s.thb))}</td><td>${esc(when(s.last))}</td></tr>`).join('')}</tbody></table></div>`
+        : '<p class="muted">Пока ни у кого.</p>';
+      const checks = b.checks.length ? `<h4>Сверка с «закрытием дня»</h4><ul class="fin-list">${b.checks.map((x) => `<li>${esc(when(x.at))} · ${esc(aiAccount(x.account))}: посчитано ${esc(baht(x.counted))}, в сообщении ${esc(baht(x.reported))} — <b class="${Math.abs(x.diff) >= 1 ? 'fin-less' : 'fin-ok'}">${esc(signed(x.diff))} ฿</b></li>`).join('')}</ul>` : '';
+      const STATUS = { queued: '⏳ в очереди', error: '⚠ ИИ не смог разобрать', ignored: '🚫 не учитывается' };
+      const list = st.aiAll ? a.entries : a.entries.slice(0, 30);
+      const items = list.map((e) => {
+        const pills = [STATUS[e.status] ? `<span class="pill">${esc(STATUS[e.status])}</span>` : '', e.status === 'done' && e.relevant === false ? '<span class="pill">не про деньги</span>' : '',
+          e.unsure ? '<span class="pill">❓ неуверенно</span>' : ''].join(' ');
+        const btns = !a.canEdit ? '' : [
+          e.status === 'done' && e.relevant ? `<button type="button" class="btn btn--small" data-fin-aiignore="${esc(e.id)}:1">Неверно — не учитывать</button>` : '',
+          e.status === 'ignored' ? `<button type="button" class="btn btn--small" data-fin-aiignore="${esc(e.id)}:0">Учитывать снова</button>` : '',
+          e.status !== 'queued' ? `<button type="button" class="btn btn--small" data-fin-airetry="${esc(e.id)}">Распознать заново</button>` : ''
+        ].join(' ');
+        return `<li class="${e.status === 'ignored' || (e.status === 'done' && e.relevant === false) ? 'fin-ai--off' : ''}">
+          <div><span class="muted">${esc(when(e.at))} · ${esc(e.who || '—')}</span> ${pills}</div>
+          ${e.summary ? `<div><b>${esc(e.summary)}</b></div>` : ''}
+          ${e.lines.length ? `<ul class="fin-ai-moves">${e.lines.map(aiLine).join('')}</ul>` : ''}
+          ${e.question ? `<div class="muted jr-small">❓ ${esc(e.question)}</div>` : ''}
+          <details class="fin-ai-src"><summary>Сообщение в группе</summary><pre class="fin-template">${esc(e.text)}</pre></details>
+          ${btns ? `<div class="fin-disc-btns">${btns}</div>` : ''}
+        </li>`;
+      }).join('');
+      const portalItems = (st.aiPortalAll ? a.portal : a.portal.slice(0, 10)).map((l) => `<li><span class="muted">${esc(when(l.at))}</span> ${aiLine(l).replace(/^<li>|<\/li>$/g, '')}</li>`).join('');
+      const intro = 'ИИ читает в рабочей группе сообщения про деньги — сдачу кассы, закрытие дня, расходы, залоги, оплаты, выплаты — и записывает каждое как движение «откуда → куда». '
+        + 'Деньги из «＋ Операция» добавляются как есть. Из этого считаются остатки сейфов и наличные у сотрудников. Это тест: в общие цифры «Финансов» пока не входит — копим данные несколько дней.';
+      return section('ai', 'ИИ-касса — сообщения группы про деньги (тест)', `
+        ${blocked ? `<p class="md-status is-error" role="status">${esc(blocked)}</p>` : ''}
+        ${tiles}
+        <h4>Наличные у сотрудников</h4>${people}
+        ${checks}
+        <h4>Журнал за период</h4>
+        <p class="muted jr-small">Разобрано ${c('done')} · в очереди ${c('queued')}${c('error') ? ` · не разобрано ${c('error')}` : ''} · не учитывается ${c('ignored')} · расход на ИИ ${usd.toFixed(2)} $ — с ${esc(when(a.since))}</p>
+        <ul class="fin-ops">${items || '<li class="muted">За период сообщений про деньги нет.</li>'}</ul>${showAll('aiAll', a.entries.length, 30)}
+        ${a.portal.length ? `<h4>Из «＋ Операция» (без ИИ)</h4><ul class="fin-ops">${portalItems}</ul>${showAll('aiPortalAll', a.portal.length, 10)}` : ''}`, intro);
+    }
+
     /* -------------------------------------------- Деньги в отчётах группы */
 
     function renderOperations(d) {
@@ -546,6 +608,7 @@
           ${renderSummary(d)}
           ${renderDiscounts()}
           ${renderCash(d)}
+          ${renderAi()}
           ${renderDeposits(d)}
           ${renderDebts(d)}
           ${renderVehicles(d)}
@@ -571,6 +634,19 @@
       if (all) { st[all.dataset.finAll] = true; ctx.rerender(); return true; }
       const dec = el.closest('[data-fin-decide]');
       if (dec) { const [id, ok] = dec.dataset.finDecide.split(':'); dec.disabled = true; decide(Number(id), ok === '1'); return true; }
+      const aiIgnore = el.closest('[data-fin-aiignore]');
+      if (aiIgnore) {
+        const [id, on] = aiIgnore.dataset.finAiignore.split(':');
+        aiIgnore.disabled = true;
+        send('/finance/ai-log/ignore', JSON.stringify({ id, ignored: on === '1' }), 'application/json').then(load).catch(() => load());
+        return true;
+      }
+      const aiRetry = el.closest('[data-fin-airetry]');
+      if (aiRetry) {
+        aiRetry.disabled = true;
+        send('/finance/ai-log/retry', JSON.stringify({ id: aiRetry.dataset.finAiretry }), 'application/json').then(() => setTimeout(load, 4000)).catch(() => load());
+        return true;
+      }
       const moneyDel = el.closest('[data-fin-moneydel]');
       if (moneyDel) {
         if (!window.confirm('Удалить эту запись о деньгах? Она пропадёт из «Финансов».')) return true;

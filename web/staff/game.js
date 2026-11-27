@@ -1356,6 +1356,7 @@ const reqSeen = new Set();
 const reqTaken = new Set();
 let cursor = null, lastSync = 0, firstSync = true, siteInfo = { online: 0, sources: [] }, chatInfo = { active: 0, byChannel: {} }, finInfo = null, carsData = [];
 let syncError = null;
+const finSource = () => (finInfo && finInfo.source) || 'report';
 
 function eventText(e) {
   const who = e.who ? ` · ${e.who}` : '';
@@ -1837,7 +1838,7 @@ function overlay() {
     for (const id of ['op', 'dep']) {
       const o = SAFES_OBJ[id]; if (!o.hit) continue;
       const [sx, sy] = scr([o.sx, o.headY]);
-      labels.push({ x: sx, y: sy, text: `${id === 'op' ? '💰 сегодня' : '🔒 залоги'} ${money(S.safes[id])}`, bg: 'rgba(20,24,32,.94)', fg: '#ffe7b0', font: small });
+      labels.push({ x: sx, y: sy, text: `${id === 'op' ? (finSource() === 'ai' ? '💰 касса' : '💰 сегодня') : '🔒 залоги'} ${money(S.safes[id])}`, bg: 'rgba(20,24,32,.94)', fg: '#ffe7b0', font: small });
     }
     for (const p of PEDESTALS) {
       if (!p.w || !p.hit) continue;
@@ -2038,13 +2039,15 @@ function cardHtml(sel) {
   }
   if (sel.kind === 'safe') {
     const s = SAFES[sel.id];
-    return `${x}<div class="gm-sub">Финансы · сейф</div><h2>🔒 ${esc(s.title)}</h2><dl><dt>Сейчас</dt><dd><b>${money(S.safes[sel.id])}</b></dd></dl>
-      <div class="gm-note2">${esc(s.note)} Сумма меняется вместе с операциями; точные остатки сейфов появятся с «Личными счетами сотрудников».</div>`;
+    const ai = finSource() === 'ai';
+    const title = ai ? (sel.id === 'op' ? 'Операционный сейф' : 'Залоговый сейф') : s.title;
+    const note = ai ? 'Остаток по «ИИ-кассе»: ИИ читает сообщения группы про деньги (сдача кассы, закрытие дня, расходы, залоги) плюс «＋ Операция». Это тест — сверяйте с «Финансами».' : `${s.note} Точные остатки появятся, когда в «ИИ-кассе» будут записи.`;
+    return `${x}<div class="gm-sub">Финансы · сейф</div><h2>🔒 ${esc(title)}</h2><dl><dt>Сейчас</dt><dd><b>${money(S.safes[sel.id])}</b></dd></dl><div class="gm-note2">${esc(note)}</div>`;
   }
   if (sel.kind === 'wallet') {
     const w = e.w;
     return `${x}<div class="gm-sub">Кошелёк сотрудника</div><h2>👛 ${esc(w.name)}</h2><dl><dt>На руках</dt><dd style="color:${w.thb < 0 ? '#ff8a80' : '#7dff9b'}"><b>${money(w.thb)}</b></dd></dl>
-      <div class="gm-note2">Наличные с последней сдачи кассы — как в «Финансах». Минус — сотрудник потратил свои: при сдаче кассы ему выдают разницу.</div>`;
+      <div class="gm-note2">${finSource() === 'ai' ? 'По «ИИ-кассе» (сообщения группы и «＋ Операция»).' : 'Наличные с последней сдачи кассы — как в «Финансах».'} Минус — сотрудник потратил свои: при сдаче кассы ему выдают разницу.</div>`;
   }
   if (sel.kind === 'tasks') {
     const items = e.tasks.map((t) => `<li>${t.icon} ${esc(t.what)}${t.at ? ` · ${Math.max(1, Math.round((nowMs() - Date.parse(t.at)) / 60000))} мин` : ''}${t.late ? ' <span class="gm-pill gm-bad">без ответа 20+ мин</span>' : ''}</li>`).join('');
@@ -2092,7 +2095,7 @@ function teamHtml() {
     <section><h4>Парк — как в «Обзоре»</h4><table class="gm-fleet"><thead><tr><th></th><th>всего</th><th>своб.</th><th>аренда</th><th>ремонт</th><th>бронь</th></tr></thead>
       <tbody>${rows}</tbody><tfoot><tr><td>Итого</td><td><b>${all()}</b></td><td>${all('free')}</td><td>${all('rent')}</td><td>${all('service')}</td><td>${all('reserve')}</td></tr></tfoot></table></section>
     <section><h4>Сайт и боты</h4><p>🌐 На сайте сейчас: <b>${siteInfo.online || 0}</b>${src ? ` <small>(${src})</small>` : ''}<br>💬 Пишут ботам (10 мин): <b>${chatInfo.active || 0}</b><br>📨 Новых заявок: <b>${REQ.length}</b></p></section>
-    <section><h4>Касса</h4><p>💰 Приход наличными сегодня: <b>${money(S.safes.op)}</b><br>🔒 Залоги на руках: <b>${money(S.safes.dep)}</b></p></section>`;
+    <section><h4>Касса${finSource() === 'ai' ? ' · ИИ-касса (тест)' : ''}</h4><p>${finSource() === 'ai' ? `💰 Операционный сейф: <b>${money(S.safes.op)}</b><br>🔒 Залоговый сейф: <b>${money(S.safes.dep)}</b>` : `💰 Приход наличными сегодня: <b>${money(S.safes.op)}</b><br>🔒 Залоги на руках: <b>${money(S.safes.dep)}</b>`}</p></section>`;
 }
 function renderPanel() {
   if (panelTab !== 'team') return;
