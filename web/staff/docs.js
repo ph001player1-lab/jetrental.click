@@ -117,6 +117,24 @@
       return `<option value="">${esc(t(fq && !groups ? 'dc.vehicleNoMatch' : 'dc.pickVehicle'))}</option>${groups}`;
     }
 
+    /** Техника выбрана из «Парка»: модель, номер, цвет и VIN — строкой из карточки */
+    function vehicleSummary(f) {
+      const missing = [!f.color && t('dc.color').toLowerCase(), !f.vin && 'VIN'].filter(Boolean);
+      return `🚗 <b>${esc(f.model || '')}</b> · ${esc(f.plate || '')}${f.color ? ` · ${esc(f.color)}` : ''}${f.vin ? ` · VIN ${esc(f.vin)}` : ''}
+        ${missing.length ? `<span class="muted jr-small">${esc(t('dc.vMissing', { what: missing.join(', ') }))}</span>` : ''}
+        ${canEdit() ? `<button type="button" class="link jr-small" data-dc-vedit>✎ ${esc(t('dc.vEdit'))}</button>` : ''}`;
+    }
+    function showVehicleSummary(form) {
+      const sum = form.querySelector('[data-dc-vsum]');
+      const fields = form.querySelector('[data-dc-vfields]');
+      if (!sum || !fields) return;
+      const picked = Boolean(form.elements.vehicleId.value);
+      const g = (n) => form.elements[n]?.value || '';
+      sum.innerHTML = picked ? vehicleSummary({ model: g('model'), plate: g('plate'), color: g('color'), vin: g('vin') }) : '';
+      sum.hidden = !picked;
+      fields.hidden = picked;
+    }
+
     /** Перестроить список техники в форме (поиск, другие даты) — выбранная остаётся */
     function rebuildVehicles(form) {
       const sel = form?.elements.vehicleId;
@@ -156,12 +174,15 @@
         <div class="dc-grid">
           ${canEdit() ? fld(`🔎 ${t('dc.vehicleSearch')}`, `<input class="search" type="search" data-dc-vfilter autocomplete="off" enterkeyhint="search" placeholder="${esc(t('dc.vehicleSearchHint'))}">`) : ''}
           ${fld(t('dc.vehicle'), `<select class="search" name="vehicleId" data-dc-vehicle>${vehicleOptions(f.vehicleId)}</select>`, canEdit() ? 'dc-span2' : 'dc-wide')}
+        </div>
+        <p class="dc-vsum" data-dc-vsum${v ? '' : ' hidden'}>${v ? vehicleSummary(f) : ''}</p>
+        <div class="dc-grid" data-dc-vfields${v ? ' hidden' : ''}>
           ${fld(t('dc.model'), inp('model', f.model))}${fld(t('dc.plate'), inp('plate', f.plate))}
           ${fld(t('dc.color'), inp('color', f.color))}${fld('VIN', inp('vin', f.vin))}
         </div>
         <h3>📅 ${esc(t('dc.period'))}</h3>
         <div class="dc-grid">
-          ${fld(t('dc.from'), inp('from', f.from, 'type="datetime-local" data-dc-dates'))}${fld(t('dc.to'), inp('to', f.to, 'type="datetime-local" data-dc-dates'))}
+          ${fld(t('dc.from'), inp('from', f.from, 'type="datetime-local" data-dc-dates'), 'dc-span2')}${fld(t('dc.to'), inp('to', f.to, 'type="datetime-local" data-dc-dates'), 'dc-span2')}
           ${fld(t('dc.pickupPlace'), inp('pickupPlace', f.pickupPlace, `placeholder="${esc(t('dc.placeHint'))}"`))}${fld(t('dc.returnPlace'), inp('returnPlace', f.returnPlace, `placeholder="${esc(t('dc.placeHint'))}"`))}
         </div>
         <h3>👤 ${esc(t('dc.client'))}</h3>
@@ -323,7 +344,6 @@
     // Фото держим в браузере: документы клиента никуда не сохраняются, фото техники
     // после сохранения договора уходят в «Фото при выдаче»
     function resetAi() {
-      for (const f of st.ai?.files || []) URL.revokeObjectURL(f.url);
       st.ai = { files: [], busy: false, result: null, error: null };
     }
     const AI_INPUT = {
@@ -371,6 +391,12 @@
       else ctx.rerender();
     }
 
+    const toDataUrl = (blob) => new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
     const toBase64 = (blob) => new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]+,/, ''));
@@ -383,7 +409,8 @@
         if (st.ai.files.length >= 8) break;
         try {
           const blob = await ctx.prepareShot(file);
-          st.ai.files.push({ blob, url: URL.createObjectURL(blob) });
+          // Превью — data:-ссылкой: blob: сайт сотрудников не показывает (Content-Security-Policy)
+          st.ai.files.push({ blob, url: await toDataUrl(blob) });
         } catch { /* не фото */ }
       }
       st.ai.error = null;
@@ -664,9 +691,11 @@
       if (vehicleChanged && v) {
         for (const [n, val] of [['model', v.model], ['plate', v.plate], ['color', v.color], ['vin', v.vin], ['mileage', v.mileage ?? '']]) form.elements[n].value = val ?? '';
         st.form.vehicleType = v.type;
+        showVehicleSummary(form);
         const box = form.querySelector('[data-dc-eq]');
         if (box) box.innerHTML = equipmentHtml(typeOf(v.type), null);
       }
+      if (vehicleChanged && !v) showVehicleSummary(form);
       const from = form.elements.from.value;
       const to = form.elements.to.value;
       const out = form.querySelector('[data-dc-days]');
@@ -880,10 +909,16 @@
         return true;
       }
       if (el.closest('[data-dc-airun]')) { runAi(); return true; }
+      if (el.closest('[data-dc-vedit]')) {
+        const form = el.closest('form');
+        form.querySelector('[data-dc-vfields]').hidden = false;
+        form.querySelector('[data-dc-vsum]').hidden = true;
+        form.elements.color?.focus();
+        return true;
+      }
       const aidel = el.closest('[data-dc-aidel]');
       if (aidel) {
-        const [f] = st.ai.files.splice(Number(aidel.dataset.dcAidel), 1);
-        if (f) URL.revokeObjectURL(f.url);
+        st.ai.files.splice(Number(aidel.dataset.dcAidel), 1);
         st.ai.result = null;
         refreshAi();
         return true;

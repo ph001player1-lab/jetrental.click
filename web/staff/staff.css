@@ -1661,3 +1661,9 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
 .pick-badges { display: flex; flex-wrap: wrap; gap: 4px; }
 .pick-note { margin: 0; }
 .dc-span2 { grid-column: span 2; }
+
+/* Договор: поля не вылезают за колонку (дата и время шире других) */
+.dc-grid > .field { min-width: 0; }
+.dc-form input { min-width: 0; }
+.dc-vsum { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+@media (max-width: 640px) { .dc-span2 { grid-column: 1 / -1; } }

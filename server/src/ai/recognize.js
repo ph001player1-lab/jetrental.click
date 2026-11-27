@@ -12,39 +12,39 @@
  * ============================================================================
  */
 
-import Anthropic from '@anthropic-ai/sdk';
-import { aiSettings, aiAllowed, recordAiUsage } from '../itSettings.js';
+import { askStructured, photoContent, AiError } from './claude.js';
 
-export class AiError extends Error {
-  constructor(code) { super(code); this.code = code; }
-}
+export { AiError };
 
 // Что видно на фото: для техники — подпись в «Приложении 1» (фото при выдаче)
 export const PHOTO_KINDS = ['passport', 'licence', 'id_card', 'vehicle_front', 'vehicle_rear', 'vehicle_left', 'vehicle_right',
-  'dashboard', 'interior', 'damage', 'booking', 'other'];
-const FIELDS = ['name', 'passport', 'nationality', 'birthDate', 'license', 'licenseCategories', 'licenseValidTo', 'phone',
+  'dashboard', 'interior', 'damage', 'booking', 'receipt', 'other'];
+export const FIELDS = ['name', 'passport', 'nationality', 'birthDate', 'license', 'licenseCategories', 'licenseValidTo', 'phone',
   'plate', 'model', 'color', 'mileage', 'fuel', 'from', 'to'];
 
-const str = { type: 'string' };
-const obj = (properties) => ({ type: 'object', additionalProperties: false, required: Object.keys(properties), properties });
+export const str = { type: 'string' };
+export const obj = (properties) => ({ type: 'object', additionalProperties: false, required: Object.keys(properties), properties });
+
+// Части схемы — общие для договора и «＋ Операция»
+export const RENTER = obj({
+  name: str, passport: str, nationality: str, birthDate: str, passportValidTo: str,
+  license: str, licenseCategories: str, licenseValidTo: str, phone: str, address: str
+});
+export const VEHICLE = obj({ plate: str, plateNumber: str, model: str, color: str, mileage: str, fuel: str });
+export const PHOTOS = { type: 'array', items: obj({ index: { type: 'integer' }, kind: { type: 'string', enum: PHOTO_KINDS } }) };
+
 const SCHEMA = obj({
-  renter: obj({
-    name: str, passport: str, nationality: str, birthDate: str, passportValidTo: str,
-    license: str, licenseCategories: str, licenseValidTo: str, phone: str, address: str
-  }),
-  vehicle: obj({ plate: str, plateNumber: str, model: str, color: str, mileage: str, fuel: str }),
+  renter: RENTER,
+  vehicle: VEHICLE,
   booking: obj({ from: str, to: str }),
-  photos: { type: 'array', items: obj({ index: { type: 'integer' }, kind: { type: 'string', enum: PHOTO_KINDS } }) },
+  photos: PHOTOS,
   unsure: { type: 'array', items: { type: 'string', enum: FIELDS } },
   warnings: { type: 'array', items: str }
 });
 
-const SYSTEM = `You read photos that staff of a scooter, motorbike and car rental company in Phuket, Thailand take when a client rents a vehicle, and fill the fields of the rental contract.
+export const PHOTO_TYPES = `The photos can show: the client's passport (any country), driving licence (national licence or International Driving Permit), ID card, the vehicle with its Thai licence plate, the dashboard (odometer, fuel gauge), existing damage, a screenshot of a booking or a chat with rental dates and a phone number.`;
 
-The photos can show: the client's passport (any country), driving licence (national licence or International Driving Permit), ID card, the vehicle with its Thai licence plate, the dashboard (odometer, fuel gauge), existing damage, a screenshot of a booking or a chat with rental dates and a phone number.
-
-Rules:
-- Copy only what you can actually read. Never guess or make values up: if a field is not visible, leave it as an empty string. If you filled a field but some characters are uncertain (blur, glare, cut off, handwriting), add the field name to "unsure".
+export const FIELD_RULES = `- Copy only what you can actually read. Never guess or make values up: if a field is not visible, leave it as an empty string. If you filled a field but some characters are uncertain (blur, glare, cut off, handwriting), add the field name to "unsure".
 - renter.name: the full name in Latin letters as printed in the passport, given names first, then the surname, in upper case (for example "IVAN PETROV"). Use the machine-readable zone (MRZ) to check spelling and the passport number when it is visible.
 - renter.passport: the passport number exactly as printed. renter.nationality: country of citizenship in English (for example "Russia").
 - Dates (birthDate, passportValidTo, licenseValidTo, booking.from, booking.to): YYYY-MM-DD.
@@ -57,63 +57,22 @@ Rules:
 - photos: one entry per photo, in the order given (the first photo is index 0), saying what it shows. For the vehicle, choose the side it is photographed from.
 - warnings: short notes in Russian for the manager about problems you see, for example: the passport or licence has expired, the licence has no category A while the vehicle is a motorbike or scooter, the name on the licence differs from the passport, a photo is too blurry to read. An empty array if there are none.`;
 
-let client = null;
-const claude = () => {
-  // Ключ — ANTHROPIC_API_KEY из /opt/kokon/.env; клиент сам повторяет 429 и 5xx
-  if (!client) client = new Anthropic({ timeout: 120_000, maxRetries: 2 });
-  return client;
-};
+const SYSTEM = `You read photos that staff of a scooter, motorbike and car rental company in Phuket, Thailand take when a client rents a vehicle, and fill the fields of the rental contract.
+
+${PHOTO_TYPES}
+
+Rules:
+${FIELD_RULES}`;
 
 /**
  * Фото → поля договора. images — [{ data: base64, type: 'image/jpeg' | 'image/png' | 'image/webp' }]
  * Возвращает { result, model, usd }.
  */
 export async function recognizeContractPhotos(images, staff, today) {
-  const allowed = aiAllowed();
-  if (!allowed.ok) throw new AiError(allowed.code);
-  const { model } = aiSettings();
-  const content = [];
-  images.forEach((img, i) => {
-    content.push({ type: 'text', text: `Photo ${i}:` });
-    content.push({ type: 'image', source: { type: 'base64', media_type: img.type, data: img.data } });
+  const out = await askStructured({
+    system: SYSTEM, schema: SCHEMA, purpose: 'contract_photos', staff,
+    content: photoContent(images, `Today is ${today}. Fill the contract fields from these ${images.length} photo(s).`)
   });
-  content.push({ type: 'text', text: `Today is ${today}. Fill the contract fields from these ${images.length} photo(s).` });
-  const params = {
-    model,
-    max_tokens: 16000,
-    system: SYSTEM,
-    output_config: { effort: 'medium', format: { type: 'json_schema', schema: SCHEMA } },
-    messages: [{ role: 'user', content }]
-  };
-  let response;
-  try {
-    // Opus и Sonnet: если фильтр безопасности ошибочно откажет — тот же запрос выполнит запасная модель
-    response = model === 'claude-haiku-5-5'
-      ? await claude().messages.create(params)
-      : await claude().beta.messages.create({ ...params, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' });
-  } catch (err) {
-    if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) throw new AiError('ai_bad_key');
-    if (err instanceof Anthropic.RateLimitError) throw new AiError('ai_busy');
-    if (err instanceof Anthropic.APIConnectionError) throw new AiError('ai_unreachable');
-    if (err instanceof Anthropic.APIError) {
-      console.error(`Claude error ${err.status}: ${err.message}`);
-      throw new AiError(err.status === 400 ? 'ai_bad_photo' : 'ai_failed');
-    }
-    throw err;
-  }
-  const usd = recordAiUsage({
-    model, inputTokens: response.usage?.input_tokens || 0, outputTokens: response.usage?.output_tokens || 0,
-    purpose: 'contract_photos', by: staff?.email || null
-  });
-  if (response.stop_reason === 'refusal') throw new AiError('ai_refused');
-  if (response.stop_reason === 'max_tokens') throw new AiError('ai_failed');
-  const text = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
-  let result;
-  try {
-    result = JSON.parse(text);
-  } catch {
-    throw new AiError('ai_failed');
-  }
-  console.log(`AI read ${images.length} photo(s) for a contract (${model}, $${usd.toFixed(3)}) by ${staff?.email}`);
-  return { result, model, usd };
+  console.log(`AI read ${images.length} photo(s) for a contract (${out.model}, ${out.usd.toFixed(3)} USD) by ${staff?.email}`);
+  return out;
 }
