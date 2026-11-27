@@ -32,8 +32,12 @@ export function formatShortDate(isoDate) {
   return `${d}.${m}`;
 }
 
-export function daysBetween(fromIso, toIso) {
-  return Math.round((Date.parse(toIso) - Date.parse(fromIso)) / 86400000);
+/**
+ * Суток аренды — все дни по календарю, включая день выдачи и день возврата:
+ * с 28 по 30 число — 3 суток (так решил владелец).
+ */
+export function rentalDays(fromIso, toIso) {
+  return Math.round((Date.parse(toIso) - Date.parse(fromIso)) / 86400000) + 1;
 }
 
 /** Время в часовом поясе Бангкока: '14:32' */
@@ -57,7 +61,7 @@ export function formatStaffRequest(request) {
   else if (request.vehicle_type) lines.push(vehicleTypeLabel(request.vehicle_type));
 
   if (request.date_from && request.date_to) {
-    const days = daysBetween(request.date_from, request.date_to);
+    const days = rentalDays(request.date_from, request.date_to);
     lines.push(`📅 ${formatShortDate(request.date_from)} – ${formatShortDate(request.date_to)} (${gn('card.days', days)})`);
   }
 

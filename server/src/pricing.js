@@ -109,13 +109,14 @@ export function seasonFor(pricing, isoDate) {
 const addDays = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
 
 /**
- * Точная стоимость аренды единицы (госномер — только цифры) на даты
- * [from, to): { perDay, total, deposit } или null, если для какого-то дня
- * нет проверенного сезона или цены.
+ * Точная стоимость аренды единицы (госномер — только цифры) на даты с from
+ * по to включительно — все дни по календарю (с 28 по 30 — 3 суток):
+ * { perDay, total, deposit } или null, если для какого-то дня нет
+ * проверенного сезона или цены.
  */
 export function quotePlate(pricing, plate, from, to) {
   if (!pricing || !plate) return null;
-  const days = Math.round((Date.parse(to) - Date.parse(from)) / 86400000);
+  const days = Math.round((Date.parse(to) - Date.parse(from)) / 86400000) + 1;
   if (!(days >= 1)) return null;
   const tier = tierIndex(days);
 

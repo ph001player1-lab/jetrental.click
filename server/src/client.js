@@ -14,7 +14,7 @@
  */
 
 import * as db from './db.js';
-import { VEHICLE_TYPES, formatShortDate, formatThb, daysBetween } from './format.js';
+import { VEHICLE_TYPES, formatShortDate, formatThb, rentalDays } from './format.js';
 import { parseDateRange } from './dates.js';
 import { findAvailableModels, sheetsEnabled } from './fleet.js';
 import { publishRequest } from './staff.js';
@@ -200,7 +200,7 @@ async function offerModels(chat, lang, session) {
 
   // Варианты текстом (WhatsApp компании) уже содержат модель и цену — не повторяем их
   await ui.choices(
-    `${t(lang, 'available', { period, days: daysBetween(session.dateFrom, session.dateTo) })}\n\n` +
+    `${t(lang, 'available', { period, days: rentalDays(session.dateFrom, session.dateTo) })}\n\n` +
       `${ui.textChoices ? '' : `${lines.join('\n')}\n\n`}${t(lang, 'choose_model')}`,
     withBack(lang, choices),
     { listButton: t(lang, 'model_list_button') }
@@ -237,7 +237,7 @@ async function finishRequest(chat, lang, session, phone, name = chat.name) {
   const period = `${formatShortDate(request.date_from)} – ${formatShortDate(request.date_to)}`;
   await ui.send(
     `✅ ${ui.b(t(lang, 'request_title', { id: request.id }))}\n` +
-      `${t(lang, 'request_summary', { what, period, days: daysBetween(request.date_from, request.date_to) })}\n\n` +
+      `${t(lang, 'request_summary', { what, period, days: rentalDays(request.date_from, request.date_to) })}\n\n` +
       t(lang, 'request_next', { restart: ui.restartHint(lang) }),
     { removeKeyboard: true }
   );

@@ -254,7 +254,8 @@ export async function findAvailableModels(vehicleType, from, to) {
   const { catalog, pricing } = await loadFleet();
   // Тот же список, что у снимка статусов (снимок не пересчитывается на каждый запрос)
   const units = loadedUnits();
-  const days = Math.round((Date.parse(to) - Date.parse(from)) / 86400000);
+  // Все дни по календарю: с 28 по 30 — 3 суток
+  const days = Math.round((Date.parse(to) - Date.parse(from)) / 86400000) + 1;
 
   const byModel = freeByPortal(units, vehicleType, from, to);
 

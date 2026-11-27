@@ -135,14 +135,14 @@ function isIsoDate(value) {
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
-/** Проверка дат аренды; возвращает число дней */
+/** Проверка дат аренды; возвращает число суток — все дни по календарю (с 28 по 30 — 3) */
 function checkDates(from, to) {
   if (!isIsoDate(from) || !isIsoDate(to)) throw new HttpError(400, 'invalid_dates');
   if (from < todayIso()) throw new HttpError(400, 'date_past');
-  const days = Math.round((Date.parse(to) - Date.parse(from)) / 86400000);
-  if (days < 1) throw new HttpError(400, 'date_order');
-  if (days > MAX_RENTAL_DAYS) throw new HttpError(400, 'too_long');
-  return days;
+  const diff = Math.round((Date.parse(to) - Date.parse(from)) / 86400000);
+  if (diff < 1) throw new HttpError(400, 'date_order');
+  if (diff > MAX_RENTAL_DAYS) throw new HttpError(400, 'too_long');
+  return diff + 1;
 }
 
 async function availableOptions(type, from, to) {

@@ -514,7 +514,7 @@ async function priceQuote(staff, req, res, url) {
   const quotes = units.filter((u) => u.model === model)
     .map((u) => quotePlate(pricing, plateKey(u.plate), from, to)).filter(Boolean)
     .sort((a, b) => a.total - b.total);
-  sendJson(res, 200, { model, from, to, days: Math.round((Date.parse(to) - Date.parse(from)) / 86400000), quote: quotes[0] || null });
+  sendJson(res, 200, { model, from, to, days: Math.round((Date.parse(to) - Date.parse(from)) / 86400000) + 1, quote: quotes[0] || null });
 }
 
 /** Админ: заявку в архив (убрать из работы, в статистике остаётся) или обратно */

@@ -5,7 +5,7 @@
 
 import * as db from './db.js';
 import { sheetsEnabled, ensureSheet, appendRow, updateRange } from './google/sheets.js';
-import { VEHICLE_TYPES, daysBetween } from './format.js';
+import { VEHICLE_TYPES, rentalDays } from './format.js';
 import { config } from './config.js';
 
 const REQUESTS_SHEET = 'Requests';
@@ -45,7 +45,7 @@ export async function mirrorNewRequest(request) {
   if (!MIRROR_TO_SHEET || !sheetsEnabled) return;
   try {
     await prepareSheet();
-    const days = request.date_from && request.date_to ? daysBetween(request.date_from, request.date_to) : '';
+    const days = request.date_from && request.date_to ? rentalDays(request.date_from, request.date_to) : '';
     const row = await appendRow(REQUESTS_SHEET, [
       request.id,
       sheetDateTime(request.created_at),
