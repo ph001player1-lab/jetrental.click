@@ -25,7 +25,7 @@ import { getFleet, plateKey } from './fleet.js';
 import { staffPhones } from './staffUsers.js';
 import { cashbookMeta, cashbookRows, PURPOSE_GROUP } from './cashbook.js';
 import { itPaymentsBetween } from './itSettings.js';
-import { portalExpensesBetween } from './operations.js';
+import { portalExpensesBetween, portalMoneyRows } from './operations.js';
 
 const DAY_MS = 86400000;
 const BANGKOK_MS = 7 * 3600000;
@@ -528,10 +528,12 @@ export async function financeReport({ from, to }, now = Date.now(), { clientsVis
   const days = Math.max(1, Math.round((end - start) / DAY_MS));
   // Все отчёты с деньгами: для периода, для загрузки машин (аренды до периода),
   // для наличных «на руках» и долгов (на сегодня)
-  const rows = withoutRepeats(db.raw.prepare(`
+  // Отчёты бота с меткой портала не считаем — эти деньги уже в портале (строки portalMoneyRows)
+  const rows = [...withoutRepeats(db.raw.prepare(`
     SELECT id, ts, kind, author, author_name, text, data FROM wa_messages
-    WHERE kind IN (${MONEY_KINDS.map(() => '?').join(',')}) AND status != 'ignored' AND ts < ?
-    ORDER BY ts`).all(...MONEY_KINDS, isoOf(Math.max(end, now + DAY_MS))));
+    WHERE kind IN (${MONEY_KINDS.map(() => '?').join(',')}) AND status != 'ignored' AND ts < ? AND instr(COALESCE(text, ''), '[portal ') = 0
+    ORDER BY ts`).all(...MONEY_KINDS, isoOf(Math.max(end, now + DAY_MS)))),
+  ...portalMoneyRows().filter((r) => r.at < Math.max(end, now + DAY_MS))].sort((a, b) => a.at - b.at);
   const phones = await staffPhones();
   const who = (row) => phones.get(row.author) || row.author_name || (/^\d{8,}$/.test(row.author) ? `+${row.author}` : row.author);
   // Упоминание номером («@66…» или внутренний номер WhatsApp) → имя, под которым он пишет в группу
@@ -574,7 +576,7 @@ export async function financeReport({ from, to }, now = Date.now(), { clientsVis
 
   for (const row of rows) {
     const at = row.at;
-    const m = moneyOf(row, rates);
+    const m = row.m || moneyOf(row, rates);
     parsed.push({ row, m });
     const inPeriod = at >= start && at < end;
     // Периоды аренды по отчётам (для загрузки машин): выдача, продление, замена «куда»
@@ -621,7 +623,7 @@ export async function financeReport({ from, to }, now = Date.now(), { clientsVis
 
     if (!inPeriod) continue;
     const prepaid = row.kind === 'booking' || row.kind === 'issue' ? m.prepaid : 0;
-    if (recStart !== null && at >= recStart && at < recEnd && (m.revenue || prepaid || m.deposit || m.moneyOut)) {
+    if (!row.portal && recStart !== null && at >= recStart && at < recEnd && (m.revenue || prepaid || m.deposit || m.moneyOut)) {
       recOps.push({ id: row.id, at, kind: row.kind, author: who(row), plates: m.plates.map((p) => p.plate), rent: m.rent, extras: m.extras, prepaid, deposit: m.deposit, out: m.moneyOut });
     }
     if (!m.revenue && !m.moneyIn && !m.moneyOut && !m.deposit && !prepaid) continue;

@@ -1097,9 +1097,13 @@
   /* ------------------------------------------------------ «＋ Операция» */
 
   // Возврат, замена, сервис — «Парк» (меняет); расход — ещё и «Финансы»; выдача и акты — и «Документы»
-  const mayOp = (kind) => (kind === 'expense' ? can('fleet.edit') || can('finance.view')
-    : kind === 'service' ? can('fleet.edit') : can('fleet.edit') && can('docs.edit'));
-  const anyOp = () => ['issue', 'return', 'swap', 'service', 'expense'].some(mayOp);
+  const mayOp = (kind) => {
+    if (kind === 'expense') return can('fleet.edit') || can('finance.view');
+    if (kind === 'service') return can('fleet.edit');
+    if (['income', 'deposit_refund', 'payout'].includes(kind)) return can('finance.view') || can('access.admin');
+    return can('fleet.edit') && can('docs.edit');
+  };
+  const anyOp = () => ['issue', 'return', 'swap', 'extend', 'service', 'expense', 'income', 'deposit_refund', 'payout'].some(mayOp);
   const op = window.STAFF_OP.create({
     api, t, esc, dateTime, money,
     lang: () => lang,

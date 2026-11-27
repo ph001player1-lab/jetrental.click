@@ -62,7 +62,7 @@ import { recognizeContractPhotos, AiError } from './ai/recognize.js';
 import { renterOf, parsePhotos, contractProposal } from './ai/proposal.js';
 import { mediaCounts, fleetMediaList, fleetMediaFile } from './vehicleMedia.js';
 import { opDrafts, opDraftCreate, opDraftGet, opDraftPhotoAdd, opDraftPhotoGet, opDraftPhotoDelete, opDraftUpdate, opDraftCancel, opDraftRecognize, opDraftManual,
-  opDraftApply, opDraftAttach, opVehicle, expensesList, expensePhoto, expenseDelete } from './operations.js';
+  opDraftApply, opDraftAttach, opVehicle, expensesList, expensePhoto, expenseDelete, moneyDelete } from './operations.js';
 import { importCashbook } from './cashbook.js';
 import { serverReport, serverStatusRoute, saveServerSettings, alertAdminsOnce } from './serverStats.js';
 import { listTickets, ticketsBadge, createTicket, uploadShot, getShot, setTicketStatus, markSeen, deleteTicket } from './tickets.js';
@@ -950,6 +950,7 @@ const ROUTES = {
   'GET /api/staff/expenses': signedIn(expensesList),
   'GET /api/staff/expenses/photo': signedIn(expensePhoto),
   'POST /api/staff/expenses/delete': signedIn(expenseDelete),
+  'POST /api/staff/money/delete': signedIn(moneyDelete),
   'GET /api/staff/discounts': signedIn(discountsReport),
   'POST /api/staff/discounts/decide': signedIn(discountsDecide),
   'POST /api/staff/settings/discounts': signedIn(discountsSettingsRoute),

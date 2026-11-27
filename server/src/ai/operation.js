@@ -11,7 +11,8 @@
 import { askStructured, photoContent } from './claude.js';
 import { str, obj, RENTER, VEHICLE, PHOTOS, PHOTO_TYPES, FIELD_RULES, FIELDS } from './recognize.js';
 
-export const OP_KINDS = ['issue', 'return', 'swap', 'service', 'expense'];
+export const OP_KINDS = ['issue', 'return', 'swap', 'extend', 'service', 'expense', 'income', 'deposit_refund', 'payout'];
+export const INCOME_CATEGORIES = ['rent', 'extras', 'deposit', 'damage', 'other'];
 export const SERVICE_ACTIONS = ['to_repair', 'from_repair', 'maintenance', 'mileage'];
 // Статьи расходов — те же, что во «Финансах»
 export const EXPENSE_CATEGORIES = ['fuel', 'repair', 'wash', 'delivery', 'office', 'insurance', 'tax', 'ads', 'it', 'salary', 'owners', 'refunds', 'vehicles', 'personal', 'other'];
@@ -27,6 +28,9 @@ const SCHEMA = obj({
   damages: { type: 'array', items: money },
   deductions: { type: 'array', items: money },
   refund: obj({ amount: str, method: str }),
+  extension: obj({ newTo: str, paid: str, method: { type: 'string', enum: [...PAY_METHODS, ''] } }),
+  income: obj({ amount: str, currency: str, category: { type: 'string', enum: [...INCOME_CATEGORIES, ''] }, method: { type: 'string', enum: [...PAY_METHODS, ''] }, payer: str, note: str }),
+  payout: obj({ payee: str }),
   service: obj({ action: { type: 'string', enum: [...SERVICE_ACTIONS, ''] }, note: str }),
   expense: obj({
     amount: str, currency: str, date: str, category: { type: 'string', enum: [...EXPENSE_CATEGORIES, ''] },
@@ -44,6 +48,10 @@ Operations ("kind"):
 - "return": a client brings a vehicle back: photos of the vehicle with its plate, the dashboard, maybe damage. Fill vehicle (mileage and fuel at return), damages, deductions and refund.
 - "swap": the client gets another vehicle instead of the rented one: two vehicles in the photos or the note. "vehicle" is the one returned, "newVehicle" is the one the client gets, each with mileage and fuel if visible.
 - "service": repair, maintenance or a mileage check: "service.action" is "to_repair" (goes to the workshop), "from_repair" (back from repair, ready to rent), "maintenance" (scheduled service: oil and so on) or "mileage" (only the odometer reading). Put the work done in "service.note" (Russian). If a receipt or invoice is in the photos, fill "expense" too (category "repair").
+- "extend": the client keeps the rented vehicle longer: "extension.newTo" is the new return date (YYYY-MM-DD), "extension.paid" the amount paid now (digits) and "extension.method" how. Fill vehicle.plate if the photos or the note name the vehicle.
+- "income": money received that is not an extension (a rent payment, extra services, a deposit received, damage compensation): fill "income" (amount, currency, category: "rent", "extras", "deposit", "damage" or "other", method, payer, a short note in Russian) and vehicle.plate if named.
+- "deposit_refund": the deposit is returned to the client separately from the vehicle return: "refund.amount", "refund.method", and deductions kept from the deposit; vehicle.plate if named.
+- "payout": the company pays a person (salary, a payout to a vehicle owner): fill "expense" (amount, currency, date, category "salary", "owners" or "other", method, note) and "payout.payee" — who receives the money.
 - "expense": a receipt, invoice or bill for something the company paid: fill "expense": amount (the total actually paid, digits and a dot only), currency (ISO code, "THB" unless another is shown), date (YYYY-MM-DD), category, vendor (shop or company name), method ("cash", "transfer", "card" or "" if not shown) and a short note in Russian about what was bought. If the receipt or the note names a vehicle plate, fill vehicle.plate and vehicle.plateNumber.
 - "unknown": none of these.
 

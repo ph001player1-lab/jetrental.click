@@ -606,9 +606,13 @@ export function contractById(id) {
   const row = getDoc(id);
   if (!row || row.kind !== 'contract') return null;
   const d = rowData(row);
+  const children = q.children.all(row.id);
+  // Конец аренды с учётом продлений (дополнения)
+  const end = children.filter((x) => x.kind === 'addendum').map((x) => rowData(x).extension?.newReturn).filter(Boolean)
+    .reduce((a, b) => (b > a ? b : a), d.to || '');
   return {
-    id: row.id, number: row.number, lang: row.lang, data: d,
-    returned: q.children.all(row.id).some((x) => x.kind === 'return'),
+    id: row.id, number: row.number, lang: row.lang, data: d, end: end || null,
+    returned: children.some((x) => x.kind === 'return'),
     equipment: (d.equipment || []).map((e) => ({ key: e.key, ok: Boolean(e.ok), label: EQUIPMENT[e.key] || { en: e.key, ru: e.key, th: '' } }))
   };
 }

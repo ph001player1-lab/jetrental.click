@@ -522,12 +522,12 @@
         if (o.deposit) parts.push(`залог ${baht(o.deposit)}`);
         if (o.moneyOut) parts.push(`возвращено ${baht(o.moneyOut)}`);
         return `<li>
-          <div><span class="jr-kind jr-kind--task">${esc(KIND[o.kind] || o.kind)}</span> <span class="muted">${esc(when(o.ts))} · ${esc(o.author)}</span> ${plates(o.plates)}</div>
+          <div><span class="jr-kind jr-kind--task">${esc(KIND[o.kind] || o.kind)}</span>${String(o.id).startsWith('pm') ? ' <span class="pill">＋ Операция</span>' : ''} <span class="muted">${esc(when(o.ts))} · ${esc(o.author)}</span> ${plates(o.plates)}</div>
           <div class="fin-op__money">${esc(parts.join(' · '))}${o.receiver ? ` <span class="muted">— принял(а) ${esc(o.receiver)}</span>` : ''}</div>
-          ${journalLink(o.plates[0], 'Открыть в журнале')}
+          ${String(o.id).startsWith('pm') ? (st.receipts?.canDelete ? `<button type="button" class="link jr-small fin-less" data-fin-moneydel="${esc(o.id)}">удалить ошибочную запись</button>` : '') : journalLink(o.plates[0], 'Открыть в журнале')}
         </li>`;
       }).join('');
-      return `<section class="card fin-sec"><h3>Деньги в отчётах группы</h3>
+      return `<section class="card fin-sec"><h3>Деньги в отчётах группы и из «＋ Операция»</h3>
         <ul class="fin-ops">${items}</ul>${showAll('opsAll', d.operations.length, 30)}</section>`;
     }
 
@@ -571,6 +571,12 @@
       if (all) { st[all.dataset.finAll] = true; ctx.rerender(); return true; }
       const dec = el.closest('[data-fin-decide]');
       if (dec) { const [id, ok] = dec.dataset.finDecide.split(':'); dec.disabled = true; decide(Number(id), ok === '1'); return true; }
+      const moneyDel = el.closest('[data-fin-moneydel]');
+      if (moneyDel) {
+        if (!window.confirm('Удалить эту запись о деньгах? Она пропадёт из «Финансов».')) return true;
+        send('/money/delete', JSON.stringify({ id: moneyDel.dataset.finMoneydel }), 'application/json').then(load).catch(() => null);
+        return true;
+      }
       const expDel = el.closest('[data-fin-expdel]');
       if (expDel) {
         if (!window.confirm('Удалить этот расход? Он пропадёт из «Финансов» и кабинета инвестора.')) return true;

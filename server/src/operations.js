@@ -46,7 +46,7 @@ import { postFleetEvent } from './wabot.js';
 import { saveDocument, contractFor, contractById, addDocPhotos, docBrief, savePendingPhotos, DocError } from './documents.js';
 import { archivePhotos } from './vehicleMedia.js';
 import { currentRates } from './finance.js';
-import { recognizeOperation, OP_KINDS, SERVICE_ACTIONS, EXPENSE_CATEGORIES, PAY_METHODS } from './ai/operation.js';
+import { recognizeOperation, OP_KINDS, SERVICE_ACTIONS, EXPENSE_CATEGORIES, PAY_METHODS, INCOME_CATEGORIES } from './ai/operation.js';
 import { AiError } from './ai/claude.js';
 import { vehicleByPhoto, carNow, contractProposal, photoList, vehicleName, dayPart, VEHICLE_CAPTION } from './ai/proposal.js';
 
@@ -91,6 +91,28 @@ db.raw.exec(`
     updated_at  TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS op_drafts_staff ON op_drafts (staff_email, status);
+  -- Деньги из «＋ Операция»: приход (оплата продления, аренды, доп. услуг, залог) и возврат залога
+  CREATE TABLE IF NOT EXISTS cash_moves (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    at          TEXT NOT NULL,
+    dir         TEXT NOT NULL,
+    kind        TEXT NOT NULL,
+    category    TEXT NOT NULL,
+    amount      REAL NOT NULL,
+    currency    TEXT NOT NULL,
+    thb         INTEGER NOT NULL,
+    method      TEXT,
+    plate       TEXT,
+    vehicle_id  INTEGER,
+    contract_id INTEGER,
+    party       TEXT,
+    note        TEXT,
+    by_email    TEXT,
+    by_name     TEXT,
+    deleted_at  TEXT,
+    deleted_by  TEXT
+  );
+  CREATE INDEX IF NOT EXISTS cash_moves_at ON cash_moves (at);
 `);
 
 const q = {
@@ -100,6 +122,11 @@ const q = {
   byId: db.raw.prepare('SELECT * FROM expenses WHERE id = ?'),
   between: db.raw.prepare('SELECT * FROM expenses WHERE deleted_at IS NULL AND date >= ? AND date <= ? ORDER BY date DESC, id DESC'),
   remove: db.raw.prepare('UPDATE expenses SET deleted_at = ?, deleted_by = ? WHERE id = ? AND deleted_at IS NULL'),
+  moveAdd: db.raw.prepare(`INSERT INTO cash_moves (at, dir, kind, category, amount, currency, thb, method, plate, vehicle_id, contract_id, party, note, by_email, by_name)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+  moves: db.raw.prepare('SELECT * FROM cash_moves WHERE deleted_at IS NULL ORDER BY at'),
+  move: db.raw.prepare('SELECT * FROM cash_moves WHERE id = ?'),
+  moveDel: db.raw.prepare('UPDATE cash_moves SET deleted_at = ?, deleted_by = ? WHERE id = ? AND deleted_at IS NULL'),
   draftNew: db.raw.prepare('INSERT INTO op_drafts (staff_email, hint, note, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'),
   draft: db.raw.prepare('SELECT * FROM op_drafts WHERE id = ?'),
   myOpen: db.raw.prepare("SELECT * FROM op_drafts WHERE staff_email = ? AND status = 'open' ORDER BY updated_at DESC LIMIT 20"),
@@ -119,9 +146,11 @@ const CATEGORY_EN = {
 
 const isOwnerOrAdmin = (staff) => roleOf(staff) === 'owner' || can(staff, 'access.admin');
 const mayKind = (staff, kind) => {
-  if (kind === 'issue' || kind === 'return' || kind === 'swap') return can(staff, 'fleet.edit') && can(staff, 'docs.edit');
+  if (kind === 'issue' || kind === 'return' || kind === 'swap' || kind === 'extend') return can(staff, 'fleet.edit') && can(staff, 'docs.edit');
   if (kind === 'service') return can(staff, 'fleet.edit');
   if (kind === 'expense') return can(staff, 'fleet.edit') || can(staff, 'finance.view');
+  // Деньги: приход, возврат залога, выплаты — финансы (владелец и админ — тоже)
+  if (kind === 'income' || kind === 'deposit_refund' || kind === 'payout') return can(staff, 'finance.view') || isOwnerOrAdmin(staff);
   return false;
 };
 const anyKind = (staff) => OP_KINDS.some((k) => mayKind(staff, k));
@@ -150,7 +179,7 @@ function activeContract(vehicle, holder) {
 
 const contractView = (c, lang) => (c ? {
   id: c.id, number: c.number, lang: c.lang, name: c.data.renter?.name || '', phone: c.data.renter?.phone || '',
-  from: c.data.from || null, to: c.data.to || null, deposit: c.data.deposit ?? null, returned: c.returned,
+  from: c.data.from || null, to: c.end || c.data.to || null, deposit: c.data.deposit ?? null, returned: c.returned, perDay: c.data.perDay ?? null,
   vehicleId: c.data.vehicleId || null,
   equipment: c.equipment.map((e) => ({ key: e.key, given: e.ok, label: e.label[lang] || e.label.en }))
 } : null);
@@ -323,6 +352,15 @@ async function proposalFor(r, kind, count, staff, lang) {
       method: PAY_METHODS.includes(r.expense?.method) ? r.expense.method : '', note: text(r.expense?.note, 300)
     }
   };
+  out.fields.newTo = /^\d{4}-\d{2}-\d{2}$/.test(String(r.extension?.newTo || '')) ? r.extension.newTo : '';
+  out.fields.paid = String(r.extension?.paid || '').replace(/[^\d.]/g, '');
+  out.fields.payMethod = PAY_METHODS.includes(r.extension?.method) ? r.extension.method : '';
+  out.fields.income = {
+    amount: String(r.income?.amount || '').replace(/[^\d.]/g, ''), currency: /^[A-Z]{3}$/.test(String(r.income?.currency || '')) ? r.income.currency : 'THB',
+    category: INCOME_CATEGORIES.includes(r.income?.category) ? r.income.category : '', method: PAY_METHODS.includes(r.income?.method) ? r.income.method : '',
+    payer: text(r.income?.payer, 80), note: text(r.income?.note, 300)
+  };
+  out.fields.payee = text(r.payout?.payee, 80);
   if (kind === 'swap') {
     const n = await vehicleState(r.newVehicle, lang);
     out.newVehicle = n.vehicle;
@@ -333,6 +371,7 @@ async function proposalFor(r, kind, count, staff, lang) {
   }
   if ((kind === 'return' || kind === 'swap') && out.vehicle && !out.contract) out.warnings.push('Договор на эту технику не нашёл: будет только статус «Свободна».');
   if (kind === 'return' && out.contract?.returned) out.warnings.push(`По договору ${out.contract.number} акт возврата уже есть.`);
+  if (kind === 'extend' && out.vehicle && !out.contract) out.warnings.push('Договор на эту технику не нашёл — продлить можно только по договору.');
   return out;
 }
 
@@ -344,10 +383,15 @@ function formFrom(p) {
     kind: p.kind, vehicleId: p.vehicle?.id || null, contractId: p.contract?.id || null, newVehicleId: p.newVehicle?.id || null,
     at: bkkNow(), mileage: f.mileage || '', fuel: f.fuel ?? '', newMileage: f.newMileage || '', newFuel: f.newFuel ?? '',
     damages: f.damages || [], deductions: f.deductions || [],
-    refundMethod: [f.refundAmount ? `${f.refundAmount} ฿` : '', f.refundMethod].filter(Boolean).join(' · '),
+    // Как вернули залог — в акте из суммы и способа (поля формы), без лишнего текста
+    refundMethod: '',
     equipment: (p.contract?.equipment || []).map((e) => e.given),
     action: f.serviceAction || '', note: f.serviceNote || '', reason: '',
-    expense: { ...(f.expense || {}), amount: f.expense?.amount || '', vehicleId: p.vehicle?.id || null },
+    refundAmount: f.refundAmount || '', refundPay: PAY_METHODS.find((m) => new RegExp(m === 'cash' ? 'cash|нал' : m === 'card' ? 'card|карт' : 'transfer|перев', 'i').test(f.refundMethod || '')) || '',
+    newTo: f.newTo || '', perDay: p.contract?.perDay ?? '', paid: f.paid || '', payMethod: f.payMethod || '',
+    income: { ...(f.income || {}), vehicleId: p.vehicle?.id || null, contractId: p.contract?.id || null },
+    payee: f.payee || '',
+    expense: { ...(f.expense || {}), amount: f.expense?.amount || '', vehicleId: p.vehicle?.id || null, category: f.expense?.category || (p.kind === 'payout' ? 'salary' : '') },
     receipt: receipt ?? (p.kind === 'expense' ? 0 : null)
   };
 }
@@ -440,6 +484,61 @@ async function addExpense(e, staff, receipt = null) {
   return { type: 'expense', id, thb, category, wa: wa.status };
 }
 
+const PAY_EN = { cash: 'cash', transfer: 'transfer', card: 'card' };
+const moneyText = (amount, currency) => `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(amount)} ${currency}`;
+
+/** Деньги в кассу портала: dir in|out; бат — по курсу. Возвращает id */
+function addCashMove(m, staff) {
+  const amount = num(m.amount);
+  if (!(amount > 0)) throw new HttpError(400, 'bad_amount');
+  const currency = /^[A-Z]{3}$/.test(String(m.currency || '')) ? m.currency : 'THB';
+  const rate = currency === 'THB' ? 1 : currentRates().rates[currency];
+  if (!rate) throw new HttpError(400, 'bad_currency');
+  const vehicle = m.vehicleId ? getVehicle(m.vehicleId) : null;
+  const id = Number(q.moveAdd.run(new Date().toISOString(), m.dir, m.kind, m.category, amount, currency, Math.round(amount * rate),
+    PAY_METHODS.includes(m.method) ? m.method : null, vehicle?.plate || m.plate || null, vehicle?.id || null, Number(m.contractId) || null,
+    text(m.party, 80) || null, text(m.note, 300) || null, staff.email, staff.name || staff.email).lastInsertRowid);
+  console.log(`Cash move #${id}: ${m.dir} ${amount} ${currency} ${m.kind}/${m.category} by ${staff.email}`);
+  return { id, thb: Math.round(amount * rate), amount, currency };
+}
+
+/**
+ * Деньги из портала — строками, как отчёты группы, для «Финансов» (выручка, касса у сотрудников,
+ * залоги): row.m — уже посчитанное (как moneyOf отчёта)
+ */
+export function portalMoneyRows() {
+  return q.moves.all().map((r) => {
+    const cash = r.method === 'cash';
+    const inn = r.dir === 'in';
+    const rent = inn && (r.kind === 'extension' || r.category === 'rent') ? r.thb : 0;
+    const extras = inn && !rent && ['extras', 'damage', 'other'].includes(r.category) ? r.thb : 0;
+    const deposit = inn && r.category === 'deposit' ? r.thb : 0;
+    const at = Date.parse(r.at);
+    return {
+      id: `pm${r.id}`, ts: r.at, at, portal: true, kind: inn ? (r.kind === 'extension' ? 'extension' : 'payment') : 'return',
+      author: r.by_name || r.by_email, author_name: r.by_name || r.by_email, text: '', data: '{}',
+      m: {
+        revenue: rent + extras, rent, extras, moneyIn: inn ? r.thb : 0, inCash: inn && cash ? [{ currency: r.currency, amount: r.amount }] : [],
+        cashLike: cash, transferLike: !cash, cashIn: inn && cash ? r.thb : 0,
+        moneyOut: inn ? 0 : r.thb, outCash: !inn && cash, deposit, returnDeposit: 0, left: 0, debt: 0, debtNote: null, toReceive: 0, toReturn: 0,
+        bookingTotal: 0, prepaid: 0, receiver: r.by_name || r.by_email, plates: r.plate ? [{ plate: r.plate, model: null }] : [], from: null, to: null, keys: {}
+      }
+    };
+  });
+}
+
+/** POST /api/staff/money/delete { id } — ошибочная запись денег: владелец, админ или кто внёс в тот же день */
+export async function moneyDelete(staff, req, res) {
+  const { id } = await readJson(req);
+  const r = q.move.get(Number(String(id).replace(/^pm/, '')) || 0);
+  if (!r || r.deleted_at) throw new HttpError(404, 'not_found');
+  const own = r.by_email === staff.email && Date.now() - Date.parse(r.at) < 24 * 3600000;
+  if (!isOwnerOrAdmin(staff) && !own) throw new HttpError(403, 'owner_or_admin_only');
+  q.moveDel.run(new Date().toISOString(), staff.email, r.id);
+  console.log(`Cash move #${r.id} deleted by ${staff.email}`);
+  sendJson(res, 200, { ok: true });
+}
+
 function needVehicle(id) {
   const v = getVehicle(id);
   if (!v || isSold(v.plate)) throw new HttpError(400, 'no_vehicle');
@@ -471,7 +570,8 @@ async function applyOp(kind, f, buffers, kinds, staff) {
         data: {
           at: f.at || bkkNow(), mileage: f.mileage, fuel: f.fuel,
           equipment: Array.isArray(f.equipment) ? f.equipment : undefined,
-          damages: money(f.damages), deductions: money(f.deductions), refundMethod: text(f.refundMethod, 120)
+          damages: money(f.damages), deductions: money(f.deductions),
+          refundMethod: text(f.refundMethod, 120) || (num(f.refundAmount) > 0 ? `${moneyText(num(f.refundAmount), 'THB')}${f.refundPay ? ` (${PAY_EN[f.refundPay] || f.refundPay})` : ''}` : '')
         }
       }, staff));
       // К акту — фото техники (документы клиента и чеки — нет); из акта они же — в архив техники
@@ -479,6 +579,10 @@ async function applyOp(kind, f, buffers, kinds, staff) {
       done.push({ type: 'doc', kind: 'return', ...docBrief(id), photos: added });
     }
     if (!contract) archivePhotos(vehicle, vehiclePhotos, { kind: 'return', staff });
+    if (num(f.refundAmount) > 0) {
+      const m = addCashMove({ dir: 'out', kind: 'deposit_refund', category: 'deposit', amount: f.refundAmount, currency: 'THB', method: f.refundPay, vehicleId: vehicle.id, contractId: contract?.id, party: contract?.data.renter?.name, note: 'возврат залога при возврате техники' }, staff);
+      done.push({ type: 'money', dir: 'out', kind: 'deposit_refund', thb: m.thb });
+    }
     const { holder } = await carNow(vehicle.id);
     if (holder || vehicle.repair !== 'ok') done.push(await setStatus(vehicle, { kind: 'free', note: contract ? contract.number : 'Return' }, staff, all));
     if (updateVehicleStats(vehicle.id, { mileage: int(f.mileage) }, staff.email)) done.push({ type: 'mileage', plate: vehicle.plate, mileage: int(f.mileage) });
@@ -525,6 +629,59 @@ async function applyOp(kind, f, buffers, kinds, staff) {
   }
 
   if (kind === 'expense') done.push(await addExpense(f.expense || {}, staff, receiptOf()));
+
+  if (kind === 'extend') {
+    const contract = contractById(f.contractId);
+    if (!contract) throw new HttpError(400, 'unknown_contract');
+    const vehicle = needVehicle(f.vehicleId || contract.data.vehicleId);
+    const newTo = /^\d{4}-\d{2}-\d{2}$/.test(String(f.newTo || '')) ? f.newTo : null;
+    const end = dayPart(contract.end || contract.data.to);
+    if (!newTo) throw new HttpError(400, 'date_required');
+    if (end && newTo <= end) throw new HttpError(400, 'not_later');
+    if (newTo < today) throw new HttpError(400, 'date_past');
+    const time = String(contract.end || contract.data.to || '').slice(11, 16) || '12:00';
+    const days = end ? Math.round((Date.parse(`${newTo}T00:00:00Z`) - Date.parse(`${end}T00:00:00Z`)) / 86400000) : null;
+    const perDay = int(f.perDay);
+    const extra = int(f.extraPrice) ?? (perDay && days ? perDay * days : null);
+    const paid = int(f.paid) || 0;
+    const id = docCall(() => saveDocument({
+      kind: 'addendum', contractId: contract.id, lang: contract.lang,
+      data: { date: today, extension: { newReturn: `${newTo}T${time}`, perDay, extraPrice: extra, paid } }
+    }, staff));
+    const add = docBrief(id);
+    done.push({ type: 'doc', ...add, kind: 'extension', days, extra });
+    if (paid > 0) {
+      const m = addCashMove({ dir: 'in', kind: 'extension', category: 'rent', amount: paid, currency: 'THB', method: f.payMethod, vehicleId: vehicle.id, contractId: contract.id, party: contract.data.renter?.name, note: `продление ${add.number}` }, staff);
+      done.push({ type: 'money', dir: 'in', kind: 'extension', thb: m.thb });
+    }
+    archivePhotos(vehicle, vehiclePhotos, { kind: 'extend', ref: add.number, staff });
+    const paidLine = paid > 0 ? `Paid: ${moneyText(paid, 'THB')}${f.payMethod ? ` (${PAY_EN[f.payMethod]})` : ''}` : (extra ? `To collect: ${moneyText(extra, 'THB')}` : '');
+    done.push(await setStatus(vehicle, { kind: 'rent', to: newTo, clientName: contract.data.renter?.name, clientPhone: contract.data.renter?.phone, docId: contract.id,
+      note: [`Extension ${add.number}`, paidLine].filter(Boolean).join(' · ') }, staff, all));
+  }
+
+  if (kind === 'income' || kind === 'deposit_refund') {
+    const inc = f.income || {};
+    const contract = inc.contractId || f.contractId ? contractById(inc.contractId || f.contractId) : null;
+    const vehicle = inc.vehicleId || f.vehicleId ? getVehicle(inc.vehicleId || f.vehicleId) : null;
+    const refund = kind === 'deposit_refund';
+    const m = addCashMove({
+      dir: refund ? 'out' : 'in', kind, category: refund ? 'deposit' : (INCOME_CATEGORIES.includes(inc.category) ? inc.category : 'other'),
+      amount: refund ? f.refundAmount : inc.amount, currency: refund ? 'THB' : inc.currency, method: refund ? f.refundPay : inc.method,
+      vehicleId: vehicle?.id, contractId: contract?.id, party: refund ? contract?.data.renter?.name : inc.payer, note: refund ? (money(f.deductions).map((d) => `${d.text} ${d.thb || ''}`).join('; ') || f.note) : inc.note
+    }, staff);
+    done.push({ type: 'money', dir: refund ? 'out' : 'in', kind, thb: m.thb });
+    const head = refund ? 'Deposit returned' : 'Payment';
+    const what = [`${head}: ${moneyText(m.amount, m.currency)}`, !refund ? (inc.category || 'other') : null, contract?.number || null, vehicle ? `#${vehicle.plate}` : null].filter(Boolean).join(' — ')
+      + ((refund ? f.refundPay : inc.method) ? ` (${PAY_EN[refund ? f.refundPay : inc.method]})` : '');
+    const wa = await postFleetEvent([what, text(refund ? f.note : inc.note, 200) || null, `[portal money #${m.id} · ${staff.name || staff.email}]`].filter(Boolean).join('\n'), all);
+    done[done.length - 1].wa = wa.status;
+    if (vehicle) archivePhotos(vehicle, buffers.filter(Boolean).map((buffer) => ({ buffer, caption: 'receipt' })).slice(0, 3), { kind: 'expense', ref: what.slice(0, 60), staff });
+  }
+
+  if (kind === 'payout') {
+    done.push(await addExpense({ ...(f.expense || {}), category: f.expense?.category || 'salary', vendor: f.payee || f.expense?.vendor }, staff, receiptOf()));
+  }
 
   if (!done.length) throw new HttpError(400, 'nothing_to_do');
   return done;

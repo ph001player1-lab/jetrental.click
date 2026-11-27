@@ -10,8 +10,9 @@
 (function () {
   'use strict';
 
-  const KINDS = ['issue', 'return', 'swap', 'service', 'expense'];
-  const ICON = { issue: '🔑', return: '↩️', swap: '🔁', service: '🔧', expense: '🧾' };
+  const KINDS = ['issue', 'return', 'swap', 'extend', 'service', 'expense', 'income', 'deposit_refund', 'payout'];
+  const ICON = { issue: '🔑', return: '↩️', swap: '🔁', extend: '📅', service: '🔧', expense: '🧾', income: '💰', deposit_refund: '💵', payout: '👛' };
+  const INCOME_CATEGORIES = ['rent', 'extras', 'deposit', 'damage', 'other'];
   const CATEGORIES = ['fuel', 'repair', 'wash', 'delivery', 'office', 'insurance', 'tax', 'ads', 'it', 'salary', 'owners', 'refunds', 'vehicles', 'personal', 'other'];
   const CURRENCIES = ['THB', 'USD', 'EUR', 'RUB', 'GBP'];
   const ACTIONS = ['to_repair', 'from_repair', 'maintenance', 'mileage'];
@@ -151,7 +152,8 @@
       if (kind === 'unknown' || !KINDS.includes(kind)) return `${head}<p class="warn">${esc(t('op.unknown'))}</p>`;
       if (!allowed().includes(kind)) return `${head}<p class="warn">${esc(t('op.notAllowed'))}</p>`;
       if (kind === 'issue') return `${head}${issueHtml(p)}`;
-      const form = kind === 'return' ? returnHtml(p, f) : kind === 'swap' ? swapHtml(p, f) : kind === 'service' ? serviceHtml(p, f) : expenseHtml(p, f);
+      const FORMS = { return: returnHtml, swap: swapHtml, extend: extendHtml, service: serviceHtml, expense: expenseHtml, income: incomeHtml, deposit_refund: refundHtml, payout: payoutHtml };
+      const form = FORMS[kind](p, f);
       return `${head}<form class="op-form" data-op-form data-nodraft novalidate>${form}
         <div class="dc-actions"><button type="submit" class="btn btn--primary"${st.busy ? ' disabled' : ''}>✓ ${esc(t('op.confirm'))}</button></div></form>`;
     }
@@ -199,7 +201,52 @@
         ${eq ? `<div class="op-sub"><b>${esc(t('op.equipment'))}</b><div class="dc-eq">${eq}</div></div>` : ''}
         <div class="op-sub"><b>${esc(t('op.damages'))}</b>${moneyRows('damages', f.damages, t('op.damage'))}</div>
         <div class="op-sub"><b>${esc(t('op.deductions'))}</b>${moneyRows('deductions', f.deductions, t('op.deduction'))}</div>
-        ${fld(t('op.refund'), inp('refundMethod', f.refundMethod, `placeholder="${esc(t('op.refundHint'))}"`))}`;
+        ${refundFields(f)}`;
+    }
+
+    const paySel = (path, value) => `<select class="search" data-op-f="${path}"><option value="">—</option>${METHODS.map((m) => `<option value="${m}"${value === m ? ' selected' : ''}>${esc(t(`op.pay.${m}`))}</option>`).join('')}</select>`;
+    const refundFields = (f) => `<div class="dc-grid">${fld(t('op.refundAmount'), inp('refundAmount', f.refundAmount, 'inputmode="numeric" placeholder="฿"'))}${fld(t('op.method'), paySel('refundPay', f.refundPay))}</div>`;
+
+    /** Продление: новая дата возврата, сутки, доплата — сразу видно, сколько */
+    function extendHtml(p, f) {
+      const end = p.contract?.to ? String(p.contract.to).slice(0, 10) : '';
+      const days = end && /^\d{4}-\d{2}-\d{2}$/.test(f.newTo || '') ? Math.round((Date.parse(`${f.newTo}T00:00:00Z`) - Date.parse(`${end}T00:00:00Z`)) / 86400000) : null;
+      const auto = days > 0 && Number(f.perDay) > 0 ? days * Number(f.perDay) : null;
+      return `<div class="dc-grid">${fld(t('dc.vehicle'), vehicleSel('vehicleId', f.vehicleId), 'dc-wide')}</div>${statusLine(p)}${contractLine(p)}
+        <div class="dc-grid">
+          ${fld(t('op.newTo'), inp('newTo', f.newTo, `type="date"${end ? ` min="${end}"` : ''}`, unsure('to')))}
+          ${fld(t('dc.perDay'), inp('perDay', f.perDay, 'inputmode="numeric"'))}
+          ${fld(t('op.extraPrice'), inp('extraPrice', f.extraPrice ?? '', `inputmode="numeric" placeholder="${auto ? esc(ctx.money(auto)) : '฿'}"`))}
+        </div>
+        <p class="muted jr-small" data-op-extinfo>${days > 0 ? esc(t('op.extInfo', { days, sum: auto ? ctx.money(auto) : '—' })) : esc(t('op.extHint'))}</p>
+        <div class="dc-grid">${fld(t('op.paidNow'), inp('paid', f.paid, 'inputmode="numeric" placeholder="฿"'))}${fld(t('op.method'), paySel('payMethod', f.payMethod))}</div>`;
+    }
+
+    /** Приход: оплата аренды, доп. услуг, залог, компенсация ущерба */
+    function incomeHtml(p, f) {
+      const i = f.income || {};
+      return `<div class="dc-grid">
+          ${fld(t('op.amount'), inp('income.amount', i.amount, 'inputmode="decimal"', unsure('amount')))}
+          ${fld(t('op.currency'), `<select class="search" data-op-f="income.currency">${CURRENCIES.map((c) => `<option${(i.currency || 'THB') === c ? ' selected' : ''}>${c}</option>`).join('')}</select>`)}
+          ${fld(t('op.category'), `<select class="search" data-op-f="income.category"><option value="">—</option>${INCOME_CATEGORIES.map((c) => `<option value="${c}"${i.category === c ? ' selected' : ''}>${esc(t(`op.inc.${c}`))}</option>`).join('')}</select>`)}
+          ${fld(t('op.method'), paySel('income.method', i.method))}
+          ${fld(t('op.payer'), inp('income.payer', i.payer))}
+          ${fld(t('op.forVehicle'), vehicleSel('income.vehicleId', i.vehicleId), 'dc-wide')}
+          ${fld(t('op.what'), inp('income.note', i.note), 'dc-wide')}
+        </div>`;
+    }
+
+    /** Возврат залога отдельно от возврата техники */
+    function refundHtml(p, f) {
+      return `<div class="dc-grid">${fld(t('dc.vehicle'), vehicleSel('vehicleId', f.vehicleId), 'dc-wide')}</div>${contractLine(p)}
+        ${refundFields(f)}
+        <div class="op-sub"><b>${esc(t('op.deductions'))}</b>${moneyRows('deductions', f.deductions, t('op.deduction'))}</div>
+        ${fld(t('op.what'), inp('note', f.note))}`;
+    }
+
+    /** Выплата: зарплата, владельцу техники — расход со статьёй и «кому» */
+    function payoutHtml(p, f) {
+      return `<div class="dc-grid">${fld(t('op.payee'), inp('payee', f.payee), 'dc-wide')}</div>${expenseFields(f, false)}`;
     }
 
     function swapHtml(p, f) {
@@ -262,6 +309,7 @@
         if (x.type === 'status') return `<li>🚗 ${esc(t(`op.done.status.${x.kind}`, { plate: x.plate }))}${x.wa === 'sent' ? ` · 💬 ${esc(t('op.toGroup'))}` : ''}</li>`;
         if (x.type === 'expense') return `<li>🧾 ${esc(t('op.done.expense', { sum: ctx.money(x.thb), cat: t(`op.cat.${x.category}`) }))}${x.wa === 'sent' ? ` · 💬 ${esc(t('op.toGroup'))}` : ''}</li>`;
         if (x.type === 'mileage' || x.type === 'maintenance') return `<li>🔧 ${esc(t(`op.done.${x.type}`, { plate: x.plate, km: x.mileage ?? '' }))}</li>`;
+        if (x.type === 'money') return `<li>${x.dir === 'in' ? '💰' : '💵'} ${esc(t(`op.done.money.${x.kind}`, { sum: ctx.money(x.thb) }))}${x.wa === 'sent' ? ` · 💬 ${esc(t('op.toGroup'))}` : ''}</li>`;
         return '';
       }).join('');
       return `<p class="md-status is-ok">✓ ${esc(t('op.doneTitle'))}</p><ul class="op-done">${items}</ul>
@@ -380,6 +428,7 @@
         const p = st.draft.proposal;
         Object.assign(p, { vehicle: v.vehicle, status: v.status, holder: v.holder, renter: v.renter, contract: v.contract });
         st.draft.form.contractId = v.contract?.id || null;
+        if (!st.draft.form.perDay && v.contract?.perDay) st.draft.form.perDay = v.contract.perDay;
         st.draft.form.equipment = (v.contract?.equipment || []).map((e) => e.given);
         if (!st.draft.form.mileage && v.vehicle?.mileage) st.draft.form.mileage = String(v.vehicle.mileage);
         st.dirty = true;
@@ -459,7 +508,21 @@
         el.classList.remove('op-unsure');
         st.dirty = true;
         scheduleSave();
+        if (['newTo', 'perDay'].includes(el.dataset.opF)) extendInfo();
       }
+    }
+
+    /** Продление: сколько суток и сколько к доплате — без перерисовки формы */
+    function extendInfo() {
+      const box = dlg?.querySelector('[data-op-extinfo]');
+      const f = st.draft?.form;
+      const end = st.draft?.proposal?.contract?.to ? String(st.draft.proposal.contract.to).slice(0, 10) : '';
+      if (!box || !f) return;
+      const days = end && /^\d{4}-\d{2}-\d{2}$/.test(f.newTo || '') ? Math.round((Date.parse(`${f.newTo}T00:00:00Z`) - Date.parse(`${end}T00:00:00Z`)) / 86400000) : null;
+      const auto = days > 0 && Number(f.perDay) > 0 ? days * Number(f.perDay) : null;
+      box.textContent = days > 0 ? t('op.extInfo', { days, sum: auto ? ctx.money(auto) : '—' }) : t('op.extHint');
+      const extra = dlg.querySelector('[data-op-f="extraPrice"]');
+      if (extra) extra.placeholder = auto ? ctx.money(auto) : '฿';
     }
 
     async function flushNote() {
