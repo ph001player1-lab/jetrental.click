@@ -44,6 +44,7 @@ import { getWsSnapshot, wsSyncStatus } from './ws/sync.js';
 import { getFleet, sheetsEnabled, plateKey, invalidateFleet, getPortalSnapshot } from './fleet.js';
 import { tariffOn, quotePlate } from './pricing.js';
 import { priceActive, priceView, applyChanges, revertChange, PriceError } from './price.js';
+import { runImport, ImportError } from './priceImport.js';
 import { todayIso } from './dates.js';
 import { canEdit, listModels, saveDescription, uploadPhoto, uploadThumb, saveGallery } from './staffCatalog.js';
 import { resetCatalog } from './publicApi.js';
@@ -469,6 +470,25 @@ async function priceSave(staff, req, res) {
   }
 }
 
+/** Цены из файлов тарифов WS (Excel): предпросмотр, затем «Применить» — только «Прайс: меняет» */
+async function priceImport(staff, req, res) {
+  if (!can(staff, 'price.edit')) throw new HttpError(403, 'read_only');
+  if (!priceActive()) throw new HttpError(400, 'price_not_active');
+  const body = await readJson(req, 12 * 1024 * 1024);
+  const { units } = await getFleet();
+  try {
+    const result = runImport(body, units, plateKey, { email: staff.email, name: staff.name || staff.email });
+    if (result.applied) {
+      invalidateFleet();
+      console.log(`Price imported from tariff files by ${staff.email}: ${result.count} change(s) — ${result.summary}`);
+    }
+    sendJson(res, 200, result);
+  } catch (err) {
+    if (err instanceof ImportError || err instanceof PriceError) throw new HttpError(400, err.code);
+    throw err;
+  }
+}
+
 async function priceRevert(staff, req, res) {
   if (!can(staff, 'price.edit')) throw new HttpError(403, 'read_only');
   const { id } = await readJson(req);
@@ -755,6 +775,7 @@ const ROUTES = {
   'GET /api/staff/server/status': signedIn(serverStatusRoute),
   'POST /api/staff/price/save': signedIn(priceSave),
   'POST /api/staff/price/revert': signedIn(priceRevert),
+  'POST /api/staff/price/import': signedIn(priceImport),
   'GET /api/staff/price/quote': signedIn(priceQuote),
   'POST /api/staff/requests/delete': signedIn(requestDelete),
   'GET /api/staff/dashboard': dashboard,

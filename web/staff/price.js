@@ -20,6 +20,8 @@
       data: null, failed: null, season: null, type: 'all', q: '',
       edits: new Map(), selected: new Set(), open: new Set(),
       seasonDraft: null, confirm: null, msg: null, saving: false,
+      // Цены из файлов тарифов WS: { files: [{ name, data }], data (предпросмотр), mapping, busy, error }
+      imp: null,
       calc: { model: '', from: '', to: '', result: null, error: null }
     };
     const canEdit = () => Boolean(st.data?.canEdit);
@@ -243,6 +245,98 @@
       </li>`).join('')}</ul></section>`;
     }
 
+    /* ------------------------------------------ Цены из файлов тарифов (Excel) */
+
+    const toBase64 = (file) => new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+
+    async function importPreview(apply = false) {
+      const imp = st.imp;
+      if (!imp?.files?.length) return;
+      imp.busy = true;
+      imp.error = null;
+      rerender();
+      try {
+        const r = await api('/price/import', { body: { files: imp.files, mapping: imp.mapping, apply } });
+        if (apply) {
+          st.imp = null;
+          st.msg = { kind: 'ok', text: t('pr.imp.done', { n: r.count }) };
+          await load();
+          return;
+        }
+        imp.data = r;
+        imp.mapping = Object.fromEntries(r.report.map((x) => [x.seasonId, x.file]));
+      } catch (err) {
+        imp.error = err.code === 'nothing_changed' ? t('pr.imp.nothing') : t('pr.imp.failed');
+      }
+      imp.busy = false;
+      rerender();
+    }
+
+    const cell = (oldV, newV) => (oldV === newV ? `<span class="muted">${esc(num(newV) || '—')}</span>`
+      : `${oldV ? `<s class="muted">${esc(num(oldV))}</s> ` : ''}<b>${esc(num(newV) || '—')}</b>`);
+    const rowCells = (o, n) => [0, 1, 2, 3, 4].map((i) => `<td class="pr-num">${cell(o?.tiers?.[i] ?? null, n?.tiers?.[i] ?? null)}</td>`).join('')
+      + `<td class="pr-num">${cell(o?.deposit ?? null, n?.deposit ?? null)}</td><td class="pr-num">${cell(o?.overKm ?? null, n?.overKm ?? null)}</td>`;
+
+    function importHtml() {
+      const imp = st.imp;
+      if (!imp) return '';
+      const d = imp.data;
+      const head = `<tr><th></th>${st.data.tiers.map((x) => `<th class="pr-num">${esc(x)}</th>`).join('')}<th class="pr-num">${esc(t('pr.deposit'))}</th><th class="pr-num">${esc(t('pr.overKm'))}</th></tr>`;
+      let body = '';
+      if (d) {
+        const fileOpts = (sel) => `<option value="-1"${sel === -1 ? ' selected' : ''}>${esc(t('pr.imp.none'))}</option>`
+          + d.files.map((f, i) => `<option value="${i}"${sel === i ? ' selected' : ''}>${esc(f.title.replace(/^.*?:\s*/, ''))}</option>`).join('');
+        const seasons = d.report.map((r) => {
+          const season = seasonById(r.seasonId);
+          const stats = t('pr.imp.stats', { models: r.models.length, plates: r.plates.length, removed: r.removed, same: r.same });
+          const rows = [...r.models.map((m) => `<tr><td>${esc(m.model)}</td>${rowCells(m.old, m.new)}</tr>`),
+            ...r.plates.map((p) => `<tr><td>${esc(p.model)} · <span class="plate">${esc(p.plate)}</span> <span class="muted jr-small">${esc(t('pr.imp.own'))}</span></td>${rowCells(p.old, p.new)}</tr>`)].join('');
+          const notes = [
+            r.suspicious.length ? `<p class="warn jr-small">⚠️ ${esc(t('pr.imp.suspicious', { list: r.suspicious.join(', ') }))}</p>` : '',
+            r.file >= 0 && r.missing.length ? `<p class="muted jr-small">${esc(t('pr.imp.missing', { list: r.missing.join(', ') }))}</p>` : ''
+          ].join('');
+          return `<section class="pr-imp__season">
+            <div class="pr-imp__map">
+              <span class="pr-imp__name"><span class="pr-dot" style="background:${esc(season?.color || '#999')}"></span><b>${esc(season ? seasonLabel(season) : r.name)}</b>
+                <span class="muted jr-small">${esc(season ? periodText(season) : '')}</span></span>
+              <label class="field"><span>${esc(t('pr.imp.file'))}</span><select class="search" data-pr-imp-map="${r.seasonId}"${imp.busy ? ' disabled' : ''}>${fileOpts(r.file)}</select></label>
+              ${r.file >= 0 ? `<span class="muted jr-small">${esc(t('pr.imp.cover', { n: r.coveredDays, total: r.totalDays }))}${r.file === r.auto ? '' : ` · ${esc(t('pr.imp.manual'))}`}</span>` : ''}
+            </div>
+            ${r.file >= 0 ? `<p class="jr-small">${esc(stats)}</p>
+              ${rows ? `<details class="pr-imp__details"><summary>${esc(t('pr.imp.show'))}</summary>
+                <div class="table-wrap"><table class="fin-table pr-imp__table"><thead>${head}</thead><tbody>${rows}</tbody></table></div></details>` : ''}
+              ${notes}` : ''}
+          </section>`;
+        }).join('');
+        const files = d.files.map((f) => `<li><b>${esc(f.title.replace(/^.*?:\s*/, ''))}</b> <span class="muted jr-small">${esc(f.name)} · ${esc(t('pr.imp.rows', { n: f.rows }))}${f.ranges.length ? '' : ` · ${esc(t('pr.imp.noDates'))}`}</span></li>`).join('');
+        const noPlate = d.files.flatMap((f) => f.noPlate);
+        const warn = (key, list) => (list.length ? `<p class="muted jr-small">${esc(t(key, { list: list.slice(0, 30).join(', ') + (list.length > 30 ? ` …(+${list.length - 30})` : '') }))}</p>` : '');
+        body = `
+          <ul class="pr-imp__files">${files}</ul>
+          ${seasons}
+          ${warn('pr.imp.notInFleet', d.notInFleet)}${warn('pr.imp.notInFiles', d.notInFiles)}${warn('pr.imp.noPlate', noPlate)}
+          <div class="pr-imp__actions">
+            <button type="button" class="btn btn--primary btn--small" data-pr-imp-apply${d.count && !imp.busy ? '' : ' disabled'}>${esc(d.count ? t('pr.imp.apply', { n: d.count }) : t('pr.imp.nothing'))}</button>
+            <button type="button" class="btn btn--small" data-pr-imp-cancel>${esc(t('pr.imp.cancel'))}</button>
+          </div>`;
+      }
+      return `<section class="card pr-imp">
+        <h3>⬆ ${esc(t('pr.imp.title'))}</h3>
+        <p class="muted jr-small">${esc(t('pr.imp.how'))}</p>
+        <label class="btn btn--small${imp.busy ? ' is-busy' : ''}"><span>${esc(imp.files?.length ? t('pr.imp.other') : t('pr.imp.choose'))}</span>
+          <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple data-pr-imp-files hidden></label>
+        ${imp.busy ? `<p class="muted">${esc(t('pr.imp.reading'))}</p>` : ''}
+        ${imp.error ? `<p class="md-status is-error" role="status">${esc(imp.error)}</p>` : ''}
+        ${body}
+        ${d ? '' : `<div class="pr-imp__actions"><button type="button" class="btn btn--small" data-pr-imp-cancel>${esc(t('pr.imp.cancel'))}</button></div>`}
+      </section>`;
+    }
+
     function render() {
       if (st.failed) return `<div class="pr"><div class="empty">${esc(st.failed)}</div></div>`;
       if (!st.data) return `<div class="pr"><div class="empty">${esc(t('pr.loading'))}</div></div>`;
@@ -250,10 +344,12 @@
       return `<div class="pr">
         <div class="pr-head">
           <div class="chips pr-seasons" role="group" aria-label="${esc(t('pr.seasons'))}">${seasonChips()}</div>
-          ${canEdit() ? `<button type="button" class="btn btn--small" data-pr-seasons>${esc(t('pr.editSeasons'))}</button>` : ''}
+          ${canEdit() ? `<button type="button" class="btn btn--small" data-pr-seasons>${esc(t('pr.editSeasons'))}</button>
+            <button type="button" class="btn btn--small" data-pr-import aria-pressed="${Boolean(st.imp)}">⬆ ${esc(t('pr.import'))}</button>` : ''}
         </div>
         ${yearStrip()}
         ${issuesBlock()}
+        ${importHtml()}
         ${st.msg ? `<p class="md-status is-${st.msg.kind === 'error' ? 'error' : 'ok'}" role="status">${esc(st.msg.text)}</p>` : ''}
         ${toolsHtml()}
         ${table()}
@@ -405,6 +501,21 @@
     function onChange(event) {
       const el = event.target;
       if (!el.closest?.('.pr')) return false;
+      if (el.matches('[data-pr-imp-files]')) {
+        const list = [...(el.files || [])];
+        if (!list.length) return true;
+        st.imp = { files: null, data: null, mapping: null, busy: true, error: null };
+        rerender();
+        Promise.all(list.map(async (f) => ({ name: f.name, data: await toBase64(f) })))
+          .then((files) => { st.imp.files = files; return importPreview(); })
+          .catch(() => { st.imp.busy = false; st.imp.error = t('pr.imp.failed'); rerender(); });
+        return true;
+      }
+      if (el.matches('[data-pr-imp-map]') && st.imp) {
+        st.imp.mapping = { ...(st.imp.mapping || {}), [el.dataset.prImpMap]: Number(el.value) };
+        importPreview();
+        return true;
+      }
       if (el.matches('[data-pr-select]')) {
         if (el.checked) st.selected.add(el.dataset.prSelect); else st.selected.delete(el.dataset.prSelect);
         const bulk = document.querySelector('[data-pr-bulk] span');
@@ -432,6 +543,9 @@
       if (!el.closest('.pr')) return false;
       const dlg = el.closest('#pr-dialog');
       if (dlg && (el === dlg || el.closest('[data-pr-close]'))) { closeDialog(); return true; }
+      if (el.closest('[data-pr-import]')) { st.imp = st.imp ? null : { files: null, data: null, mapping: null, busy: false, error: null }; st.msg = null; rerender(); return true; }
+      if (el.closest('[data-pr-imp-cancel]')) { st.imp = null; rerender(); return true; }
+      if (el.closest('[data-pr-imp-apply]')) { if (!st.imp?.busy) importPreview(true); return true; }
       const season = el.closest('[data-pr-season]');
       if (season) { st.season = Number(season.dataset.prSeason); rerender(); return true; }
       if (el.closest('[data-pr-reset]')) { st.q = ''; st.type = 'all'; rerender(); return true; }
@@ -580,7 +694,7 @@
 
     /** Фоновое обновление портала не трогает вкладку, пока есть правки или открыто окно */
     function canRefresh() {
-      return !st.edits.size && !st.confirm && !document.activeElement?.closest?.('.pr input, .pr select');
+      return !st.edits.size && !st.confirm && !st.imp && !document.activeElement?.closest?.('.pr input, .pr select');
     }
 
     return { load, render, onClick, onInput, onChange, onSubmit, show, canRefresh };

@@ -97,7 +97,7 @@ const rateOf = (row) => ({
 });
 
 /** Все цены: Map('season|scope|key' → rate) */
-function allRates() {
+export function allRates() {
   const map = new Map();
   for (const row of q.rates.all()) map.set(`${row.season_id}|${row.scope}|${row.key}`, rateOf(row));
   return map;

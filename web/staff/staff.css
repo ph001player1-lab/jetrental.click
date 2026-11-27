@@ -1534,3 +1534,18 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
 /* Восстановленный черновик формы — над полями, во всю ширину */
 .draft-note { grid-column: 1 / -1; flex-basis: 100%; margin: 0 0 6px; padding: 6px 10px; border-radius: 8px; background: var(--reserve-bg); color: var(--warn); font-size: 13px; font-weight: 600; }
 .draft-note .link { margin-left: 6px; font-size: 13px; }
+
+/* Прайс: цены из файлов тарифов (Excel) */
+.pr-imp { padding: 14px 16px; display: grid; gap: 10px; margin-bottom: 12px; }
+.pr-imp h3 { margin: 0; font-size: 17px; }
+.pr-imp p { margin: 0; }
+.pr-imp > .btn { justify-self: start; }
+.pr-imp__files { margin: 0; padding-left: 18px; display: grid; gap: 2px; }
+.pr-imp__season { display: grid; gap: 6px; padding: 10px 0; border-top: 1px solid var(--line); }
+.pr-imp__map { display: flex; flex-wrap: wrap; align-items: end; gap: 8px 14px; }
+.pr-imp__name { display: inline-flex; align-items: center; gap: 6px; min-width: 180px; flex-wrap: wrap; }
+.pr-imp__map .field { min-width: 220px; flex: 0 1 300px; }
+.pr-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+.pr-imp__table td, .pr-imp__table th { white-space: nowrap; }
+.pr-imp__table s { text-decoration-thickness: 1px; }
+.pr-imp__actions { display: flex; flex-wrap: wrap; gap: 8px; }
