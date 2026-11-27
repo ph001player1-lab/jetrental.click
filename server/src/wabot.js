@@ -180,6 +180,13 @@ export async function wabotSend(to, text, quoted = null) {
   return (await wabotCall('POST', '/send', { to, text, quoted })).id;
 }
 
+/** PDF клиенту в WhatsApp (договор, акт, квитанция) — номер компании */
+export async function wabotSendDocument(to, fileName, buffer, caption = '') {
+  return (await wabotCall('POST', '/send-document', {
+    to, fileName, mimetype: 'application/pdf', data: buffer.toString('base64'), caption
+  })).id;
+}
+
 /* ------------------------------------------------- Диалог с клиентом */
 
 function detectLanguage(text) {

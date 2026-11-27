@@ -379,6 +379,23 @@ async function sendText(to, text, quoted = null) {
   return messageId;
 }
 
+/** Файл клиенту (PDF договора, акта, квитанции) — по кнопке сотрудника в портале */
+async function sendDocument(to, fileName, mimetype, data, caption) {
+  if (state.status !== 'connected' || !sock) throw Object.assign(new Error('not connected'), { code: 'not_connected' });
+  const buffer = Buffer.from(String(data || ''), 'base64');
+  if (!buffer.length || buffer.length > 8 * 1024 * 1024) throw Object.assign(new Error('bad file'), { code: 'bad_file' });
+  await rateLimit();
+  const messageId = generateMessageIDV2(sock.user?.id);
+  rememberSent(messageId);
+  await sock.sendMessage(toJid(to), {
+    document: buffer, mimetype: mimetype || 'application/pdf',
+    fileName: String(fileName || 'document.pdf').slice(0, 120), caption: String(caption || '').slice(0, 1000) || undefined
+  }, { messageId });
+  try { await sock.sendPresenceUpdate('unavailable'); } catch { /* не важно */ }
+  countToday('sent');
+  return messageId;
+}
+
 /** Переслать сообщение клиента (фото, видео, голосовое, файл…) — в рабочую группу */
 async function forward(id, to) {
   if (state.status !== 'connected' || !sock) throw Object.assign(new Error('not connected'), { code: 'not_connected' });
@@ -538,10 +555,10 @@ function authorized(req) {
   return SECRET && given.length === expected.length && crypto.timingSafeEqual(given, expected);
 }
 
-function readJson(req) {
+function readJson(req, limit = 20000) {
   return new Promise((resolve) => {
     let raw = '';
-    req.on('data', (c) => { raw += c; if (raw.length > 20000) req.destroy(); });
+    req.on('data', (c) => { raw += c; if (raw.length > limit) req.destroy(); });
     req.on('end', () => { try { resolve(JSON.parse(raw || '{}')); } catch { resolve({}); } });
   });
 }
@@ -566,6 +583,11 @@ http.createServer(async (req, res) => {
       const { to, text, quoted } = await readJson(req);
       if (!to) return send(res, 400, { error: 'no_recipient' });
       return send(res, 200, { id: await sendText(to, text, quoted) });
+    }
+    if (req.method === 'POST' && url.pathname === '/send-document') {
+      const { to, fileName, mimetype, data, caption } = await readJson(req, 12 * 1024 * 1024);
+      if (!to || !data) return send(res, 400, { error: 'bad_document' });
+      return send(res, 200, { id: await sendDocument(String(to), fileName, mimetype, data, caption) });
     }
     if (req.method === 'POST' && url.pathname === '/forward') {
       const { id, to } = await readJson(req);
@@ -610,6 +632,7 @@ http.createServer(async (req, res) => {
   } catch (err) {
     if (err.code === 'not_connected' || err.code === 'empty') return send(res, 409, { error: err.code });
     if (err.code === 'not_found') return send(res, 404, { error: 'not_found' });
+    if (err.code === 'bad_file') return send(res, 400, { error: 'bad_file' });
     log(`${url.pathname} failed:`, err.message);
     return send(res, 500, { error: 'internal_error' });
   }

@@ -35,6 +35,7 @@ import { startServerStats, recordRequest, version } from './serverStats.js';
 import { startAgents } from './agent.js';
 import { startInvestors } from './investor.js';
 import { startItSettings } from './itSettings.js';
+import { handleSignPage } from './documents.js';
 import { startJournal } from './journal/start.js';
 import { whatsappEnabled, knownPhoneNumberId } from './whatsapp/api.js';
 import { verifySignature, processWebhook, whatsappStatus } from './whatsapp/webhook.js';
@@ -152,6 +153,14 @@ const server = http.createServer((req, res) => {
     return handleTelegramWebhook(req, res).catch((err) => {
       console.error('Telegram webhook error:', err);
       if (!res.headersSent) sendJson(res, 500, { error: 'Internal error' });
+    });
+  }
+
+  // Подпись документа клиентом: jetmobility.org/sign/<ссылка> (documents.js)
+  if ((req.method === 'GET' || req.method === 'HEAD') && pathname.startsWith('/sign/')) {
+    return handleSignPage(req, res, url).catch((err) => {
+      console.error('Sign page failed:', err);
+      if (!res.headersSent) sendJson(res, 500, { error: 'internal_error' });
     });
   }
 

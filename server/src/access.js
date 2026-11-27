@@ -37,6 +37,8 @@ export const SECTIONS = [
   { id: 'marketing', levels: ['edit', 'view', 'none'] },
   { id: 'price', levels: ['edit', 'view', 'none'] },
   { id: 'server', levels: ['view', 'none'] },
+  // «Документы»: договоры, акты, квитанции (смотрит — открыть и распечатать; меняет — составлять, подписывать, отправлять)
+  { id: 'docs', levels: ['edit', 'view', 'none'] },
   // «Ошибки и предложения»: присылать могут все (смотрит — свои тикеты), разбирает — «меняет»
   { id: 'tickets', levels: ['edit', 'view'] }
 ];
@@ -191,6 +193,18 @@ if (db.getSetting('access_fleet_edit') !== '1') {
 if (db.getSetting('access_agent_role') !== '1') {
   if (!q.role.get(AGENT_ROLE[0])) q.addRole.run(AGENT_ROLE[0], AGENT_ROLE[1], JSON.stringify(AGENT_ROLE[2]), 50, now(), now());
   db.setSetting('access_agent_role', '1');
+}
+
+// Раздел «Документы» появился позже: один раз открываем его — владельцу и менеджеру «меняет»
+// (менеджеры составляют договоры), финансисту — «смотрит»
+if (db.getSetting('access_docs_section') !== '1') {
+  for (const [roleId, level] of [['owner', 'edit'], ['manager', 'edit'], ['finance', 'view']]) {
+    const role = q.role.get(roleId);
+    if (!role) continue;
+    const perms = JSON.parse(role.perms || '{}');
+    if (!perms.docs) q.updateRole.run(role.name, JSON.stringify({ ...perms, docs: level }), now(), role.id);
+  }
+  db.setSetting('access_docs_section', '1');
 }
 
 // Раздел «Ошибки и предложения» появился позже: разбирать тикеты один раз открываем владельцу

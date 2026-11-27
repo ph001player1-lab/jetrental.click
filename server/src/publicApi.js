@@ -11,6 +11,7 @@
  * ============================================================================
  */
 
+import { publicSign } from './documents.js';
 import * as db from './db.js';
 import { HttpError, sendJson, readJson, clientIp, rateLimiter } from './http.js';
 import { findAvailableModels, getFleet, sheetsEnabled, portalSnapshotNow } from './fleet.js';
@@ -237,6 +238,8 @@ async function visit(req, res) {
 }
 
 const ROUTES = {
+  // Подпись документа клиентом по ссылке (documents.js)
+  'POST /api/public/sign': (req, res) => publicSign(req, res),
   'POST /api/public/visit': visit,
   'GET /api/public/catalog': catalog,
   'GET /api/public/availability': availability,

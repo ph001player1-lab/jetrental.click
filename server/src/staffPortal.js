@@ -24,6 +24,7 @@
  *   /api/staff/tickets…                       — «Ошибки и предложения» (tickets.js)
  *   /api/staff/agent…                         — кабинет агента, выплаты (agent.js)
  *   /api/staff/investor…                      — кабинет инвестора, выплаты (investor.js)
+ *   /api/staff/docs…                          — договоры, акты, квитанции, PDF, подписи (documents.js)
  *   /api/staff/settings…                      — «Настройки» (админ): связь, домены, ключи,
  *                                               сервисы и оплаты, модель ИИ (itSettings.js)
  * Права ролей — в roles.js.
@@ -69,6 +70,7 @@ import { waStatus, waConfig, waPair, waLogout } from './journal/observer.js';
 import { wabotPortalStatus, wabotPortalSettings, wabotPortalConfig, wabotPortalPair, wabotPortalLogout, wabotSettings, postFleetEvent } from './wabot.js';
 import { groupStatusByPlate } from './journal/reconcile.js';
 import { settingsRoute, settingsService, settingsServiceDelete, settingsPaid, settingsPaymentDelete, settingsAi, settingsDomainsCheck } from './itSettings.js';
+import { docsList, docsOne, docsPrefill, docsSave, docsDelete, docsPdf, docsSign, docsUnsign, docsLink, docsSend, docsPhotoUpload, docsPhotoGet, docsPhotoDelete } from './documents.js';
 
 const COOKIE = 'jr_staff';
 const MAX_ATTEMPTS = 5;
@@ -847,6 +849,19 @@ const ROUTES = {
   'GET /api/staff/investor': signedIn(investorCabinet),
   'POST /api/staff/investor/payout': signedIn(investorPayout),
   'POST /api/staff/investor/payout/delete': signedIn(investorPayoutDelete),
+  'GET /api/staff/docs': signedIn(docsList),
+  'GET /api/staff/docs/one': signedIn(docsOne),
+  'GET /api/staff/docs/prefill': signedIn(docsPrefill),
+  'POST /api/staff/docs/save': signedIn(docsSave),
+  'POST /api/staff/docs/delete': signedIn(docsDelete),
+  'GET /api/staff/docs/pdf': signedIn(docsPdf),
+  'POST /api/staff/docs/sign': signedIn(docsSign),
+  'POST /api/staff/docs/unsign': signedIn(docsUnsign),
+  'POST /api/staff/docs/link': signedIn(docsLink),
+  'POST /api/staff/docs/send': signedIn(docsSend),
+  'POST /api/staff/docs/photo': signedIn(docsPhotoUpload),
+  'GET /api/staff/docs/photo': signedIn(docsPhotoGet),
+  'POST /api/staff/docs/photo/delete': signedIn(docsPhotoDelete),
   'GET /api/staff/settings': signedIn(settingsRoute),
   'POST /api/staff/settings/service': signedIn(settingsService),
   'POST /api/staff/settings/service/delete': signedIn(settingsServiceDelete),
