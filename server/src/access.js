@@ -39,6 +39,12 @@ export const SECTIONS = [
   { id: 'server', levels: ['view', 'none'] },
   // «Документы»: договоры, акты, квитанции (смотрит — открыть и распечатать; меняет — составлять, подписывать, отправлять)
   { id: 'docs', levels: ['edit', 'view', 'none'] },
+  // «＋ Операция»: кто какие операции проводит. Аренда — бронь, выдача, возврат, замена, продление
+  // (выдача — ещё и «Документы: меняет»); сервис — ремонт, ТО, пробег; деньги — приход, возврат залога,
+  // выплата; расход — у сервиса и у денег
+  { id: 'op_rent', levels: ['edit', 'none'] },
+  { id: 'op_service', levels: ['edit', 'none'] },
+  { id: 'op_money', levels: ['edit', 'none'] },
   // «Ошибки и предложения»: присылать могут все (смотрит — свои тикеты), разбирает — «меняет»
   { id: 'tickets', levels: ['edit', 'view'] }
 ];
@@ -216,6 +222,25 @@ if (db.getSetting('access_tickets_section') !== '1') {
     if (!perms.tickets) q.updateRole.run(owner.name, JSON.stringify({ ...perms, tickets: 'edit' }), now(), owner.id);
   }
   db.setSetting('access_tickets_section', '1');
+}
+
+// Права на «＋ Операция» появились позже: один раз — как было (аренда: «Парк» и «Документы» меняет;
+// сервис: «Парк» меняет; деньги: «Финансы» или «Парк» меняет), и сверх того менеджеру — аренда,
+// работнику сервиса — сервис, владельцу — всё. Дальше админ настраивает сам во вкладке «Доступы»
+if (db.getSetting('access_op_sections') !== '1') {
+  const extra = { owner: ['op_rent', 'op_service', 'op_money'], manager: ['op_rent'], service: ['op_service'], finance: ['op_money'] };
+  for (const role of q.roles.all()) {
+    const perms = JSON.parse(role.perms || '{}');
+    if (perms.op_rent || perms.op_service || perms.op_money) continue;
+    const on = new Set(extra[role.id] || []);
+    if (perms.fleet === 'edit' && perms.docs === 'edit') on.add('op_rent');
+    if (perms.fleet === 'edit') on.add('op_service');
+    if (perms.finance === 'view' || perms.fleet === 'edit') on.add('op_money');
+    const next = { ...perms };
+    for (const id of ['op_rent', 'op_service', 'op_money']) next[id] = on.has(id) ? 'edit' : 'none';
+    q.updateRole.run(role.name, JSON.stringify(next), now(), role.id);
+  }
+  db.setSetting('access_op_sections', '1');
 }
 
 /** Уровни роли по всем разделам (неизвестное и недопустимое — «нет доступа»,

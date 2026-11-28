@@ -10,8 +10,8 @@
 (function () {
   'use strict';
 
-  const KINDS = ['issue', 'return', 'swap', 'extend', 'service', 'expense', 'income', 'deposit_refund', 'payout'];
-  const ICON = { issue: '🔑', return: '↩️', swap: '🔁', extend: '📅', service: '🔧', expense: '🧾', income: '💰', deposit_refund: '💵', payout: '👛' };
+  const KINDS = ['booking', 'issue', 'return', 'swap', 'extend', 'service', 'expense', 'income', 'deposit_refund', 'payout'];
+  const ICON = { booking: '🔖', issue: '🔑', return: '↩️', swap: '🔁', extend: '📅', service: '🔧', expense: '🧾', income: '💰', deposit_refund: '💵', payout: '👛' };
   const INCOME_CATEGORIES = ['rent', 'extras', 'deposit', 'damage', 'other'];
   const CATEGORIES = ['fuel', 'repair', 'wash', 'delivery', 'office', 'insurance', 'tax', 'ads', 'it', 'salary', 'owners', 'refunds', 'vehicles', 'personal', 'other'];
   const CURRENCIES = ['THB', 'USD', 'EUR', 'RUB', 'GBP'];
@@ -152,7 +152,7 @@
       if (kind === 'unknown' || !KINDS.includes(kind)) return `${head}<p class="warn">${esc(t('op.unknown'))}</p>`;
       if (!allowed().includes(kind)) return `${head}<p class="warn">${esc(t('op.notAllowed'))}</p>`;
       if (kind === 'issue') return `${head}${issueHtml(p)}`;
-      const FORMS = { return: returnHtml, swap: swapHtml, extend: extendHtml, service: serviceHtml, expense: expenseHtml, income: incomeHtml, deposit_refund: refundHtml, payout: payoutHtml };
+      const FORMS = { booking: bookingHtml, return: returnHtml, swap: swapHtml, extend: extendHtml, service: serviceHtml, expense: expenseHtml, income: incomeHtml, deposit_refund: refundHtml, payout: payoutHtml };
       const form = FORMS[kind](p, f);
       return `${head}<form class="op-form" data-op-form data-nodraft novalidate>${form}
         <div class="dc-actions"><button type="submit" class="btn btn--primary"${st.busy ? ' disabled' : ''}>✓ ${esc(t('op.confirm'))}</button></div></form>`;
@@ -221,6 +221,36 @@
         <p class="muted jr-small" data-op-extinfo>${days > 0 ? esc(t('op.extInfo', { days, sum: auto ? ctx.money(auto) : '—' })) : esc(t('op.extHint'))}</p>
         <div class="dc-grid">${fld(t('op.paidNow'), inp('paid', f.paid, 'inputmode="numeric" placeholder="฿"'))}${fld(t('op.method'), paySel('payMethod', f.payMethod))}</div>`;
     }
+
+    /** Бронь: техника на будущие даты, клиент (из базы или вручную), предоплата */
+    function bookingHtml(p, f) {
+      const today = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
+      return `<div class="dc-grid">${fld(t('dc.vehicle'), vehicleSel('vehicleId', f.vehicleId), 'dc-wide')}</div>${statusLine(p)}
+        <div class="dc-grid">
+          ${fld(t('op.bookFrom'), inp('bookFrom', f.bookFrom, `type="date" min="${today}"`, unsure('from')))}
+          ${fld(t('op.bookTo'), inp('bookTo', f.bookTo, `type="date" min="${today}"`, unsure('to')))}
+        </div>
+        ${ctx.pick ? ctx.pick.clientBox('op-client', t('pick.client')) : ''}
+        <div class="dc-grid">
+          ${fld(t('op.clientName'), inp('clientName', f.clientName, 'autocomplete="off"', unsure('name')))}
+          ${fld(t('dc.phone'), inp('clientPhone', f.clientPhone, 'type="tel" autocomplete="off"', unsure('phone')))}
+        </div>
+        <div class="dc-grid">${fld(t('op.prepaid'), inp('paid', f.paid, 'inputmode="numeric" placeholder="฿"'))}${fld(t('op.method'), paySel('payMethod', f.payMethod))}</div>
+        ${fld(t('op.bookNote'), inp('note', f.note))}`;
+    }
+    // Клиента выбрали из базы — имя и телефон в форму (без перерисовки: остаётся отметка «выбран»)
+    ctx.pick?.on('op-client', (c) => {
+      const f = st.draft?.form;
+      if (!f) return;
+      f.clientName = c.name || '';
+      f.clientPhone = c.phone || '';
+      for (const k of ['clientName', 'clientPhone']) {
+        const el = dlg?.querySelector(`[data-op-f="${k}"]`);
+        if (el) { el.value = f[k]; el.classList.remove('op-unsure'); }
+      }
+      st.dirty = true;
+      scheduleSave();
+    });
 
     /** Приход: оплата аренды, доп. услуг, залог, компенсация ущерба */
     function incomeHtml(p, f) {

@@ -145,12 +145,15 @@ const CATEGORY_EN = {
 };
 
 const isOwnerOrAdmin = (staff) => roleOf(staff) === 'owner' || can(staff, 'access.admin');
+// Кто какие операции проводит — во вкладке «Доступы» (у админа — все): аренда, сервис, деньги
+const RENT_OPS = ['booking', 'issue', 'return', 'swap', 'extend'];
+const MONEY_OPS = ['income', 'deposit_refund', 'payout'];
 const mayKind = (staff, kind) => {
-  if (kind === 'issue' || kind === 'return' || kind === 'swap' || kind === 'extend') return can(staff, 'fleet.edit') && can(staff, 'docs.edit');
-  if (kind === 'service') return can(staff, 'fleet.edit');
-  if (kind === 'expense') return can(staff, 'fleet.edit') || can(staff, 'finance.view');
-  // Деньги: приход, возврат залога, выплаты — финансы (владелец и админ — тоже)
-  if (kind === 'income' || kind === 'deposit_refund' || kind === 'payout') return can(staff, 'finance.view') || isOwnerOrAdmin(staff);
+  // Выдача — это ещё и договор: нужен «Документы: меняет»
+  if (RENT_OPS.includes(kind)) return can(staff, 'op_rent.edit') && (kind !== 'issue' || can(staff, 'docs.edit'));
+  if (kind === 'service') return can(staff, 'op_service.edit');
+  if (kind === 'expense') return can(staff, 'op_service.edit') || can(staff, 'op_money.edit');
+  if (MONEY_OPS.includes(kind)) return can(staff, 'op_money.edit');
   return false;
 };
 const anyKind = (staff) => OP_KINDS.some((k) => mayKind(staff, k));
@@ -361,6 +364,16 @@ async function proposalFor(r, kind, count, staff, lang) {
     payer: text(r.income?.payer, 80), note: text(r.income?.note, 300)
   };
   out.fields.payee = text(r.payout?.payee, 80);
+  // Бронь: даты, клиент, предоплата
+  const iso = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? v : '');
+  out.fields.bookFrom = iso(r.booking?.from);
+  out.fields.bookTo = iso(r.booking?.to);
+  out.fields.clientName = text(r.renter?.name, 100);
+  out.fields.clientPhone = text(r.renter?.phone, 40);
+  if (kind === 'booking') {
+    out.fields.paid = String(r.prepay?.amount || '').replace(/[^\d.]/g, '');
+    out.fields.payMethod = PAY_METHODS.includes(r.prepay?.method) ? r.prepay.method : '';
+  }
   if (kind === 'swap') {
     const n = await vehicleState(r.newVehicle, lang);
     out.newVehicle = n.vehicle;
@@ -372,6 +385,9 @@ async function proposalFor(r, kind, count, staff, lang) {
   if ((kind === 'return' || kind === 'swap') && out.vehicle && !out.contract) out.warnings.push('Договор на эту технику не нашёл: будет только статус «Свободна».');
   if (kind === 'return' && out.contract?.returned) out.warnings.push(`По договору ${out.contract.number} акт возврата уже есть.`);
   if (kind === 'extend' && out.vehicle && !out.contract) out.warnings.push('Договор на эту технику не нашёл — продлить можно только по договору.');
+  if (kind === 'booking' && out.holder && out.fields.bookFrom && out.holder.to && out.fields.bookFrom <= out.holder.to && (!out.holder.from || !out.fields.bookTo || out.fields.bookTo >= out.holder.from)) {
+    out.warnings.push(`Эта техника ${out.holder.kind === 'rent' ? 'в аренде' : 'уже в брони'} до ${out.holder.to.split('-').reverse().join('.')} — даты пересекаются.`);
+  }
   return out;
 }
 
@@ -391,6 +407,7 @@ function formFrom(p) {
     newTo: f.newTo || '', perDay: p.contract?.perDay ?? '', paid: f.paid || '', payMethod: f.payMethod || '',
     income: { ...(f.income || {}), vehicleId: p.vehicle?.id || null, contractId: p.contract?.id || null },
     payee: f.payee || '',
+    bookFrom: f.bookFrom || '', bookTo: f.bookTo || '', clientName: f.clientName || '', clientPhone: f.clientPhone || '',
     expense: { ...(f.expense || {}), amount: f.expense?.amount || '', vehicleId: p.vehicle?.id || null, category: f.expense?.category || (p.kind === 'payout' ? 'salary' : '') },
     receipt: receipt ?? (p.kind === 'expense' ? 0 : null)
   };
@@ -679,6 +696,27 @@ async function applyOp(kind, f, buffers, kinds, staff) {
     if (vehicle) archivePhotos(vehicle, buffers.filter(Boolean).map((buffer) => ({ buffer, caption: 'receipt' })).slice(0, 3), { kind: 'expense', ref: what.slice(0, 60), staff });
   }
 
+  if (kind === 'booking') {
+    const vehicle = needVehicle(f.vehicleId);
+    const from = /^\d{4}-\d{2}-\d{2}$/.test(String(f.bookFrom || '')) ? f.bookFrom : null;
+    const to = /^\d{4}-\d{2}-\d{2}$/.test(String(f.bookTo || '')) ? f.bookTo : null;
+    if (!from || !to) throw new HttpError(400, 'booking_dates');
+    if (to < from) throw new HttpError(400, 'date_order');
+    if (to < today) throw new HttpError(400, 'booking_past');
+    const name = text(f.clientName, 100);
+    const phone = text(f.clientPhone, 40);
+    const paid = num(f.paid) || 0;
+    const method = PAY_METHODS.includes(f.payMethod) ? f.payMethod : null;
+    let m = null;
+    if (paid > 0) {
+      m = addCashMove({ dir: 'in', kind: 'booking', category: 'rent', amount: paid, currency: 'THB', method, vehicleId: vehicle.id, party: name, note: `предоплата брони ${from.slice(8, 10)}.${from.slice(5, 7)}–${to.slice(8, 10)}.${to.slice(5, 7)}` }, staff);
+    }
+    const paidLine = m ? `Prepaid: ${moneyText(m.amount, 'THB')}${method ? ` (${PAY_EN[method]})` : ''}` : '';
+    // Фото брони (скриншот переписки и т. п.) — только в отчёт группы, в архив техники не идут
+    done.push(await setStatus(vehicle, { kind: 'reserve', from, to, clientName: name, clientPhone: phone, note: [paidLine, text(f.note, 200)].filter(Boolean).join(' · ') }, staff, all));
+    if (m) done.push({ type: 'money', dir: 'in', kind: 'booking', thb: m.thb });
+  }
+
   if (kind === 'payout') {
     done.push(await addExpense({ ...(f.expense || {}), category: f.expense?.category || 'salary', vendor: f.payee || f.expense?.vendor }, staff, receiptOf()));
   }
@@ -749,7 +787,7 @@ export function portalExpensesBetween(fromMs, toMs) {
 }
 
 export async function expensesList(staff, req, res, url) {
-  if (!can(staff, 'finance.view') && !can(staff, 'fleet.edit')) throw new HttpError(403, 'no_section_access');
+  if (!can(staff, 'finance.view') && !can(staff, 'fleet.edit') && !mayKind(staff, 'expense')) throw new HttpError(403, 'no_section_access');
   const from = /^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get('from') || '') ? url.searchParams.get('from') : '0000-01-01';
   const to = /^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get('to') || '') ? url.searchParams.get('to') : '9999-12-31';
   // Без доступа к «Финансам» — только свои

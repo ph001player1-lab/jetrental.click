@@ -64,7 +64,7 @@ import { mediaCounts, fleetMediaList, fleetMediaFile } from './vehicleMedia.js';
 import { gameState } from './game.js';
 import { financeAiLog, financeAiIgnore, financeAiRetry } from './groupFinance.js';
 import { opDrafts, opDraftCreate, opDraftGet, opDraftPhotoAdd, opDraftPhotoGet, opDraftPhotoDelete, opDraftUpdate, opDraftCancel, opDraftRecognize, opDraftManual,
-  opDraftApply, opDraftAttach, opVehicle, expensesList, expensePhoto, expenseDelete, moneyDelete } from './operations.js';
+  opDraftApply, opDraftAttach, opVehicle, expensesList, expensePhoto, expenseDelete, moneyDelete, allowedOps } from './operations.js';
 import { importCashbook } from './cashbook.js';
 import { serverReport, serverStatusRoute, saveServerSettings, alertAdminsOnce } from './serverStats.js';
 import { listTickets, ticketsBadge, createTicket, uploadShot, getShot, setTicketStatus, markSeen, deleteTicket } from './tickets.js';
@@ -383,10 +383,11 @@ async function fleet(req, res) {
 
 /**
  * GET /api/staff/clients/pick?q= — клиенты для договора и смены статуса: из CRM и из прошлых
- * договоров (там паспорт, права, адрес). Нужен доступ к договорам, «Парку» (меняет) или CRM.
+ * договоров (там паспорт, права, адрес). Нужен доступ к договорам, «Парку» (меняет), CRM или к брони.
  */
 async function clientsPickRoute(staff, req, res, url) {
-  if (!can(staff, 'docs.edit') && !can(staff, 'fleet.edit') && !can(staff, 'crm.view')) throw new HttpError(403, 'no_section_access');
+  // …или «＋ Операция: аренда» (клиент для брони)
+  if (!can(staff, 'docs.edit') && !can(staff, 'fleet.edit') && !can(staff, 'crm.view') && !allowedOps(staff).includes('booking')) throw new HttpError(403, 'no_section_access');
   const q = String(url.searchParams.get('q') || '').trim().slice(0, 60);
   if (q.length < 2) return sendJson(res, 200, { items: [] });
   const tail = (p) => String(p || '').replace(/\D/g, '').slice(-9);

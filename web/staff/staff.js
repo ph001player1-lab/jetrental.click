@@ -1117,16 +1117,17 @@
 
   /* ------------------------------------------------------ «＋ Операция» */
 
-  // Возврат, замена, сервис — «Парк» (меняет); расход — ещё и «Финансы»; выдача и акты — и «Документы»
+  // Кто какие операции проводит — вкладка «Доступы»: аренда, сервис, деньги (как на сервере)
   const mayOp = (kind) => {
-    if (kind === 'expense') return can('fleet.edit') || can('finance.view');
-    if (kind === 'service') return can('fleet.edit');
-    if (['income', 'deposit_refund', 'payout'].includes(kind)) return can('finance.view') || can('access.admin');
-    return can('fleet.edit') && can('docs.edit');
+    if (['booking', 'issue', 'return', 'swap', 'extend'].includes(kind)) return can('op_rent.edit') && (kind !== 'issue' || can('docs.edit'));
+    if (kind === 'service') return can('op_service.edit');
+    if (kind === 'expense') return can('op_service.edit') || can('op_money.edit');
+    if (['income', 'deposit_refund', 'payout'].includes(kind)) return can('op_money.edit');
+    return false;
   };
-  const anyOp = () => ['issue', 'return', 'swap', 'extend', 'service', 'expense', 'income', 'deposit_refund', 'payout'].some(mayOp);
+  const anyOp = () => ['booking', 'issue', 'return', 'swap', 'extend', 'service', 'expense', 'income', 'deposit_refund', 'payout'].some(mayOp);
   const op = window.STAFF_OP.create({
-    api, t, esc, dateTime, money,
+    api, t, esc, dateTime, money, pick,
     lang: () => lang,
     mayOp,
     vehicles: () => state.fleet?.vehicles || [],
