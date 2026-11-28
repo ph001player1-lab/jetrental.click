@@ -694,12 +694,23 @@
             vehicleId: car.vehicleId,
             from: h?.kind === 'reserve' && h.from ? `${h.from}T12:00` : undefined,
             to: h?.to ? `${h.to}T12:00` : undefined,
-            renter: car.renter ? { name: car.renter.name, phone: car.renter.phone || '' } : undefined
+            renter: car.renter ? { name: car.renter.name, phone: car.renter.phone || '' } : undefined,
+            // Бронь из «＋ Операция» с этими датами — договор сразу по ней (предоплата учтена)
+            autoBooking: h?.kind === 'reserve' ? true : undefined
           });
         }
         return true;
       }
       if (d.vhKind) {
+        // Бронь — в форме брони «＋ Операция»: там сумма аренды и предоплата
+        if (d.vhKind === 'reserve' && st.dialog?.type === 'status' && ctx.canBook?.()) {
+          const form = document.querySelector('#vh-dialog [data-vh-status-form]');
+          const typed = form ? Object.fromEntries(new FormData(form)) : {};
+          const v = st.dialog.vehicle;
+          closeDialog();
+          ctx.openBooking({ vehicleId: v.id, bookFrom: typed.from || '', bookTo: typed.to || '', clientName: typed.clientName || '', clientPhone: typed.clientPhone || '' });
+          return true;
+        }
         if (st.dialog?.type === 'status') {
           const form = document.querySelector('#vh-dialog [data-vh-status-form]');
           const typed = form ? Object.fromEntries(new FormData(form)) : {};

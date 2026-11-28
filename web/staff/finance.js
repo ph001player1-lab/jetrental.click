@@ -593,6 +593,15 @@
         <ul class="fin-ops">${items}</ul>${showAll('opsAll', d.operations.length, 30)}</section>`;
     }
 
+    /** Деньги записаны в портале и ещё раз отчётом в группе — проверить и лишнее отметить в журнале */
+    function renderDuplicates(d) {
+      const list = d.duplicates || [];
+      if (!list.length) return '';
+      return `<div class="fin-warn fin-dup" data-fin-dup>⚠️ <b>Возможно, деньги записаны дважды</b> — в портале и ещё раз отчётом в группе (та же машина и сумма):
+        <ul>${list.map((x) => `<li><span class="plate">#${esc(x.plate)}</span> ${esc(baht(x.thb))} · в портале: ${esc(x.portalBy || '—')}, ${esc(when(x.portalAt))} · в группе: ${esc(x.author || '—')}, ${esc(when(x.at))}</li>`).join('')}</ul>
+        <span class="muted jr-small">Если это одна и та же оплата — отметьте отчёт группы «не учитывать» в «Журнале». Портал сам пишет такие отчёты в группу, сотрудникам дублировать их не нужно.</span></div>`;
+    }
+
     function render() {
       const presets = PRESETS.map(([id, label]) => `<button type="button" class="chip" data-fin-preset="${id}" aria-pressed="${st.preset === id}">${esc(label)}</button>`).join('');
       if (st.failed) return `<div class="fin"><div class="chips">${presets}</div><div class="empty">${esc(st.failed)}</div></div>`;
@@ -605,6 +614,7 @@
           <div class="chips">${presets}</div>
           <p class="muted jr-small">${esc(day(d.period.from))} — ${esc(day(d.period.to))} (${d.period.days} дн.) · всё в батах, валюты ${d.rates.approximate ? 'по примерному курсу' : `по курсу на ${esc(when(d.rates.at))}`}: ${esc(rates)}</p>
           <nav class="fin-nav" aria-label="Разделы">${nav}</nav>
+          ${renderDuplicates(d)}
           ${renderSummary(d)}
           ${renderDiscounts()}
           ${renderCash(d)}

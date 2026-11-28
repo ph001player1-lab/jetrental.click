@@ -21,8 +21,9 @@
 
   function create(ctx) {
     const { api, t, esc } = ctx;
-    const st = { open: false, view: 'list', drafts: [], allowed: [], draft: null, busy: null, msg: null, uploading: null, remote: false, done: null };
+    const st = { open: false, view: 'list', drafts: [], allowed: [], draft: null, busy: null, msg: null, uploading: null, remote: false, done: null, bookQuote: null };
     let dlg = null;
+    let quoteTimer = null;
     let saveTimer = null;
     let pollTimer = null;
     let noteTimer = null;
@@ -86,6 +87,12 @@
 
     function render() {
       if (!dlg) return;
+      // Бронь: техника и даты известны — цена по «Прайсу» (один раз на каждую новую пару)
+      const bf = st.view === 'draft' && !st.done ? st.draft?.form : null;
+      if (bf?.kind === 'booking') {
+        const key = `${bf.vehicleId}|${bf.bookFrom}|${bf.bookTo}`;
+        if (key !== st.bookKey) { st.bookKey = key; st.bookQuote = null; setTimeout(bookingQuote, 0); }
+      }
       const body = st.view === 'list' ? listHtml() : st.done ? doneHtml() : draftHtml();
       dlg.innerHTML = `<div class="sheet__body op">
         <div class="sheet__head"><div><div class="muted">${esc(t('op.subtitle'))}</div><h2>＋ ${esc(t('op.title'))}</h2></div>
@@ -235,8 +242,44 @@
           ${fld(t('op.clientName'), inp('clientName', f.clientName, 'autocomplete="off"', unsure('name')))}
           ${fld(t('dc.phone'), inp('clientPhone', f.clientPhone, 'type="tel" autocomplete="off"', unsure('phone')))}
         </div>
-        <div class="dc-grid">${fld(t('op.prepaid'), inp('paid', f.paid, 'inputmode="numeric" placeholder="฿"'))}${fld(t('op.method'), paySel('payMethod', f.payMethod))}</div>
+        <div class="dc-grid">
+          ${fld(t('op.total'), inp('total', f.total, 'inputmode="numeric" placeholder="฿"'))}
+          ${fld(t('op.prepaid'), inp('paid', f.paid, 'inputmode="numeric" placeholder="฿"'))}
+          ${fld(t('op.method'), paySel('payMethod', f.payMethod))}
+        </div>
+        <p class="muted jr-small" data-op-bookinfo>${esc(bookInfoText(f))}</p>
         ${fld(t('op.bookNote'), inp('note', f.note))}`;
+    }
+    const amount = (v) => Number(String(v ?? '').replace(/[^\d.]/g, '')) || 0;
+    /** Под суммой: цена по «Прайсу» и сколько останется взять при выдаче */
+    function bookInfoText(f) {
+      const parts = [];
+      if (st.bookQuote?.total) parts.push(t('op.bookQuote', { days: st.bookQuote.days, sum: ctx.money(st.bookQuote.total) }));
+      else if (st.bookQuote) parts.push(t('op.bookNoPrice'));
+      if (amount(f.total) > 0) parts.push(t('op.bookLeft', { sum: ctx.money(Math.max(0, amount(f.total) - amount(f.paid))) }));
+      return parts.join(' · ') || t('op.bookHint');
+    }
+    function bookInfo() {
+      const box = dlg?.querySelector('[data-op-bookinfo]');
+      if (box && st.draft?.form) box.textContent = bookInfoText(st.draft.form);
+    }
+    /** Цена брони по «Прайсу»: подставляем, пока сумму не вписали руками */
+    async function bookingQuote() {
+      const f = st.draft?.form;
+      if (!f || f.kind !== 'booking' || !f.vehicleId || !/^\d{4}-\d{2}-\d{2}$/.test(f.bookFrom || '') || !/^\d{4}-\d{2}-\d{2}$/.test(f.bookTo || '') || f.bookTo < f.bookFrom) return;
+      try {
+        const r = await api(`/op/quote?vehicleId=${f.vehicleId}&from=${f.bookFrom}&to=${f.bookTo}`);
+        st.bookQuote = r.quote;
+        if (r.quote?.total && (!amount(f.total) || f.totalAuto)) {
+          f.total = String(r.quote.total);
+          f.totalAuto = true;
+          const el = dlg?.querySelector('[data-op-f="total"]');
+          if (el) el.value = f.total;
+          st.dirty = true;
+          scheduleSave();
+        }
+        bookInfo();
+      } catch { /* сумму впишут вручную */ }
     }
     // Клиента выбрали из базы — имя и телефон в форму (без перерисовки: остаётся отметка «выбран»)
     ctx.pick?.on('op-client', (c) => {
@@ -464,6 +507,7 @@
         st.dirty = true;
         scheduleSave();
         render();
+        if (st.draft.form.kind === 'booking') bookingQuote();
       } catch { /* без подсказки */ }
     }
 
@@ -539,6 +583,9 @@
         st.dirty = true;
         scheduleSave();
         if (['newTo', 'perDay'].includes(el.dataset.opF)) extendInfo();
+        if (el.dataset.opF === 'total') st.draft.form.totalAuto = false;
+        if (['total', 'paid'].includes(el.dataset.opF)) bookInfo();
+        if (['bookFrom', 'bookTo'].includes(el.dataset.opF)) { clearTimeout(quoteTimer); quoteTimer = setTimeout(bookingQuote, 400); }
       }
     }
 
@@ -613,7 +660,33 @@
       }
     }
 
-    return { open, count, isOpen: () => st.open };
+    /**
+     * Бронь из «Парка» (статус «Бронь»): сразу форма брони — техника, даты и клиент уже
+     * подставлены, остаётся сумма и предоплата
+     */
+    async function openBooking(prefill = {}) {
+      ensureDialog();
+      st.open = true;
+      st.msg = null;
+      st.done = null;
+      st.bookQuote = null;
+      if (!dlg.open) dlg.showModal();
+      st.view = 'draft';
+      st.draft = null;
+      st.pendingHint = 'booking';
+      render();
+      await act('save', async () => {
+        await ensureDraft();
+        setDraft((await api('/op/draft/manual', { body: { id: st.draft.id, kind: 'booking' } })).draft);
+        const f = st.draft.form;
+        for (const k of ['vehicleId', 'bookFrom', 'bookTo', 'clientName', 'clientPhone']) if (prefill[k]) f[k] = prefill[k];
+        st.dirty = true;
+        await flushSave();
+      });
+      if (prefill.vehicleId) await vehicleChanged('vehicleId', Number(prefill.vehicleId));
+    }
+
+    return { open, openBooking, count, isOpen: () => st.open };
   }
 
   window.STAFF_OP = { create };

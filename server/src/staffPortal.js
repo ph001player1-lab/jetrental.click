@@ -64,7 +64,8 @@ import { mediaCounts, fleetMediaList, fleetMediaFile } from './vehicleMedia.js';
 import { gameState } from './game.js';
 import { financeAiLog, financeAiIgnore, financeAiRetry } from './groupFinance.js';
 import { opDrafts, opDraftCreate, opDraftGet, opDraftPhotoAdd, opDraftPhotoGet, opDraftPhotoDelete, opDraftUpdate, opDraftCancel, opDraftRecognize, opDraftManual,
-  opDraftApply, opDraftAttach, opVehicle, expensesList, expensePhoto, expenseDelete, moneyDelete, allowedOps } from './operations.js';
+  opDraftApply, opDraftAttach, opVehicle, opQuote, expensesList, expensePhoto, expenseDelete, moneyDelete, allowedOps } from './operations.js';
+import { opsList, opsOne, opsCancel, opsEdit, opsBookings } from './opsRegistry.js';
 import { importCashbook } from './cashbook.js';
 import { serverReport, serverStatusRoute, saveServerSettings, alertAdminsOnce } from './serverStats.js';
 import { listTickets, ticketsBadge, createTicket, uploadShot, getShot, setTicketStatus, markSeen, deleteTicket } from './tickets.js';
@@ -956,6 +957,12 @@ const ROUTES = {
   'POST /api/staff/op/draft/apply': signedIn(opDraftApply),
   'POST /api/staff/op/draft/attach': signedIn(opDraftAttach),
   'GET /api/staff/op/vehicle': signedIn(opVehicle),
+  'GET /api/staff/op/quote': signedIn(opQuote),
+  'GET /api/staff/ops': signedIn(opsList),
+  'GET /api/staff/ops/one': signedIn(opsOne),
+  'POST /api/staff/ops/cancel': signedIn(opsCancel),
+  'POST /api/staff/ops/edit': signedIn(opsEdit),
+  'GET /api/staff/ops/bookings': signedIn(opsBookings),
   'GET /api/staff/expenses': signedIn(expensesList),
   'GET /api/staff/expenses/photo': signedIn(expensePhoto),
   'POST /api/staff/expenses/delete': signedIn(expenseDelete),

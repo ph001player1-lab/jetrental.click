@@ -215,11 +215,11 @@ function allMoves(staffNames, rates) {
       items.push({ at: m.at, src: `pm${m.id}`, portal: true, from: { type: 'client', name: null }, to: cash ? who : { type: 'bank', name: null }, thb: Math.round(m.thb || 0),
         purpose: m.kind === 'extension' ? 'rent' : m.category === 'deposit' ? 'deposit' : ['rent', 'extras', 'damage'].includes(m.category) ? m.category : 'other', method: m.method, note: m.note || '' });
     } else {
-      const to = m.kind === 'deposit_refund' ? { type: 'client', name: null }
+      const to = m.kind === 'deposit_refund' || m.kind === 'booking_refund' ? { type: 'client', name: null }
         : m.category === 'salary' && m.party ? { type: 'staff', name: canonicalName(m.party, staffNames) || m.party }
           : m.category === 'owners' ? { type: 'owner', name: null } : { type: 'expense', name: null };
       items.push({ at: m.at, src: `pm${m.id}`, portal: true, from: cash ? who : { type: 'bank', name: null }, to, thb: Math.round(m.thb || 0),
-        purpose: m.kind === 'deposit_refund' ? 'deposit_return' : m.category === 'salary' ? 'salary' : 'expense', method: m.method, note: m.note || m.party || '' });
+        purpose: m.kind === 'deposit_refund' ? 'deposit_return' : m.kind === 'booking_refund' ? 'refund' : m.category === 'salary' ? 'salary' : 'expense', method: m.method, note: m.note || m.party || '' });
     }
   }
   for (const e of q.expenses.all(since())) {

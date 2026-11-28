@@ -40,6 +40,8 @@ import * as db from './db.js';
 import { config } from './config.js';
 import { HttpError, sendJson, readJson, readBody, clientIp, rateLimiter } from './http.js';
 import { can } from './roles.js';
+import { addCashMove, movesOfEvent, cancelMove, methodFromText } from './cashMoves.js';
+import { bookingForContract, markBookingIssued, unmarkBookingIssued } from './opsRegistry.js';
 import { getVehicle, listVehicles } from './fleetStore.js';
 import { getFleet, plateKey } from './fleet.js';
 import { quotePlate } from './pricing.js';
@@ -225,6 +227,8 @@ function cleanContract(data) {
     }),
     perDay: int(data.perDay, 0, 1e6), total: int(data.total, 0, 1e8), deposit: int(data.deposit, 0, 1e7), paid: int(data.paid, 0, 1e8),
     payMethod: str(data.payMethod, 120), requestId: int(data.requestId, 1, 1e9),
+    // Бронь из «＋ Операция»: её предоплата уже в кассе; «Оплачено» — сколько заплатили при выдаче
+    bookingOpId: int(data.bookingOpId, 1, 1e9), prepaid: int(data.prepaid, 0, 1e8),
     ...priceWithDiscount(data, from, to)
   };
 }
@@ -318,6 +322,16 @@ export function saveDocument(body, staff) {
     if (!contract || contract.kind !== 'contract') throw new DocError('unknown_contract');
   }
   const data = kind === 'contract' ? cleanContract(body.data || {}) : cleanSub(kind, body.data || {}, rowData(contract));
+  if (kind === 'contract') {
+    // Предоплату берём из брони, а не из формы; бронь уже выдана по этому договору — оставляем как было
+    const before = existing ? rowData(existing) : {};
+    if (data.bookingOpId && data.bookingOpId === before.bookingOpId) data.prepaid = before.prepaid || 0;
+    else if (data.bookingOpId) {
+      const b = bookingForContract(data.bookingOpId);
+      if (!b) throw new DocError('booking_not_active');
+      data.prepaid = b.prepaid || 0;
+    } else data.prepaid = null;
+  }
   if ((kind === 'photos' || kind === 'return') && existing) data.photos = rowData(existing).photos || [];
   const json = JSON.stringify(data);
   dropContractCache();
@@ -443,7 +457,7 @@ function renderData(doc) {
     handover: { mileage: c.mileage, fuel: c.fuel, equipment: equipmentItems(type, c.equipment || []) },
     penalties: TERMS[type].penalties, rules: TERMS[type].rules,
     period: { from: fmtDT(c.from), to: fmtDT(c.to), pickupPlace: c.pickupPlace, returnPlace: c.returnPlace },
-    money: { days, perDay: c.perDay, total: c.total, deposit: c.deposit, paid: c.paid },
+    money: { days, perDay: c.perDay, total: c.total, deposit: c.deposit, paid: c.paid, prepaid: c.prepaid || 0 },
     signatures: signaturesForRender(doc)
   };
   // Скидка: цена по прайсу и строка «Скидка» (причину клиенту не показываем); не одобрена — «черновик»
@@ -937,13 +951,46 @@ export async function docsIssue(staff, req, res) {
     throw err;
   }
   q.setEvent.run(event.id, doc.id);
+  const moneyLines = issueMoney(doc, c, vehicle, event, kind, staff);
+  // По брони: бронь «выдана», её статус снят (дальше — аренда по договору)
+  if (kind === 'rent' && c.bookingOpId) markBookingIssued(c.bookingOpId, doc, staff);
   invalidateFleet();
   const name = vehicle.clientModel || `${vehicle.brand} ${vehicle.model}`.trim();
   // В группу — отчёт и фото: техника при выдаче и документы клиента (документы потом удаляются)
-  const wa = await postFleetEvent(eventReport(event, name), [...contractPhotoBuffers(doc.id), ...takePendingPhotos(doc.id)]);
+  const report = moneyLines.length ? eventReport(event, name).replace(/\n\[portal #/, `\n${moneyLines.join('\n')}\n[portal #`) : eventReport(event, name);
+  const wa = await postFleetEvent(report, [...contractPhotoBuffers(doc.id), ...takePendingPhotos(doc.id)]);
   setEventWa(event.id, wa.status, wa.error || null);
   console.log(`Contract ${doc.number}: ${vehicle.plate} set «${kind}» by ${staff.email}`);
   sendJson(res, 200, { ok: true, kind, wa: wa.status });
+}
+
+/**
+ * Деньги при выдаче по договору — в кассу портала («Финансы»), чтобы не писать их ещё раз
+ * отчётом в группе. «Оплачено» — сколько заплатили сейчас: сначала аренда (сумма минус
+ * предоплата брони), остальное — залог. Бронь договором (даты в будущем) — предоплата брони.
+ */
+function issueMoney(doc, c, vehicle, event, kind, staff) {
+  const paid = Number(c.paid) || 0;
+  if (!(paid > 0)) return [];
+  const method = methodFromText(c.payMethod);
+  const base = { currency: 'THB', method, vehicleId: vehicle.id, contractId: doc.id, party: c.renter?.name, eventId: event.id };
+  const lines = [];
+  const how = method ? ` (${method})` : '';
+  const fmt = (n) => `${new Intl.NumberFormat('en-US').format(n)} THB`;
+  if (kind === 'reserve') {
+    addCashMove({ ...base, dir: 'in', kind: 'booking', category: 'rent', amount: paid, note: `предоплата по договору ${doc.number}` }, staff);
+    return [`Prepaid: ${fmt(paid)}${how}`];
+  }
+  const rentDue = Math.max(0, (Number(c.total) || 0) - (Number(c.prepaid) || 0));
+  const rent = Math.min(paid, rentDue);
+  const deposit = Math.min(paid - rent, Number(c.deposit) || 0);
+  const extra = paid - rent - deposit;
+  if (rent + extra > 0) addCashMove({ ...base, dir: 'in', kind: 'issue', category: 'rent', amount: rent + extra, note: `оплата по договору ${doc.number}` }, staff);
+  if (deposit > 0) addCashMove({ ...base, dir: 'in', kind: 'issue', category: 'deposit', amount: deposit, note: `залог по договору ${doc.number}` }, staff);
+  if (c.prepaid) lines.push(`Prepaid at booking: ${fmt(c.prepaid)}`);
+  if (rent + extra > 0) lines.push(`Paid: ${fmt(rent + extra)}${how}`);
+  if (deposit > 0) lines.push(`Deposit: ${fmt(deposit)}${how}`);
+  return lines;
 }
 
 /** POST /api/staff/docs/unissue { id } — отменить выдачу по договору (ошибка): статус как до неё */
@@ -955,6 +1002,10 @@ export async function docsUnissue(staff, req, res) {
   if (!issued) throw new HttpError(404, 'not_issued');
   const e = undoEvent(issued.eventId, staff);
   q.setEvent.run(null, doc.id);
+  // Деньги выдачи — отменены; бронь, по которой выдали, снова активна
+  for (const m of movesOfEvent(e.id)) if (!m.deleted_at) cancelMove(m.id, staff, `выдача по ${doc.number} отменена`);
+  const c = rowData(doc);
+  if (c.bookingOpId) unmarkBookingIssued(c.bookingOpId);
   invalidateFleet();
   // В группу — что выдачу отменили (с той же меткой портала: журнал это не считает)
   const vehicle = getVehicle(rowData(doc).vehicleId);

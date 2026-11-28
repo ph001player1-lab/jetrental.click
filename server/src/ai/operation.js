@@ -25,7 +25,7 @@ const SCHEMA = obj({
   vehicle: VEHICLE,
   newVehicle: obj({ plate: str, plateNumber: str, model: str, mileage: str, fuel: str }),
   booking: obj({ from: str, to: str }),
-  prepay: obj({ amount: str, method: { type: 'string', enum: [...PAY_METHODS, ''] } }),
+  prepay: obj({ total: str, amount: str, method: { type: 'string', enum: [...PAY_METHODS, ''] } }),
   damages: { type: 'array', items: money },
   deductions: { type: 'array', items: money },
   refund: obj({ amount: str, method: str }),
@@ -45,7 +45,7 @@ const SCHEMA = obj({
 const SYSTEM = `You help staff of a scooter, motorbike and car rental company in Phuket, Thailand record what just happened, from photos and a short note. Decide which operation it is and fill its fields.
 
 Operations ("kind"):
-- "booking": a client books a vehicle for future dates and does not take it now (a chat screenshot, a request or a note like "бронь Honda Click 12–15.12, Иван +66…"): fill renter (name and phone, whatever is known), vehicle (plate if named, else model), "booking.from" and "booking.to" (YYYY-MM-DD) and, if a prepayment was received, "prepay.amount" (digits) and "prepay.method".
+- "booking": a client books a vehicle for future dates and does not take it now (a chat screenshot, a request or a note like "бронь Honda Click 12–15.12, Иван +66…"): fill renter (name and phone, whatever is known), vehicle (plate if named, else model), "booking.from" and "booking.to" (YYYY-MM-DD) "prepay.total" — the full rental price if named (digits) and, if a prepayment was received, "prepay.amount" (digits) and "prepay.method".
 - "issue": a client takes a vehicle now: photos of the passport, the driving licence and the vehicle. Fill renter, vehicle and booking as for a rental contract.
 - "return": a client brings a vehicle back: photos of the vehicle with its plate, the dashboard, maybe damage. Fill vehicle (mileage and fuel at return), damages, deductions and refund.
 - "swap": the client gets another vehicle instead of the rented one: two vehicles in the photos or the note. "vehicle" is the one returned, "newVehicle" is the one the client gets, each with mileage and fuel if visible.

@@ -934,6 +934,7 @@ html:lang(my) .tabs button { font-size: 11px; line-height: 1.5; }
 .fin-badge--warn { background: var(--reserve-bg); color: var(--warn); }
 .fin-badge--bad { background: var(--rent-bg); color: var(--rent); }
 .fin-warn { margin: 10px 0 0; padding: 10px 12px; border-radius: 8px; background: var(--reserve-bg); color: var(--ink, inherit); font-size: 14px; }
+.fin-dup ul { margin: 6px 0; padding-left: 18px; }
 .fin-loans { margin-top: 10px; display: grid; gap: 8px; max-width: 420px; }
 .fin-loans textarea { width: 100%; min-height: 120px; font: 14px ui-monospace, SFMono-Regular, Menlo, monospace; }
 @media (max-width: 640px) {
@@ -1827,3 +1828,34 @@ button.gm-box:hover { background: rgba(40, 50, 66, .9); }
 .gm-chart svg text { fill: #b9b2a5; font-size: 9px; font-family: system-ui, sans-serif; }
 .gm-chart-warn { color: #ffc21a; }
 @media (max-width: 760px) { .gm-chart { left: 8px; right: 8px; width: auto; z-index: 3; } }
+
+/* Договор по брони: предоплата уже в кассе */
+.dc-booking { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 8px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--reserve-bg); font-size: 14px; }
+.dc-booking--on { background: var(--free-bg, var(--surface-2)); }
+.dc-prepaid { margin: 8px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--reserve-bg); font-size: 14px; }
+
+/* Вкладка «Операции» */
+.ops-bar .chips { align-items: center; }
+.ops-kind { width: auto; min-width: 150px; padding-top: 6px; padding-bottom: 6px; }
+.ops-mine { white-space: nowrap; }
+.ops--loading { opacity: .6; }
+.ops-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+.ops-row { display: grid; gap: 4px; width: 100%; text-align: left; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: inherit; font: inherit; cursor: pointer; }
+.ops-row:hover { border-color: var(--brand); }
+.ops-row--off { opacity: .6; }
+.ops-row--off .ops-row__money { text-decoration: line-through; }
+.ops-row__head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ops-row__at { margin-left: auto; }
+.ops-row__what { font-size: 14px; overflow-wrap: anywhere; }
+.ops-row__foot { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; }
+.ops-row__money { font-weight: 600; font-variant-numeric: tabular-nums; }
+.ops-info { display: grid; gap: 4px; margin: 4px 0 8px; }
+.ops-kv { display: grid; grid-template-columns: minmax(110px, 34%) 1fr; gap: 8px; font-size: 14px; }
+.ops-parts { margin: 4px 0 8px; padding-left: 18px; font-size: 14px; }
+.ops-parts .is-off { color: var(--muted); text-decoration: line-through; }
+.ops-cancelled, .ops-issued { margin: 6px 0; padding: 8px 10px; border-radius: 8px; font-size: 14px; }
+.ops-cancelled { background: var(--rent-bg); }
+.ops-issued { background: var(--free-bg); }
+.ops-danger { color: var(--rent); border-color: var(--rent); }
+.ops-refund { margin: 0 0 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; display: grid; gap: 6px; }
+.ops-refund legend { font-weight: 600; padding: 0 4px; }

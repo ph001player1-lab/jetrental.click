@@ -26,6 +26,7 @@ import { staffPhones } from './staffUsers.js';
 import { cashbookMeta, cashbookRows, PURPOSE_GROUP } from './cashbook.js';
 import { itPaymentsBetween } from './itSettings.js';
 import { portalExpensesBetween, portalMoneyRows } from './operations.js';
+import { portalBookingForecast } from './opsRegistry.js';
 
 const DAY_MS = 86400000;
 const BANGKOK_MS = 7 * 3600000;
@@ -745,6 +746,28 @@ export async function financeReport({ from, to }, now = Date.now(), { clientsVis
     if (e.at >= start && e.at < end) h.spent += e.thb;
   }
 
+  // Брони из «＋ Операция» — тоже в прогноз на 30 дней
+  for (const b of portalBookingForecast()) {
+    if (!b.from || b.from < today || b.from > in30) continue;
+    forecast.bookings++;
+    forecast.total += b.total;
+    forecast.prepaid += b.prepaid;
+    forecast.left += Math.max(0, b.total - b.prepaid);
+  }
+
+  // Возможный повтор: деньги уже записаны в портале (выдача, продление, приход), а кто-то ещё
+  // написал их отчётом в группе — та же машина, в пределах 12 часов, та же сумма
+  const duplicates = [];
+  const portalIn = parsed.filter(({ row, m }) => row.portal && m.moneyIn > 0 && m.plates.length);
+  for (const { row, m } of parsed) {
+    if (row.portal || !m.plates.length || !(m.moneyIn > 0 || m.revenue > 0 || m.deposit > 0) || row.at < start || row.at >= end) continue;
+    const amounts = new Set([m.moneyIn, m.revenue, m.deposit, m.rent].filter((x) => x > 0).map(Math.round));
+    const twin = portalIn.find(({ row: p, m: pm }) => Math.abs(p.at - row.at) < 12 * 3600000
+      && pm.plates.some((x) => m.plates.some((y) => String(y.plate).replace(/\D/g, '') === String(x.plate).replace(/\D/g, '')))
+      && amounts.has(Math.round(pm.moneyIn)));
+    if (twin) duplicates.push({ groupId: row.id, portalId: twin.row.id, at: isoOf(row.at), portalAt: twin.row.ts, plate: twin.m.plates[0].plate, thb: round(twin.m.moneyIn), author: who(row), portalBy: twin.row.author });
+  }
+
   const debtList = findDebts(parsed, now, who);
   const overdue = debtList.filter((d) => d.overdue);
   const upcoming = debtList.filter((d) => !d.overdue);
@@ -873,6 +896,7 @@ export async function financeReport({ from, to }, now = Date.now(), { clientsVis
       list: debtList.slice(0, 60)
     },
     forecast: { ...forecast, total: round(forecast.total), prepaid: round(forecast.prepaid), left: round(forecast.left) },
+    duplicates: duplicates.slice(0, 30),
     vehicles: vehicleRows,
     soldVehicles: soldVehicles(parsed, soldMap),
     loans: loanMap,

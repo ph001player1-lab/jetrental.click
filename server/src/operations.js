@@ -36,16 +36,21 @@ import crypto from 'node:crypto';
 import { config } from './config.js';
 import * as db from './db.js';
 import { HttpError, sendJson, readJson, readBody } from './http.js';
-import { can, roleOf } from './roles.js';
+import { can } from './roles.js';
+import { isOwnerOrAdmin, mayKind, anyKind, allowedOps } from './opPerms.js';
 import { todayIso } from './dates.js';
 import { getVehicle, updateVehicleStats, setRepair } from './fleetStore.js';
 import { isSold } from './sold.js';
-import { invalidateFleet, getPortalSnapshot } from './fleet.js';
+import { invalidateFleet, getPortalSnapshot, getFleet, plateKey } from './fleet.js';
+import { quotePlate } from './pricing.js';
+import { rentalDays } from './format.js';
 import { addStatusEvent, eventReport, setEventWa, invalidateStatuses, addCheck, StatusError } from './vehicleStatus.js';
 import { postFleetEvent } from './wabot.js';
 import { saveDocument, contractFor, contractById, addDocPhotos, docBrief, savePendingPhotos, DocError } from './documents.js';
 import { archivePhotos } from './vehicleMedia.js';
 import { currentRates } from './finance.js';
+import { addCashMove, moveById, cancelMove } from './cashMoves.js';
+import { opScope, currentOpId } from './opContext.js';
 import { recognizeOperation, OP_KINDS, SERVICE_ACTIONS, EXPENSE_CATEGORIES, PAY_METHODS, INCOME_CATEGORIES } from './ai/operation.js';
 import { AiError } from './ai/claude.js';
 import { vehicleByPhoto, carNow, contractProposal, photoList, vehicleName, dayPart, VEHICLE_CAPTION } from './ai/proposal.js';
@@ -91,42 +96,27 @@ db.raw.exec(`
     updated_at  TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS op_drafts_staff ON op_drafts (staff_email, status);
-  -- Деньги из «＋ Операция»: приход (оплата продления, аренды, доп. услуг, залог) и возврат залога
-  CREATE TABLE IF NOT EXISTS cash_moves (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    at          TEXT NOT NULL,
-    dir         TEXT NOT NULL,
-    kind        TEXT NOT NULL,
-    category    TEXT NOT NULL,
-    amount      REAL NOT NULL,
-    currency    TEXT NOT NULL,
-    thb         INTEGER NOT NULL,
-    method      TEXT,
-    plate       TEXT,
-    vehicle_id  INTEGER,
-    contract_id INTEGER,
-    party       TEXT,
-    note        TEXT,
-    by_email    TEXT,
-    by_name     TEXT,
-    deleted_at  TEXT,
-    deleted_by  TEXT
-  );
-  CREATE INDEX IF NOT EXISTS cash_moves_at ON cash_moves (at);
 `);
 
+// Расход знает свою операцию; отменённый — с причиной
+for (const [col, type] of [['op_id', 'INTEGER'], ['deleted_reason', 'TEXT']]) {
+  if (!db.raw.prepare('PRAGMA table_info(expenses)').all().some((c) => c.name === col)) db.raw.exec(`ALTER TABLE expenses ADD COLUMN ${col} ${type}`);
+}
+// Выполненная операция: кто, когда; состояние (отменена, выдана по брони), история правок — вкладка «Операции»
+for (const [col, type] of [['staff_name', 'TEXT'], ['done_at', 'TEXT'], ['state', 'TEXT'], ['state_at', 'TEXT'], ['state_by', 'TEXT'],
+  ['state_reason', 'TEXT'], ['state_info', 'TEXT'], ['edited_at', 'TEXT'], ['history', 'TEXT']]) {
+  if (!db.raw.prepare('PRAGMA table_info(op_drafts)').all().some((c) => c.name === col)) db.raw.exec(`ALTER TABLE op_drafts ADD COLUMN ${col} ${type}`);
+}
+db.raw.exec('CREATE INDEX IF NOT EXISTS op_drafts_done ON op_drafts (status, done_at)');
+
 const q = {
-  insert: db.raw.prepare(`INSERT INTO expenses (date, amount, currency, thb, category, plate, vehicle_id, method, vendor, note, by_email, by_name, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+  insert: db.raw.prepare(`INSERT INTO expenses (date, amount, currency, thb, category, plate, vehicle_id, method, vendor, note, by_email, by_name, created_at, op_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+  markDone: db.raw.prepare('UPDATE op_drafts SET done_at = ?, staff_name = ? WHERE id = ?'),
   setReceipt: db.raw.prepare('UPDATE expenses SET receipt = ? WHERE id = ?'),
   byId: db.raw.prepare('SELECT * FROM expenses WHERE id = ?'),
   between: db.raw.prepare('SELECT * FROM expenses WHERE deleted_at IS NULL AND date >= ? AND date <= ? ORDER BY date DESC, id DESC'),
   remove: db.raw.prepare('UPDATE expenses SET deleted_at = ?, deleted_by = ? WHERE id = ? AND deleted_at IS NULL'),
-  moveAdd: db.raw.prepare(`INSERT INTO cash_moves (at, dir, kind, category, amount, currency, thb, method, plate, vehicle_id, contract_id, party, note, by_email, by_name)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
-  moves: db.raw.prepare('SELECT * FROM cash_moves WHERE deleted_at IS NULL ORDER BY at'),
-  move: db.raw.prepare('SELECT * FROM cash_moves WHERE id = ?'),
-  moveDel: db.raw.prepare('UPDATE cash_moves SET deleted_at = ?, deleted_by = ? WHERE id = ? AND deleted_at IS NULL'),
   draftNew: db.raw.prepare('INSERT INTO op_drafts (staff_email, hint, note, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'),
   draft: db.raw.prepare('SELECT * FROM op_drafts WHERE id = ?'),
   myOpen: db.raw.prepare("SELECT * FROM op_drafts WHERE staff_email = ? AND status = 'open' ORDER BY updated_at DESC LIMIT 20"),
@@ -144,21 +134,8 @@ const CATEGORY_EN = {
   it: 'IT', salary: 'Salary', owners: 'Owner payout', refunds: 'Refund', vehicles: 'Vehicle purchase', personal: 'Personal', other: 'Other'
 };
 
-const isOwnerOrAdmin = (staff) => roleOf(staff) === 'owner' || can(staff, 'access.admin');
-// Кто какие операции проводит — во вкладке «Доступы» (у админа — все): аренда, сервис, деньги
-const RENT_OPS = ['booking', 'issue', 'return', 'swap', 'extend'];
-const MONEY_OPS = ['income', 'deposit_refund', 'payout'];
-const mayKind = (staff, kind) => {
-  // Выдача — это ещё и договор: нужен «Документы: меняет»
-  if (RENT_OPS.includes(kind)) return can(staff, 'op_rent.edit') && (kind !== 'issue' || can(staff, 'docs.edit'));
-  if (kind === 'service') return can(staff, 'op_service.edit');
-  if (kind === 'expense') return can(staff, 'op_service.edit') || can(staff, 'op_money.edit');
-  if (MONEY_OPS.includes(kind)) return can(staff, 'op_money.edit');
-  return false;
-};
-const anyKind = (staff) => OP_KINDS.some((k) => mayKind(staff, k));
-/** Какие операции доступны сотруднику (для кнопки «＋ Операция») */
-export const allowedOps = (staff) => OP_KINDS.filter((k) => mayKind(staff, k));
+// Кто какие операции проводит — opPerms.js
+export { allowedOps };
 
 const num = (v) => {
   const n = Number(String(v ?? '').replace(/[\s,]/g, ''));
@@ -207,6 +184,19 @@ export async function opVehicle(staff, req, res, url) {
   const v = getVehicle(url.searchParams.get('id'));
   if (!v) throw new HttpError(404, 'not_found');
   sendJson(res, 200, await vehicleState({ plate: v.plate, plateNumber: v.plate.replace(/\D/g, ''), model: vehicleName(v) }, url.searchParams.get('lang') === 'en' ? 'en' : 'ru'));
+}
+
+/** GET /api/staff/op/quote?vehicleId=&from=&to= — цена брони по «Прайсу» (сутки, сумма, залог) */
+export async function opQuote(staff, req, res, url) {
+  if (!anyKind(staff)) throw new HttpError(403, 'no_section_access');
+  const v = getVehicle(url.searchParams.get('vehicleId'));
+  const from = String(url.searchParams.get('from') || '').slice(0, 10);
+  const to = String(url.searchParams.get('to') || '').slice(0, 10);
+  const iso = /^\d{4}-\d{2}-\d{2}$/;
+  if (!v || !iso.test(from) || !iso.test(to) || to < from) return sendJson(res, 200, { quote: null });
+  const { pricing } = await getFleet();
+  const quote = quotePlate(pricing, plateKey(v.plate), from, to);
+  sendJson(res, 200, { quote: { days: rentalDays(from, to), ...(quote || {}) } });
 }
 
 /* ------------------------------------------------------ Черновики */
@@ -371,6 +361,7 @@ async function proposalFor(r, kind, count, staff, lang) {
   out.fields.clientName = text(r.renter?.name, 100);
   out.fields.clientPhone = text(r.renter?.phone, 40);
   if (kind === 'booking') {
+    out.fields.total = String(r.prepay?.total || '').replace(/[^\d.]/g, '');
     out.fields.paid = String(r.prepay?.amount || '').replace(/[^\d.]/g, '');
     out.fields.payMethod = PAY_METHODS.includes(r.prepay?.method) ? r.prepay.method : '';
   }
@@ -407,7 +398,7 @@ function formFrom(p) {
     newTo: f.newTo || '', perDay: p.contract?.perDay ?? '', paid: f.paid || '', payMethod: f.payMethod || '',
     income: { ...(f.income || {}), vehicleId: p.vehicle?.id || null, contractId: p.contract?.id || null },
     payee: f.payee || '',
-    bookFrom: f.bookFrom || '', bookTo: f.bookTo || '', clientName: f.clientName || '', clientPhone: f.clientPhone || '',
+    bookFrom: f.bookFrom || '', bookTo: f.bookTo || '', clientName: f.clientName || '', clientPhone: f.clientPhone || '', total: f.total || '',
     expense: { ...(f.expense || {}), amount: f.expense?.amount || '', vehicleId: p.vehicle?.id || null, category: f.expense?.category || (p.kind === 'payout' ? 'salary' : '') },
     receipt: receipt ?? (p.kind === 'expense' ? 0 : null)
   };
@@ -448,7 +439,7 @@ export async function opDraftManual(staff, req, res) {
 async function setStatus(vehicle, input, staff, images = []) {
   let event;
   try {
-    event = addStatusEvent(vehicle, input, staff);
+    event = addStatusEvent(vehicle, { ...input, opId: currentOpId() }, staff);
   } catch (err) {
     if (err instanceof StatusError) throw new HttpError(400, err.code);
     throw err;
@@ -461,7 +452,7 @@ async function setStatus(vehicle, input, staff, images = []) {
   if (after?.needsCheck) addCheck(after, 'portal', staff, 'статус поставлен из «＋ Операция»');
   const wa = await postFleetEvent(eventReport(event, vehicle.clientModel || vehicleName(vehicle)), images);
   setEventWa(event.id, wa.status, wa.error || null);
-  return { type: 'status', kind: input.kind, plate: vehicle.plate, wa: wa.status, photos: wa.status === 'sent' ? images.length : 0 };
+  return { type: 'status', kind: input.kind, plate: vehicle.plate, eventId: event.id, wa: wa.status, photos: wa.status === 'sent' ? images.length : 0 };
 }
 
 const docCall = (fn) => {
@@ -486,7 +477,7 @@ async function addExpense(e, staff, receipt = null) {
   const method = PAY_METHODS.includes(e.method) ? e.method : null;
   const thb = Math.round(amount * rate);
   const id = Number(q.insert.run(date, amount, currency, thb, category, vehicle?.plate || null, vehicle?.id || null, method,
-    text(e.vendor, 80) || null, text(e.note, 300) || null, staff.email, staff.name || staff.email, new Date().toISOString()).lastInsertRowid);
+    text(e.vendor, 80) || null, text(e.note, 300) || null, staff.email, staff.name || staff.email, new Date().toISOString(), currentOpId()).lastInsertRowid);
   if (receipt) {
     fs.mkdirSync(EXPENSES_DIR, { recursive: true });
     fs.writeFileSync(path.join(EXPENSES_DIR, `${id}.jpg`), receipt);
@@ -504,55 +495,17 @@ async function addExpense(e, staff, receipt = null) {
 const PAY_EN = { cash: 'cash', transfer: 'transfer', card: 'card' };
 const moneyText = (amount, currency) => `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(amount)} ${currency}`;
 
-/** Деньги в кассу портала: dir in|out; бат — по курсу. Возвращает id */
-function addCashMove(m, staff) {
-  const amount = num(m.amount);
-  if (!(amount > 0)) throw new HttpError(400, 'bad_amount');
-  const currency = /^[A-Z]{3}$/.test(String(m.currency || '')) ? m.currency : 'THB';
-  const rate = currency === 'THB' ? 1 : currentRates().rates[currency];
-  if (!rate) throw new HttpError(400, 'bad_currency');
-  const vehicle = m.vehicleId ? getVehicle(m.vehicleId) : null;
-  const id = Number(q.moveAdd.run(new Date().toISOString(), m.dir, m.kind, m.category, amount, currency, Math.round(amount * rate),
-    PAY_METHODS.includes(m.method) ? m.method : null, vehicle?.plate || m.plate || null, vehicle?.id || null, Number(m.contractId) || null,
-    text(m.party, 80) || null, text(m.note, 300) || null, staff.email, staff.name || staff.email).lastInsertRowid);
-  console.log(`Cash move #${id}: ${m.dir} ${amount} ${currency} ${m.kind}/${m.category} by ${staff.email}`);
-  return { id, thb: Math.round(amount * rate), amount, currency };
-}
 
-/**
- * Деньги из портала — строками, как отчёты группы, для «Финансов» (выручка, касса у сотрудников,
- * залоги): row.m — уже посчитанное (как moneyOf отчёта)
- */
-export function portalMoneyRows() {
-  return q.moves.all().map((r) => {
-    const cash = r.method === 'cash';
-    const inn = r.dir === 'in';
-    const rent = inn && (r.kind === 'extension' || r.category === 'rent') ? r.thb : 0;
-    const extras = inn && !rent && ['extras', 'damage', 'other'].includes(r.category) ? r.thb : 0;
-    const deposit = inn && r.category === 'deposit' ? r.thb : 0;
-    const at = Date.parse(r.at);
-    return {
-      id: `pm${r.id}`, ts: r.at, at, portal: true, kind: inn ? (r.kind === 'extension' ? 'extension' : 'payment') : 'return',
-      author: r.by_name || r.by_email, author_name: r.by_name || r.by_email, text: '', data: '{}',
-      m: {
-        revenue: rent + extras, rent, extras, moneyIn: inn ? r.thb : 0, inCash: inn && cash ? [{ currency: r.currency, amount: r.amount }] : [],
-        cashLike: cash, transferLike: !cash, cashIn: inn && cash ? r.thb : 0,
-        moneyOut: inn ? 0 : r.thb, outCash: !inn && cash, deposit, returnDeposit: 0, left: 0, debt: 0, debtNote: null, toReceive: 0, toReturn: 0,
-        bookingTotal: 0, prepaid: 0, receiver: r.by_name || r.by_email, plates: r.plate ? [{ plate: r.plate, model: null }] : [], from: null, to: null, keys: {}
-      }
-    };
-  });
-}
+export { portalMoneyRows } from './cashMoves.js';
 
 /** POST /api/staff/money/delete { id } — ошибочная запись денег: владелец, админ или кто внёс в тот же день */
 export async function moneyDelete(staff, req, res) {
   const { id } = await readJson(req);
-  const r = q.move.get(Number(String(id).replace(/^pm/, '')) || 0);
+  const r = moveById(String(id).replace(/^pm/, ''));
   if (!r || r.deleted_at) throw new HttpError(404, 'not_found');
   const own = r.by_email === staff.email && Date.now() - Date.parse(r.at) < 24 * 3600000;
   if (!isOwnerOrAdmin(staff) && !own) throw new HttpError(403, 'owner_or_admin_only');
-  q.moveDel.run(new Date().toISOString(), staff.email, r.id);
-  console.log(`Cash move #${r.id} deleted by ${staff.email}`);
+  cancelMove(r.id, staff, 'удалено в «Финансах»');
   sendJson(res, 200, { ok: true });
 }
 
@@ -706,12 +659,16 @@ async function applyOp(kind, f, buffers, kinds, staff) {
     const name = text(f.clientName, 100);
     const phone = text(f.clientPhone, 40);
     const paid = num(f.paid) || 0;
+    const total = int(f.total) || 0;
+    if (total && paid > total) throw new HttpError(400, 'prepaid_over_total');
     const method = PAY_METHODS.includes(f.payMethod) ? f.payMethod : null;
     let m = null;
     if (paid > 0) {
       m = addCashMove({ dir: 'in', kind: 'booking', category: 'rent', amount: paid, currency: 'THB', method, vehicleId: vehicle.id, party: name, note: `предоплата брони ${from.slice(8, 10)}.${from.slice(5, 7)}–${to.slice(8, 10)}.${to.slice(5, 7)}` }, staff);
     }
-    const paidLine = m ? `Prepaid: ${moneyText(m.amount, 'THB')}${method ? ` (${PAY_EN[method]})` : ''}` : '';
+    // Сумма аренды, предоплата и остаток — строками, как в отчётах группы
+    const paidLine = [total ? `Total: ${moneyText(total, 'THB')}` : '', m ? `Prepaid: ${moneyText(m.amount, 'THB')}${method ? ` (${PAY_EN[method]})` : ''}` : '',
+      total ? `Left: ${moneyText(Math.max(0, total - paid), 'THB')}` : ''].filter(Boolean).join(' · ');
     // Фото брони (скриншот переписки и т. п.) — только в отчёт группы, в архив техники не идут
     done.push(await setStatus(vehicle, { kind: 'reserve', from, to, clientName: name, clientPhone: phone, note: [paidLine, text(f.note, 200)].filter(Boolean).join(' · ') }, staff, all));
     if (m) done.push({ type: 'money', dir: 'in', kind: 'booking', thb: m.thb });
@@ -736,7 +693,8 @@ export async function opDraftApply(staff, req, res) {
   const proposal = parse(row.proposal, {});
   const kinds = [];
   for (const p of proposal.photos || []) kinds[p.index] = p.kind;
-  const done = await applyOp(kind, form, draftBuffers(row), kinds, staff);
+  const done = await opScope.run({ opId: row.id }, () => applyOp(kind, form, draftBuffers(row), kinds, staff));
+  q.markDone.run(new Date().toISOString(), staff.name || staff.email, row.id);
   removeDraftFiles(row.id);
   const saved = saveDraft(row, { status: 'done', form: JSON.stringify(form), result: JSON.stringify(done), photos: '[]' });
   console.log(`Operation «${kind}» #${row.id} by ${staff.email}: ${done.map((d) => d.type).join(', ')}`);

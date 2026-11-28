@@ -68,7 +68,8 @@ db.raw.exec(`
 `);
 
 // Клиент события (арендатор), договор, из которого выдали, и отмена события
-for (const [col, type] of [['client_name', 'TEXT'], ['client_phone', 'TEXT'], ['doc_id', 'INTEGER'], ['undone_at', 'TEXT'], ['undone_by', 'TEXT']]) {
+// Операция «＋ Операция», которая поставила статус (по ней событие отменяют и меняют во вкладке «Операции»)
+for (const [col, type] of [['client_name', 'TEXT'], ['client_phone', 'TEXT'], ['doc_id', 'INTEGER'], ['undone_at', 'TEXT'], ['undone_by', 'TEXT'], ['op_id', 'INTEGER'], ['edited_at', 'TEXT']]) {
   if (!db.raw.prepare('PRAGMA table_info(vehicle_events)').all().some((c) => c.name === col)) db.raw.exec(`ALTER TABLE vehicle_events ADD COLUMN ${col} ${type}`);
 }
 
@@ -81,8 +82,12 @@ const q = {
     ORDER BY m.ts`),
   events: db.raw.prepare('SELECT * FROM vehicle_events WHERE undone_at IS NULL ORDER BY at'),
   event: db.raw.prepare('SELECT * FROM vehicle_events WHERE id = ?'),
-  addEvent: db.raw.prepare(`INSERT INTO vehicle_events (plate_key, plate, kind, date_from, date_to, note, by_email, by_name, at, client_name, client_phone, doc_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+  addEvent: db.raw.prepare(`INSERT INTO vehicle_events (plate_key, plate, kind, date_from, date_to, note, by_email, by_name, at, client_name, client_phone, doc_id, op_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+  ofOp: db.raw.prepare('SELECT * FROM vehicle_events WHERE op_id = ? ORDER BY id'),
+  redo: db.raw.prepare('UPDATE vehicle_events SET undone_at = NULL, undone_by = NULL WHERE id = ?'),
+  editEvent: db.raw.prepare('UPDATE vehicle_events SET plate_key = ?, plate = ?, date_from = ?, date_to = ?, note = ?, client_name = ?, client_phone = ?, edited_at = ? WHERE id = ?'),
+  between: db.raw.prepare('SELECT * FROM vehicle_events WHERE at >= ? AND at < ? ORDER BY at DESC'),
   undo: db.raw.prepare('UPDATE vehicle_events SET undone_at = ?, undone_by = ? WHERE id = ? AND undone_at IS NULL'),
   setWa: db.raw.prepare('UPDATE vehicle_events SET wa_status = ?, wa_error = ? WHERE id = ?'),
   lastEvents: db.raw.prepare('SELECT * FROM vehicle_events WHERE plate_key = ? AND undone_at IS NULL ORDER BY id DESC LIMIT ?'),
@@ -330,7 +335,7 @@ export function addStatusEvent(vehicle, input, staff, now = Date.now()) {
   // Клиент — для выдачи и брони (кто арендует; номер — в отчёт группы строкой Contact, по ней CRM найдёт клиента)
   const withClient = kind === 'rent' || kind === 'reserve';
   const info = q.addEvent.run(key, vehicle.plate, kind, from, to, note, staff.email, staff.name || staff.email, new Date(now).toISOString(),
-    withClient ? clean(input.clientName, 100) : null, withClient ? clean(input.clientPhone, 40) : null, Number(input.docId) || null);
+    withClient ? clean(input.clientName, 100) : null, withClient ? clean(input.clientPhone, 40) : null, Number(input.docId) || null, Number(input.opId) || null);
   invalidateStatuses();
   console.log(`Vehicle ${vehicle.plate}: status «${kind}» set in the portal by ${staff.email}`);
   return q.event.get(Number(info.lastInsertRowid));
@@ -351,6 +356,39 @@ export function undoEvent(id, staff) {
   invalidateStatuses();
   console.log(`Vehicle ${e.plate}: portal event #${e.id} («${e.kind}») undone by ${staff.email}`);
   return e;
+}
+
+/** События операции (и отменённые) */
+export const eventsOfOp = (opId) => q.ofOp.all(Number(opId) || 0);
+/** События портала за период (новые сверху) — для вкладки «Операции» */
+export const eventsBetween = (fromIso, toIso) => q.between.all(fromIso, toIso);
+/** Вернуть отменённое событие (отменили отмену выдачи и т. п.) */
+export function redoEvent(id) {
+  q.redo.run(Number(id));
+  invalidateStatuses();
+}
+
+/** Поменять бронь или аренду: техника, даты, клиент, заметка — то же событие */
+export function editEvent(id, input, now = Date.now()) {
+  const e = getEvent(id);
+  if (!e || e.undone_at) throw new StatusError('not_found');
+  const plate = input.plate || e.plate;
+  const key = keyOf(plate);
+  if (!key) throw new StatusError('plate_required');
+  const from = input.from === undefined ? e.date_from : (isIso(input.from) ? input.from : null);
+  const to = input.to === undefined ? e.date_to : (isIso(input.to) ? input.to : null);
+  if (e.kind === 'reserve') {
+    if (!from || !to) throw new StatusError('date_required');
+    if (to < from) throw new StatusError('date_order');
+    if (to < dayOf(now)) throw new StatusError('date_past');
+  }
+  if (e.kind === 'rent' && !to) throw new StatusError('date_required');
+  const clean = (v, max) => String(v ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max) || null;
+  q.editEvent.run(key, plate, from, to, input.note === undefined ? e.note : clean(input.note, 300),
+    input.clientName === undefined ? e.client_name : clean(input.clientName, 100), input.clientPhone === undefined ? e.client_phone : clean(input.clientPhone, 40),
+    new Date(now).toISOString(), e.id);
+  invalidateStatuses();
+  return getEvent(e.id);
 }
 
 /** Текст для рабочей группы — в формате отчётов (журнал его узнаёт), с меткой портала */

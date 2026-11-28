@@ -51,6 +51,7 @@ const L = {
   draft: { en: 'DRAFT — discount awaiting approval', ru: 'ЧЕРНОВИК — скидка ждёт одобрения', th: 'ฉบับร่าง — รออนุมัติส่วนลด' },
   deposit: { en: 'Deposit (refundable)', ru: 'Залог (возвращается)', th: 'เงินมัดจำ (คืนได้)' },
   paid: { en: 'Paid', ru: 'Оплачено', th: 'ชำระแล้ว' },
+  prepaid: { en: 'Prepaid at booking', ru: 'Предоплата при брони', th: 'มัดจำตอนจอง' },
   balance: { en: 'Balance due', ru: 'Осталось оплатить', th: 'คงเหลือที่ต้องชำระ' },
   rules: { en: 'Terms', ru: 'Условия', th: 'เงื่อนไข' },
   readAgree: { en: 'I have read and agree to the terms of this agreement.', ru: 'С условиями договора ознакомлен(а) и согласен(на).', th: 'ข้าพเจ้าได้อ่านและยอมรับเงื่อนไขของสัญญานี้' },
@@ -175,7 +176,7 @@ function contract(d, lang) {
   const pen = d.penalties.map((p) => `<tr><td>${txt(p, lang)}</td><td class="r">${p.from ? `${esc(L.from[lang])} ` : ''}${money(p.thb)}</td></tr>`).join('');
   const rules = d.rules.map((r) => `<li>${txt(r, lang)}</li>`).join('');
   const m = d.money;
-  const balance = Math.max(0, (Number(m.total) || 0) + (Number(m.deposit) || 0) - (Number(m.paid) || 0));
+  const balance = Math.max(0, (Number(m.total) || 0) + (Number(m.deposit) || 0) - (Number(m.prepaid) || 0) - (Number(m.paid) || 0));
   return `<section class="page">
     ${head(L[car ? 'carTitle' : 'bikeTitle'], lang, noBox(lang, d.no, d.date), d)}
     <h2>${lbl('renter', lang)}</h2>
@@ -209,6 +210,7 @@ function contract(d, lang) {
         <tr><td>${lbl('perDay', lang)}</td><td class="r">${money(m.perDay)}</td></tr>
         <tr class="em"><td>${lbl('total', lang)}</td><td class="r">${money(m.total)}</td></tr>
         <tr><td>${lbl('deposit', lang)}</td><td class="r">${money(m.deposit)}</td></tr>
+        ${m.prepaid ? `<tr><td>${lbl('prepaid', lang)}</td><td class="r">${money(m.prepaid)}</td></tr>` : ''}
         <tr><td>${lbl('paid', lang)}</td><td class="r">${money(m.paid)}</td></tr>
         <tr class="em"><td>${lbl('balance', lang)}</td><td class="r">${money(balance)}</td></tr>
       </table></div>

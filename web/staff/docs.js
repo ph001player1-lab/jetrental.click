@@ -12,7 +12,7 @@
 
   function create(ctx) {
     const { api, t, esc } = ctx;
-    const st = { view: 'list', list: null, q: '', failed: false, id: null, one: null, pre: null, form: null, msg: null, busy: false, sub: null, photoCaption: 'front', ai: { files: [], busy: false, result: null, error: null } };
+    const st = { view: 'list', list: null, q: '', failed: false, id: null, one: null, pre: null, form: null, msg: null, busy: false, sub: null, photoCaption: 'front', ai: { files: [], busy: false, result: null, error: null }, bookings: [] };
     const uiLang = () => (['ru', 'th'].includes(ctx.lang()) ? ctx.lang() : 'en');
     const label = (x) => (x ? x[uiLang()] || x.en || '' : '');
     const dmy = (iso) => (iso ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}` : '');
@@ -61,6 +61,7 @@
       st.sub = null;
       st.msg = null;
       st.quoteNote = null;
+      st.bookings = [];
       resetAi();
       st.form = { lang: uiLang() === 'ru' ? 'ru' : 'en', from: `${now.slice(0, 10)}T12:00`, to: '', equipment: null, fuel: 4, ...prefill, renter: { ...(prefill.renter || {}) } };
       Object.keys(st.form).forEach((k) => { if (st.form[k] === undefined) delete st.form[k]; });
@@ -113,6 +114,9 @@
       const match = (v) => fits(v) || String(v.id) === String(selected);
       const okDates = !st.id && from && to && to.slice(0, 10) >= from.slice(0, 10) && ctx.freeVehicles;
       const free = okDates ? new Set(ctx.freeVehicles(from.slice(0, 10), to.slice(0, 10)).map((x) => x.vehicleId)) : null;
+      // Договор по брони: эта техника занята как раз этой бронью — не «занята»
+      const ownBooking = st.form?.bookingOpId ? st.bookings.find((b) => b.opId === Number(st.form.bookingOpId))?.vehicleId : null;
+      if (free && ownBooking) free.add(ownBooking);
       const mark = (v) => (!free ? '' : free.has(v.id) ? ' ✓' : ` · ${t('dc.busyOnDates')}`);
       const groups = ['car', 'motorcycle', 'scooter'].map((type) => {
         const list = st.pre.vehicles.filter((v) => (v.type || 'scooter') === type && match(v))
@@ -182,6 +186,8 @@
           ${fld(t('dc.vehicle'), `<select class="search" name="vehicleId" data-dc-vehicle>${vehicleOptions(f.vehicleId)}</select>`, canEdit() ? 'dc-span2' : 'dc-wide')}
         </div>
         <p class="dc-vsum" data-dc-vsum${v ? '' : ' hidden'}>${v ? vehicleSummary(f) : ''}</p>
+        <input type="hidden" name="bookingOpId" value="${esc(f.bookingOpId || '')}">
+        <div data-dc-booking>${bookingBox(f)}</div>
         <div class="dc-grid" data-dc-vfields${v ? ' hidden' : ''}>
           ${fld(t('dc.model'), inp('model', f.model))}${fld(t('dc.plate'), inp('plate', f.plate))}
           ${fld(t('dc.color'), inp('color', f.color))}${fld('VIN', inp('vin', f.vin))}
@@ -215,6 +221,7 @@
           ${fld(t('dc.deposit'), inp('deposit', f.deposit, 'inputmode="numeric"'))}${fld(t('dc.paid'), inp('paid', f.paid, 'inputmode="numeric"'))}
           ${fld(t('dc.payMethod'), inp('payMethod', f.payMethod, `placeholder="${esc(t('dc.payHint'))}"`), 'dc-wide')}
         </div>
+        <p class="dc-prepaid" data-dc-prepaid${f.prepaid ? '' : ' hidden'}>${f.prepaid ? esc(t('dc.prepaidLine', { sum: money(f.prepaid) })) : ''}</p>
         <p class="muted jr-small" data-dc-quote>${esc(st.quoteNote || t('dc.priceHint'))}</p>
         ${canEdit() ? `<div class="dc-actions"><button type="submit" class="btn btn--primary">${esc(t(st.id ? 'dc.save' : 'dc.create'))}</button>
           ${st.id && st.one?.contract.signed.renter ? `<span class="muted jr-small">${esc(t('dc.resignNote'))}</span>` : ''}</div>` : ''}
@@ -704,6 +711,76 @@
       return `<button type="button" class="btn btn--small btn--primary" data-dc-issue="${c.id}">🔑 ${esc(t(reserve ? 'dc.issueReserve' : 'dc.issueRent'))}</button>`;
     }
 
+    /* ------------------------------------------------- Договор по брони */
+
+    const bookingLine = (b) => [b.clientName || '—', `${dmy(b.from)}–${dmy(b.to)}`, b.total ? t('dc.bkTotal', { sum: money(b.total) }) : '', t('dc.bkPrepaid', { sum: money(b.prepaid || 0) })].filter(Boolean).join(' · ');
+
+    /** Бронь техники из «＋ Операция»: учесть (клиент, даты, сумма, предоплата) или нет */
+    function bookingBox(f) {
+      if (f.bookingOpId) {
+        const b = st.bookings.find((x) => x.opId === Number(f.bookingOpId));
+        return `<p class="dc-booking dc-booking--on">🔖 ${esc(t('dc.bkUsed'))}${b ? `: ${esc(bookingLine(b))}` : ''}
+          ${!st.id && canEdit() ? ` <button type="button" class="link jr-small" data-dc-nobooking>${esc(t('dc.bkDrop'))}</button>` : ''}</p>`;
+      }
+      if (st.id || !canEdit() || !st.bookings.length) return '';
+      return st.bookings.map((b) => `<p class="dc-booking">🔖 ${esc(t('dc.bkFound'))}: ${esc(bookingLine(b))}
+        <button type="button" class="btn btn--small" data-dc-usebooking="${b.opId}">${esc(t('dc.bkUse'))}</button></p>`).join('');
+    }
+    function showBooking(form) {
+      const box = form.querySelector('[data-dc-booking]');
+      if (box) box.innerHTML = bookingBox(st.form);
+      const pre = form.querySelector('[data-dc-prepaid]');
+      if (pre) {
+        pre.hidden = !st.form.prepaid;
+        pre.textContent = st.form.prepaid ? t('dc.prepaidLine', { sum: money(st.form.prepaid) }) : '';
+      }
+    }
+    /** Брони выбранной техники; из «Парка» с датами брони — учитываем сразу */
+    async function loadBookings(form) {
+      if (st.id) return;
+      const vid = form.elements.vehicleId.value;
+      st.bookings = [];
+      if (vid) {
+        try { st.bookings = (await api(`/ops/bookings?vehicleId=${vid}`)).items || []; } catch { st.bookings = []; }
+      }
+      const auto = st.bookings.find((b) => b.opId === Number(st.form.bookingOpId))
+        || (st.form.autoBooking ? st.bookings.find((b) => b.from === String(form.elements.from.value).slice(0, 10)) : null);
+      st.form.autoBooking = false;
+      if (st.form.bookingOpId && !st.bookings.some((b) => b.opId === Number(st.form.bookingOpId))) dropBooking(form);
+      if (auto) applyBooking(form, auto);
+      else showBooking(form);
+    }
+    function applyBooking(form, b) {
+      const timeOf = (v) => (String(v || '').includes('T') ? String(v).split('T')[1] : '12:00');
+      form.elements.bookingOpId.value = b.opId;
+      st.form.bookingOpId = b.opId;
+      st.form.prepaid = b.prepaid || 0;
+      form.elements.from.value = `${b.from}T${timeOf(form.elements.from.value)}`;
+      form.elements.to.value = `${b.to}T${timeOf(form.elements.to.value)}`;
+      if (!form.elements.r_name.value && b.clientName) form.elements.r_name.value = b.clientName;
+      if (!form.elements.r_phone.value && b.clientPhone) form.elements.r_phone.value = b.clientPhone;
+      const out = form.querySelector('[data-dc-days]');
+      const n = Number(days(form.elements.from.value, form.elements.to.value)) || 0;
+      if (out) out.textContent = days(form.elements.from.value, form.elements.to.value);
+      if (b.total) {
+        form.elements.total.value = b.total;
+        form.elements.baseTotal.value = b.total;
+        if (n) form.elements.perDay.value = Math.round(b.total / n);
+      }
+      const total = Number(String(form.elements.total.value).replace(/[\s,]/g, '')) || 0;
+      const deposit = Number(String(form.elements.deposit.value).replace(/[\s,]/g, '')) || 0;
+      form.elements.paid.value = Math.max(0, total - (b.prepaid || 0)) + deposit;
+      showBooking(form);
+      rebuildVehicles(form);
+    }
+    function dropBooking(form) {
+      form.elements.bookingOpId.value = '';
+      st.form.bookingOpId = null;
+      st.form.prepaid = null;
+      showBooking(form);
+      rebuildVehicles(form);
+    }
+
     /* ------------------------------------------------------------ Форма */
 
     function readContract(form) {
@@ -721,7 +798,8 @@
           equipment: (st.pre.equipment[type] || []).map((it) => ({ key: it.key, ok: Boolean(form.elements[`eq_${it.key}`]?.checked), ...(it.key === 'helmets' ? { count: g('helmets') } : {}) })),
           perDay: g('perDay'), total: g('total'), deposit: g('deposit'), paid: g('paid'), payMethod: g('payMethod'),
           baseTotal: g('baseTotal'), discount: readDiscount(form),
-          requestId: g('requestId') || st.form.requestId || null
+          requestId: g('requestId') || st.form.requestId || null,
+          bookingOpId: g('bookingOpId') || null
         }
       };
     }
@@ -742,7 +820,7 @@
       const out = form.querySelector('[data-dc-days]');
       if (out) out.textContent = days(from, to);
       const note = form.querySelector('[data-dc-quote]');
-      if (!v || !from || !to || to.slice(0, 10) < from.slice(0, 10)) return;
+      if (!v || !from || !to || to.slice(0, 10) < from.slice(0, 10)) { if (vehicleChanged) await loadBookings(form); return; }
       try {
         const p = await api(`/docs/prefill?vehicleId=${v.id}&from=${from.slice(0, 10)}&to=${to.slice(0, 10)}`);
         if (p.quote?.total) {
@@ -755,6 +833,7 @@
         if (note) note.textContent = st.quoteNote;
         recalcMoney(form);
       } catch { /* цену впишут вручную */ }
+      if (vehicleChanged) await loadBookings(form);
     }
 
     async function fillFromRequest(form, id) {
@@ -996,6 +1075,14 @@
         return true;
       }
       if (el.closest('[data-dc-subclose]')) { st.sub = null; ctx.rerender(); return true; }
+      const useB = el.closest('[data-dc-usebooking]');
+      if (useB) {
+        const b = st.bookings.find((x) => x.opId === Number(useB.dataset.dcUsebooking));
+        const form = useB.closest('form');
+        if (b && form) applyBooking(form, b);
+        return true;
+      }
+      if (el.closest('[data-dc-nobooking]')) { const form = el.closest('form'); if (form) dropBooking(form); return true; }
       const pdel = el.closest('[data-dc-photodel]');
       if (pdel) {
         const [id, index] = pdel.dataset.dcPhotodel.split(':').map(Number);
