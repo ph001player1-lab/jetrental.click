@@ -61,7 +61,7 @@ import { crmList, crmClient, saveClient, setTags, addNote, mergeClients, importC
 import { recognizeContractPhotos, AiError } from './ai/recognize.js';
 import { renterOf, parsePhotos, contractProposal } from './ai/proposal.js';
 import { mediaCounts, fleetMediaList, fleetMediaFile } from './vehicleMedia.js';
-import { gameState } from './game.js';
+import { gameState, gameLog } from './game.js';
 import { financeAiLog, financeAiIgnore, financeAiRetry } from './groupFinance.js';
 import { opDrafts, opDraftCreate, opDraftGet, opDraftPhotoAdd, opDraftPhotoGet, opDraftPhotoDelete, opDraftUpdate, opDraftCancel, opDraftRecognize, opDraftManual,
   opDraftApply, opDraftAttach, opVehicle, opQuote, expensesList, expensePhoto, expenseDelete, moneyDelete, allowedOps } from './operations.js';
@@ -844,6 +844,7 @@ const ROUTES = {
   'GET /api/staff/fleet': fleet,
   // «Игра» — режим наблюдателя (владелец и админ)
   'GET /api/staff/game/state': signedIn(gameState),
+  'GET /api/staff/game/log': signedIn(gameLog),
   'GET /api/staff/requests': requests,
   'POST /api/staff/requests/archive': signedIn(requestArchive),
   'GET /api/staff/price': signedIn(priceRoute),

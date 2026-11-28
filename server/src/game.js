@@ -31,7 +31,10 @@ import { siteOnline, botChatsSince, botChatsActive } from './gameLive.js';
 import { ledgerSnapshot } from './groupFinance.js';
 
 const BANGKOK_MS = 7 * 3600000;
-const EVENTS_BACK_MS = 30 * 60000;
+// Лента игры — за последние 48 часов (старые события только в ленте, без анимаций)
+const EVENTS_BACK_MS = 48 * 3600000;
+const FEED_LIMIT = 400;
+const LOG_LIMIT = 3000;
 const FINANCE_CACHE_MS = 60000;
 
 const iso = (ms) => new Date(ms).toISOString();
@@ -95,18 +98,18 @@ const q = {
   expensesBy: db.raw.prepare('SELECT by_email email, by_name name, MAX(created_at) at FROM expenses WHERE created_at >= ? AND deleted_at IS NULL GROUP BY by_email, by_name'),
   draftsBy: db.raw.prepare('SELECT staff_email email, NULL name, MAX(updated_at) at FROM op_drafts WHERE updated_at >= ? GROUP BY staff_email'),
   takenBy: db.raw.prepare("SELECT NULL email, taken_by_name name, MAX(taken_at) at FROM requests WHERE taken_at >= ? GROUP BY taken_by_name"),
-  // события для анимаций
-  evStatus: db.raw.prepare('SELECT id, plate, kind, by_email, by_name, at FROM vehicle_events WHERE at > ? ORDER BY at LIMIT 200'),
+  // события для ленты и анимаций: (from, to], самые новые первыми
+  evStatus: db.raw.prepare('SELECT id, plate, kind, by_email, by_name, at, undone_at FROM vehicle_events WHERE at > ? AND at <= ? ORDER BY at DESC LIMIT ?'),
   evGroup: db.raw.prepare(`SELECT m.id, m.ts, m.kind, m.author, m.author_name, GROUP_CONCAT(p.plate) plates FROM wa_messages m
     LEFT JOIN wa_message_plates p ON p.message_id = m.id AND p.role IN ('main', 'to')
-    WHERE m.ts > ? AND m.status != 'ignored' AND m.kind IN (${[...OPERATION_KINDS, 'shift_start', 'shift_end'].map((k) => `'${k}'`).join(',')})
+    WHERE m.ts > ? AND m.ts <= ? AND m.status != 'ignored' AND m.kind IN (${[...OPERATION_KINDS, 'shift_start', 'shift_end'].map((k) => `'${k}'`).join(',')})
       AND instr(COALESCE(m.text, ''), '[portal ') = 0
-    GROUP BY m.id ORDER BY m.ts LIMIT 200`),
-  evDocs: db.raw.prepare('SELECT id, kind, number, created_at, created_by, created_name FROM documents WHERE created_at > ? ORDER BY created_at LIMIT 100'),
-  evMoves: db.raw.prepare('SELECT id, at, dir, kind, thb, method, by_email, by_name FROM cash_moves WHERE at > ? AND deleted_at IS NULL ORDER BY at LIMIT 100'),
-  evExpenses: db.raw.prepare('SELECT id, created_at, thb, category, method, by_email, by_name FROM expenses WHERE created_at > ? AND deleted_at IS NULL ORDER BY created_at LIMIT 100'),
-  evRequests: db.raw.prepare("SELECT id, created_at, channel, kind, model, vehicle_type FROM requests WHERE created_at > ? AND channel != 'test' ORDER BY created_at LIMIT 100"),
-  evTaken: db.raw.prepare("SELECT id, taken_at, taken_by_name, channel FROM requests WHERE taken_at > ? AND channel != 'test' ORDER BY taken_at LIMIT 100"),
+    GROUP BY m.id ORDER BY m.ts DESC LIMIT ?`),
+  evDocs: db.raw.prepare('SELECT id, kind, number, created_at, created_by, created_name FROM documents WHERE created_at > ? AND created_at <= ? ORDER BY created_at DESC LIMIT ?'),
+  evMoves: db.raw.prepare('SELECT id, at, dir, kind, thb, method, by_email, by_name FROM cash_moves WHERE at > ? AND at <= ? AND deleted_at IS NULL ORDER BY at DESC LIMIT ?'),
+  evExpenses: db.raw.prepare('SELECT id, created_at, thb, category, method, by_email, by_name FROM expenses WHERE created_at > ? AND created_at <= ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT ?'),
+  evRequests: db.raw.prepare("SELECT id, created_at, channel, kind, model, vehicle_type FROM requests WHERE created_at > ? AND created_at <= ? AND channel != 'test' ORDER BY created_at DESC LIMIT ?"),
+  evTaken: db.raw.prepare("SELECT id, taken_at, taken_by_name, channel FROM requests WHERE taken_at > ? AND taken_at <= ? AND channel != 'test' ORDER BY taken_at DESC LIMIT ?"),
   openRequests: db.raw.prepare(`SELECT id, created_at, channel, kind, model, vehicle_type, date_from, date_to, source_ref, site_host, status, taken_by_name, taken_at
     FROM requests WHERE channel != 'test' AND archived_at IS NULL AND (status = 'new' OR (status = 'taken' AND taken_at >= ?)) ORDER BY created_at DESC LIMIT 60`)
 };
@@ -212,21 +215,42 @@ function siteView(now) {
 
 /* ------------------------------------------------------------ События */
 
-function eventsSince(idx, sinceIso, sinceMs) {
+/** События игры за (fromMs, toMs] — по времени; limit — сколько самых новых из каждого источника */
+function eventsBetween(idx, fromMs, toMs, limit) {
   const out = [];
+  const a = [iso(fromMs), iso(toMs), limit];
   const who = (s) => (s ? { staffId: s.id, who: s.name } : { staffId: null, who: null });
-  for (const r of q.evStatus.all(sinceIso)) out.push({ id: `ve${r.id}`, at: r.at, type: 'status', status: r.kind, plate: r.plate, ...who(idx.byWho(r.by_email, r.by_name)) });
-  for (const r of q.evGroup.all(sinceIso)) {
+  for (const r of q.evStatus.all(...a)) out.push({ id: `ve${r.id}`, at: r.at, type: 'status', status: r.kind, plate: r.plate, ...(r.undone_at ? { cancelled: true } : {}), ...who(idx.byWho(r.by_email, r.by_name)) });
+  for (const r of q.evGroup.all(...a)) {
     const s = idx.byAuthor(r.author, r.author_name);
     out.push({ id: `wa${r.id}`, at: r.ts, type: r.kind === 'shift_start' || r.kind === 'shift_end' ? r.kind : 'group', kind: r.kind, plates: r.plates ? String(r.plates).split(',') : [], ...who(s), who: s?.name || r.author_name || null });
   }
-  for (const r of q.evDocs.all(sinceIso)) out.push({ id: `dc${r.id}`, at: r.created_at, type: 'doc', kind: r.kind, number: r.number, ...who(idx.byWho(r.created_by, r.created_name)) });
-  for (const r of q.evMoves.all(sinceIso)) out.push({ id: `cm${r.id}`, at: r.at, type: 'money', dir: r.dir, kind: r.kind, thb: Math.round(r.thb || 0), method: r.method, ...who(idx.byWho(r.by_email, r.by_name)) });
-  for (const r of q.evExpenses.all(sinceIso)) out.push({ id: `ex${r.id}`, at: r.created_at, type: 'expense', thb: Math.round(r.thb || 0), category: r.category, method: r.method, ...who(idx.byWho(r.by_email, r.by_name)) });
-  for (const r of q.evRequests.all(sinceIso)) out.push({ id: `rq${r.id}`, at: r.created_at, type: 'request', requestId: r.id, channel: r.channel, kind: r.kind || null, what: r.model || r.vehicle_type || '' });
-  for (const r of q.evTaken.all(sinceIso)) out.push({ id: `rt${r.id}`, at: r.taken_at, type: 'request_taken', requestId: r.id, channel: r.channel, ...who(idx.byWho(null, r.taken_by_name)), who: r.taken_by_name || null });
-  for (const c of botChatsSince(sinceMs)) out.push({ id: `ch${c.at}${c.key}`, at: iso(c.at), type: 'chat', channel: c.channel, key: c.key });
-  return out.sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  for (const r of q.evDocs.all(...a)) out.push({ id: `dc${r.id}`, at: r.created_at, type: 'doc', kind: r.kind, number: r.number, ...who(idx.byWho(r.created_by, r.created_name)) });
+  for (const r of q.evMoves.all(...a)) out.push({ id: `cm${r.id}`, at: r.at, type: 'money', dir: r.dir, kind: r.kind, thb: Math.round(r.thb || 0), method: r.method, ...who(idx.byWho(r.by_email, r.by_name)) });
+  for (const r of q.evExpenses.all(...a)) out.push({ id: `ex${r.id}`, at: r.created_at, type: 'expense', thb: Math.round(r.thb || 0), category: r.category, method: r.method, ...who(idx.byWho(r.by_email, r.by_name)) });
+  for (const r of q.evRequests.all(...a)) out.push({ id: `rq${r.id}`, at: r.created_at, type: 'request', requestId: r.id, channel: r.channel, kind: r.kind || null, what: r.model || r.vehicle_type || '' });
+  for (const r of q.evTaken.all(...a)) out.push({ id: `rt${r.id}`, at: r.taken_at, type: 'request_taken', requestId: r.id, channel: r.channel, ...who(idx.byWho(null, r.taken_by_name)), who: r.taken_by_name || null });
+  for (const c of botChatsSince(fromMs)) if (c.at <= toMs) out.push({ id: `ch${c.at}${c.key}`, at: iso(c.at), type: 'chat', channel: c.channel, key: c.key });
+  return out.sort((x, y) => String(x.at).localeCompare(String(y.at)));
+}
+
+/**
+ * GET /api/staff/game/log?from=YYYY-MM-DD&to=YYYY-MM-DD — журнал игры за любой период (по дням
+ * Бангкока): всё, что видно в ленте, новые сверху. Владелец и админ.
+ */
+export async function gameLog(staff, req, res, url) {
+  if (!can(staff, 'game.view')) throw new HttpError(403, 'no_section_access');
+  const day = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? v : null);
+  const now = Date.now();
+  const today = bangkokDay(now);
+  const from = day(url.searchParams.get('from')) || today;
+  const to = day(url.searchParams.get('to')) || from;
+  if (to < from) throw new HttpError(400, 'date_order');
+  const fromMs = Date.parse(`${from}T00:00:00+07:00`) - 1;
+  const toMs = Math.min(Date.parse(`${to}T00:00:00+07:00`) + 86400000 - 1, now);
+  const idx = await staffIndex();
+  const all = eventsBetween(idx, fromMs, toMs, LOG_LIMIT + 1).reverse();
+  sendJson(res, 200, { from, to, events: all.slice(0, LOG_LIMIT), more: all.length > LOG_LIMIT });
 }
 
 /** Прибыль по дням с начала месяца (кэш на минуту) */
@@ -299,7 +323,7 @@ export async function gameState(staff, req, res, url) {
     finance: gameFinance(finance, now),
     site: siteView(now),
     chats: botChatsActive(now),
-    events: eventsSince(idx, iso(sinceMs), sinceMs)
+    events: eventsBetween(idx, sinceMs, now, FEED_LIMIT)
   });
 }
 

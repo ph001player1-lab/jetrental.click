@@ -1099,10 +1099,19 @@ function houseToNode(h, target) {
 const FEED = [];
 const clockStr = (m = S.sim) => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(Math.floor(m % 60)).padStart(2, '0')}`;
 const timeOf = (iso) => { const d = new Date(Date.parse(iso) + 7 * 3600000); return Number.isFinite(d.getTime()) ? `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}` : clockStr(); };
+// Лента — за 48 часов: вчерашние и более ранние события — с датой
+const bkkDayOf = (ms) => new Date(ms + 7 * 3600000).toISOString().slice(0, 10);
+function stampOf(at) {
+  const ms = Date.parse(at);
+  if (!Number.isFinite(ms)) return clockStr();
+  const d = bkkDayOf(ms);
+  if (d === bkkDayOf(nowMs())) return timeOf(at);
+  return d === bkkDayOf(nowMs() - 86400000) ? `вчера ${timeOf(at)}` : `${d.slice(8, 10)}.${d.slice(5, 7)} ${timeOf(at)}`;
+}
 function feed(text, src, icon, at) {
-  const item = { time: at ? timeOf(at) : clockStr(), text, src, icon };
+  const item = { time: at ? stampOf(at) : clockStr(), text, src, icon, at };
   FEED.unshift(item);
-  if (FEED.length > 80) FEED.pop();
+  if (FEED.length > 500) FEED.pop();
   feedAdd(item);
 }
 function bubble(a, text, sec = 2.6) { if (a) a.bubble = { text, until: S.rt + sec }; }
@@ -1490,7 +1499,7 @@ function eventText(e) {
   const who = e.who ? ` · ${e.who}` : '';
   if (e.type === 'status') {
     const v = [...VEH_BY_ID.values()].find((x) => plateKey(x.plate) === plateKey(e.plate));
-    return [`${STATUS_ACT[e.status] || e.status}: ${v ? v.model : ''} (${e.plate})${who}`, 'Парк: статус', { rent: '🔑', free: '↩️', reserve: '🔖', service: '🔧' }[e.status] || '🚗'];
+    return [`${STATUS_ACT[e.status] || e.status}: ${v ? v.model : ''} (${e.plate})${who}${e.cancelled ? ' · отменено' : ''}`, 'Парк: статус', { rent: '🔑', free: '↩️', reserve: '🔖', service: '🔧' }[e.status] || '🚗'];
   }
   if (e.type === 'shift_start') return [`${e.who || 'Сотрудник'}: отметка «на месте»`, 'группа WhatsApp → табель', '📲'];
   if (e.type === 'shift_end') return [`${e.who || 'Сотрудник'}: отметка «ушёл»`, 'группа WhatsApp → табель', '🏁'];
@@ -1531,9 +1540,25 @@ function playEvent(e) {
     guestChat(e.channel);
   }
 }
+// Перегон в сервис и из сервиса: пока сцена ждёт очереди — машина помечена, второй раз не ставим
+function toService(v) { v.queuedMove = true; play('svcIn', [], () => { v.queuedMove = false; return serviceIn(v); }); }
+function fromService(v) { v.queuedMove = true; play('svcOut', [], () => { v.queuedMove = false; return serviceOut(v); }); }
+/**
+ * Порядок на стоянках (раз в несколько секунд): техника «в ремонте» стоит только на парковке
+ * сервиса или на подъёмнике — не на парковке компании; вышла из ремонта — уезжает из сервиса.
+ * Нужно, если статус сменился, пока машина была занята в другой сцене (её как раз возвращали).
+ */
+function reconcileVehicles() {
+  for (const v of VEH_BY_ID.values()) {
+    if (v.claim || v.queuedMove) continue;
+    const inService = Boolean(v.gspot) || LIFT.v === v;
+    if (v.status === 'service' && !inService && (v.slot || GWAIT.some((g) => !g.v))) toService(v);
+    else if (v.status !== 'service' && inService) fromService(v);
+  }
+}
 function transition(v, from, to, who) {
-  if (to === 'service') { play('svcIn', [], () => serviceIn(v)); return; }
-  if (from === 'service') { play('svcOut', [], () => serviceOut(v)); return; }
+  if (to === 'service') { toService(v); return; }
+  if (from === 'service') { fromService(v); return; }
   if (to === 'rent' && v.slot) { play('issue', [], () => issueScene(v, who)); return; }
   if (from === 'rent' && (to === 'free' || to === 'reserve')) { play('return', [], () => returnScene(v, who)); return; }
   placeVehicle(v);
@@ -1753,6 +1778,7 @@ function updateWorld(dt) {
   if (mechs.length) for (const v of VEH) if (v.status === 'service' && !v.staffOf) mechs[0].tasks.push({ kind: 'svc', icon: '🔧', what: `${v.model} (${v.plate})`, late: false });
   for (const a of staffList()) if (a.state === 'rest' && a.role === 'service' && VEH.some((v) => v.gspot && v.status === 'service')) a.wanted = true;
   for (const a of PEOPLE.slice()) updatePerson(a, t);
+  if (!firstSync && S.rt - (S.fixT || 0) > 3) { S.fixT = S.rt; reconcileVehicles(); }
   tryStart();
   stepScenarios();
   for (let i = 0; i < LATER.length; i++) if (S.gt >= LATER[i].at) { const f = LATER[i].fn; LATER.splice(i--, 1); f(); }
@@ -2315,15 +2341,77 @@ function feedAdd(item) {
   if (!root) return;
   const list = root.querySelector('[data-gm-feed]');
   list.prepend(feedLi(item));
-  while (list.children.length > 60) list.lastChild.remove();
+  while (list.children.length > 500) list.lastChild.remove();
 }
 function setPanelTab(tab) {
   panelTab = tab;
   root.querySelectorAll('[data-gm-ptab]').forEach((b2) => b2.setAttribute('aria-pressed', String(b2.dataset.gmPtab === tab)));
   root.querySelector('[data-gm-team]').hidden = tab !== 'team';
   root.querySelector('[data-gm-feed]').hidden = tab !== 'feed';
+  root.querySelector('[data-gm-feedhead]').hidden = tab !== 'feed';
   panelKey = ''; renderPanel();
 }
+
+/* ---------- журнал игры: все события за любой период (владелец и админ) ---------- */
+const LOG = { from: null, to: null, kind: '', data: null, busy: false, error: null };
+const LOG_KINDS = [['', 'все события'], ['status', '🚗 Парк: статусы'], ['group', '📲 группа WhatsApp'], ['doc', '✍️ документы'], ['money', '💰 деньги и расходы'], ['request', '📨 заявки и чаты']];
+const logKindOf = (e) => (e.type === 'shift_start' || e.type === 'shift_end' ? 'group' : e.type === 'expense' ? 'money' : ['request_taken', 'chat'].includes(e.type) ? 'request' : e.type);
+const bkkToday = () => bkkDayOf(nowMs());
+const dayShift = (d, n) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+const dmyOf = (d) => `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}`;
+const WD = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
+function logHtml() {
+  const t = bkkToday();
+  const presets = [['today', 'Сегодня', t, t], ['yesterday', 'Вчера', dayShift(t, -1), dayShift(t, -1)], ['7', '7 дней', dayShift(t, -6), t], ['30', '30 дней', dayShift(t, -29), t]];
+  const chips = presets.map(([id, label, f, to]) => `<button type="button" class="gm-chip" data-gm-logp="${f}|${to}" aria-pressed="${LOG.from === f && LOG.to === to}">${label}</button>`).join('');
+  let body = '';
+  if (LOG.busy) body = '<p class="gm-log-note">Загружаю…</p>';
+  else if (LOG.error) body = `<p class="gm-log-note">${esc(LOG.error)}</p>`;
+  else if (LOG.data) {
+    const list = LOG.data.events.filter((e) => !LOG.kind || logKindOf(e) === LOG.kind);
+    const days = new Map();
+    for (const e of list) {
+      const d = bkkDayOf(Date.parse(e.at));
+      if (!days.has(d)) days.set(d, []);
+      days.get(d).push(e);
+    }
+    body = list.length ? [...days].map(([d, items]) => `<h4>${dmyOf(d)} · ${WD[new Date(`${d}T00:00:00Z`).getUTCDay()]} <small>${items.length}</small></h4><ol class="gm-feed">${items.map((e) => {
+      const [text, src, icon] = eventText(e);
+      return `<li><time>${esc(timeOf(e.at))}</time>${esc(icon)} ${esc(text)}<small>${esc(src)}</small></li>`;
+    }).join('')}</ol>`).join('') : '<p class="gm-log-note">За этот период событий нет.</p>';
+    body = `<p class="gm-log-note">Событий: <b>${list.length}</b>${LOG.data.more ? ' — показаны последние 3 000, выберите период короче' : ''}</p>${body}`;
+  }
+  return `<div class="gm-log-head"><b>📜 Журнал игры</b><button type="button" class="gm-logx" data-gm-act="log-close" aria-label="Закрыть">✕</button></div>
+    <div class="gm-log-bar">${chips}
+      <label>с <input type="date" data-gm-logfrom value="${esc(LOG.from || t)}" max="${t}"></label>
+      <label>по <input type="date" data-gm-logto value="${esc(LOG.to || t)}" max="${t}"></label>
+      <button type="button" class="gm-chip gm-chip--go" data-gm-act="log-load">Показать</button>
+      <select data-gm-logkind aria-label="Что показать">${LOG_KINDS.map(([id, label]) => `<option value="${id}"${LOG.kind === id ? ' selected' : ''}>${label}</option>`).join('')}</select>
+    </div>
+    <div class="gm-log-list" data-gm-loglist>${body}</div>`;
+}
+function renderLog() {
+  const box = root.querySelector('[data-gm-log]');
+  if (!box.hidden) box.innerHTML = logHtml();
+}
+async function loadLog(from, to) {
+  LOG.from = from; LOG.to = to; LOG.busy = true; LOG.error = null; renderLog();
+  try {
+    const res = await fetch(`/api/staff/game/log?from=${from}&to=${to}`, { credentials: 'same-origin', cache: 'no-store' });
+    if (!res.ok) throw new Error(String(res.status));
+    LOG.data = await res.json();
+  } catch (err) {
+    LOG.data = null;
+    LOG.error = 'Не удалось загрузить журнал. Попробуйте ещё раз.';
+  }
+  LOG.busy = false; renderLog();
+}
+function openLog() {
+  const box = root.querySelector('[data-gm-log]');
+  box.hidden = false;
+  if (!LOG.data) { const t = bkkToday(); loadLog(t, t); } else renderLog();
+}
+function closeLog() { root.querySelector('[data-gm-log]').hidden = true; }
 let hudT = 0;
 function hud() {
   root.querySelector('[data-gm-clock]').textContent = clockStr();
@@ -2371,8 +2459,10 @@ const TEMPLATE = `
     <aside class="gm-hud gm-box gm-panel" data-gm-panel>
       <div class="gm-ptabs"><button type="button" data-gm-ptab="team" aria-pressed="true">👥 Команда</button><button type="button" data-gm-ptab="feed" aria-pressed="false">📜 Лента</button></div>
       <div class="gm-team" data-gm-team></div>
+      <div class="gm-feedhead" data-gm-feedhead hidden><span>за 48 часов</span><button type="button" class="gm-chip" data-gm-act="log">📜 Весь журнал</button></div>
       <ol class="gm-feed" data-gm-feed hidden></ol>
     </aside>
+    <div class="gm-hud gm-box gm-log" data-gm-log role="dialog" aria-label="Журнал игры" hidden></div>
     <div class="gm-hud gm-box gm-card" data-gm-card role="dialog" aria-label="Карточка"></div>
     <div class="gm-tip" data-gm-tip hidden></div>
     <div class="gm-hud gm-box gm-chart" data-gm-chart hidden></div>
@@ -2395,10 +2485,15 @@ function build() {
   card = root.querySelector('[data-gm-card]');
   tipEl = root.querySelector('[data-gm-tip]');
   wireCanvas();
+  root.addEventListener('change', (e) => {
+    if (e.target.matches('[data-gm-logkind]')) { LOG.kind = e.target.value; renderLog(); }
+  });
   root.addEventListener('click', (e) => {
     if (e.target.closest('[data-gm-close]')) { closeCard(); return; }
     const tabBtn = e.target.closest('[data-gm-ptab]');
     if (tabBtn) { setPanelTab(tabBtn.dataset.gmPtab); return; }
+    const logp = e.target.closest('[data-gm-logp]');
+    if (logp) { const [f, t] = logp.dataset.gmLogp.split('|'); loadLog(f, t); return; }
     const unit = e.target.closest('[data-gm-unit]');
     if (unit) {
       const a = STAFF.get(Number(unit.dataset.gmUnit)) || STAFF.get(unit.dataset.gmUnit);
@@ -2417,6 +2512,13 @@ function build() {
     else if (k === 'office') centerOn(16, 14);
     else if (k === 'finance') { if (S.zoom < 2) zoomAt(cssW / 2, cssH / 2, 2); centerOn(23.5, 13.4); }
     else if (k === 'panel') root.querySelector('[data-gm-panel]').classList.toggle('gm-open');
+    else if (k === 'log') openLog();
+    else if (k === 'log-close') closeLog();
+    else if (k === 'log-load') {
+      const f = root.querySelector('[data-gm-logfrom]').value;
+      const t = root.querySelector('[data-gm-logto]').value;
+      if (f && t) loadLog(f <= t ? f : t, f <= t ? t : f);
+    }
     else if (k === 'chart') setChartOpen(true);
     else if (k === 'chart-close') setChartOpen(false);
     else if (k === 'sound') {
@@ -2430,7 +2532,7 @@ function build() {
   document.addEventListener('keydown', (e) => {
     if (!root.isConnected || /INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName || '')) return;
     if (S.intro) { skipIntro(); return; }
-    if (e.key === 'Escape') closeCard();
+    if (e.key === 'Escape') { if (!root.querySelector('[data-gm-log]').hidden) closeLog(); else closeCard(); }
     else if (e.key === '+' || e.key === '=') zoomAt(cssW / 2, cssH / 2, S.zoom * 1.35);
     else if (e.key === '-') zoomAt(cssW / 2, cssH / 2, S.zoom / 1.35);
   });
