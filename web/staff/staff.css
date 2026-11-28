@@ -395,7 +395,12 @@ button.problem:hover { background: var(--surface-2); }
 
 /* --- Календарь --- */
 
-.cal { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: var(--radius); border: 1px solid var(--line); background: var(--surface); }
+/* Строка дат — отдельной полосой над календарём: закреплена под фильтрами при прокрутке вниз
+   и сдвигается вбок вместе с календарём (его прокрутка вбок — своя) */
+.cal-headbar { position: sticky; top: var(--cal-head-top, 60px); z-index: 6; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius) var(--radius) 0 0; background: var(--surface); box-shadow: 0 2px 6px rgba(0, 0, 0, .06); }
+.cal-headbar__win { flex: 1; min-width: 0; overflow: hidden; display: flex; }
+.cal-headbar__win .cal__track { will-change: transform; }
+.cal { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 0 0 var(--radius) var(--radius); border: 1px solid var(--line); border-top: 0; background: var(--surface); }
 .cal__grid { position: relative; min-width: max-content; }
 .cal__row { display: flex; border-bottom: 1px solid var(--line); min-height: 44px; }
 .cal__row:last-child { border-bottom: 0; }
@@ -408,7 +413,8 @@ button.problem:hover { background: var(--surface-2); }
 .cal__day { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--line); }
 .cal__day--weekend { background: var(--surface-2); opacity: .6; }
 .cal__head .cal__label { font-weight: 700; color: var(--muted); }
-.cal__head { position: sticky; top: 0; z-index: 4; background: var(--surface); }
+.cal__head { background: var(--surface); }
+.cal-headbar .cal__head { border-bottom: 1px solid var(--line); }
 .cal__date { position: absolute; top: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 11px; color: var(--muted); border-left: 1px solid var(--line); }
 .cal__date b { font-size: 13px; color: var(--text); }
 .cal__date--today b { color: var(--brand); }

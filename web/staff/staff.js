@@ -797,7 +797,13 @@
     view.classList.toggle('view--wide', state.tab === 'game');
     if (state.tab === 'overview') view.innerHTML = renderOverview();
     if (state.tab === 'fleet') { view.innerHTML = renderFleet(); vehicles.afterRender(); }
-    if (state.tab === 'calendar') view.innerHTML = renderCalendar();
+    if (state.tab === 'calendar') {
+      // Фоновое обновление не сбрасывает прокрутку календаря
+      const old = view.querySelector('.cal');
+      const left = old ? old.scrollLeft : 0;
+      view.innerHTML = renderCalendar();
+      calendarAfterRender(left);
+    }
     if (state.tab === 'requests') view.innerHTML = renderRequests();
     if (state.tab === 'site') view.innerHTML = renderSite();
     if (state.tab === 'server') renderServer();
@@ -1731,6 +1737,30 @@
 
   /* -------------------------------------------------------------- Calendar */
 
+  /**
+   * Строка дат всегда видна: отдельная полоса закреплена под строкой фильтров (её высота разная
+   * на телефоне и компьютере — считаем после отрисовки) и сдвигается вбок вместе с календарём.
+   */
+  function calendarAfterRender(left = 0) {
+    const cal = document.querySelector('#view .cal');
+    const headbar = document.querySelector('#view [data-cal-headbar]');
+    if (!cal || !headbar) return;
+    const bar = document.querySelector('#view .toolbar');
+    const top = (parseFloat(bar ? getComputedStyle(bar).top : '') || 60) + (bar ? bar.offsetHeight : 0);
+    headbar.style.setProperty('--cal-head-top', `${top}px`);
+    const track = headbar.querySelector('[data-cal-headtrack]');
+    const sync = () => { track.style.transform = `translateX(${-cal.scrollLeft}px)`; };
+    cal.addEventListener('scroll', sync, { passive: true });
+    if (left) cal.scrollLeft = left;
+    sync();
+  }
+  let calFitTimer = null;
+  window.addEventListener('resize', () => {
+    if (state.tab !== 'calendar') return;
+    clearTimeout(calFitTimer);
+    calFitTimer = setTimeout(() => calendarAfterRender(document.querySelector('#view .cal')?.scrollLeft || 0), 100);
+  });
+
   function renderCalendar() {
     if (!state.fleet) return loadingBox();
     const days = state.calDays;
@@ -1753,15 +1783,15 @@
     const nowX = x(Date.now());
 
     const header = `
-      <div class="cal__row cal__head">
+      <div class="cal-headbar" data-cal-headbar><div class="cal__row cal__head">
         <div class="cal__label">${esc(t('cal.vehicle'))}</div>
-        <div class="cal__track" style="width:${width}px">
+        <div class="cal-headbar__win"><div class="cal__track" data-cal-headtrack style="width:${width}px">
           ${dayCells.map((d) => `
             <div class="cal__date${d.i === 0 ? ' cal__date--today' : ''}" style="left:${d.i * dayWidth}px;width:${dayWidth}px">
               <b>${d.local.getUTCDate()}</b><span>${days <= 14 ? esc(fmtWeekday.format(d.local)) : ''}</span>
             </div>`).join('')}
-        </div>
-      </div>`;
+        </div></div>
+      </div></div>`;
 
     const list = filteredCars();
     const groups = [...Object.keys(TYPES), null].map((type) => ({ type, cars: list.filter((c) => (c.type || null) === type) })).filter((g) => g.cars.length);
@@ -1787,7 +1817,7 @@
     return `
       ${renderFilters({ withStatus: false })}
       <div class="chips" style="margin-bottom:10px">${ranges}</div>
-      ${list.length ? `<div class="cal"><div class="cal__grid">${header}${rows}</div></div>` : nothingFound()}
+      ${list.length ? `${header}<div class="cal"><div class="cal__grid">${rows}</div></div>` : nothingFound()}
       <div class="legend">
         <span><i style="background:var(--rent)"></i>${esc(t('cal.rental'))}</span>
         <span><i style="background:var(--reserve)"></i>${esc(t('cal.booking'))}</span>
