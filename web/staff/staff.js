@@ -113,8 +113,8 @@
     overview: ['overview.view'], fleet: ['fleet.view'], price: ['price.view'], calendar: ['calendar.view'], requests: ['requests.view'],
     journal: ['journal.view', 'timesheet.view', 'reconcile.view', 'whatsapp.view'],
     crm: ['crm.view'], marketing: ['marketing.view'], finance: ['finance.view'], site: ['site.view'], server: ['server.view'], access: ['access.admin'],
-    // «Настройки» (связь, домены, ключи, оплаты сервисов, модель ИИ) — только админ
-    settings: ['access.admin'],
+    // «Настройки» (связь, домены, ключи, оплаты сервисов, модель ИИ) — админ; владелец видит только контакты сайта
+    settings: ['access.admin', 'site.contacts'],
     // «Документы»: договоры, акты, квитанции
     docs: ['docs.view', 'docs.edit'],
     tickets: ['tickets.view'],
@@ -1210,6 +1210,7 @@
 
   const settings = window.STAFF_SETTINGS.create({
     api, esc, dateTime,
+    isAdmin: () => can('access.admin'),
     rerender: () => { if (state.tab === 'settings') $('#view').innerHTML = settings.render(); }
   });
 

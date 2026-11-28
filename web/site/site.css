@@ -411,3 +411,12 @@ a.vcard__media { text-decoration: none; }
 
 .notfound h1 { font-size: clamp(32px, 5vw, 52px); margin-bottom: 12px; }
 .notfound .hero__ctas { margin-top: 26px; }
+
+/* Карта с нашей точкой (контакты) */
+.map { margin-top: 28px; border-radius: 16px; overflow: hidden; border: 1px solid rgba(0, 0, 0, .1); background: #fff; }
+.map iframe { display: block; width: 100%; height: 380px; border: 0; }
+.map__bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 14px 16px; }
+.map__addr { flex: 1 1 260px; font-weight: 600; }
+.map__btn { display: inline-flex; align-items: center; justify-content: center; min-height: 42px; padding: 0 16px; border-radius: 999px; background: #0e7c86; color: #fff; font-weight: 600; text-decoration: none; }
+.map__btn--ghost { background: transparent; color: inherit; border: 1px solid currentColor; }
+@media (max-width: 640px) { .map iframe { height: 280px; } .map__btn { flex: 1 1 100%; } }

@@ -66,6 +66,8 @@ import { financeAiLog, financeAiIgnore, financeAiRetry } from './groupFinance.js
 import { opDrafts, opDraftCreate, opDraftGet, opDraftPhotoAdd, opDraftPhotoGet, opDraftPhotoDelete, opDraftUpdate, opDraftCancel, opDraftRecognize, opDraftManual,
   opDraftApply, opDraftAttach, opVehicle, opQuote, expensesList, expensePhoto, expenseDelete, moneyDelete, allowedOps } from './operations.js';
 import { opsList, opsOne, opsCancel, opsEdit, opsBookings } from './opsRegistry.js';
+import { siteContactsRoute, siteContactsSave, siteContactsResolve } from './siteContacts.js';
+import { jetmobilityDefaults } from './site/brands.js';
 import { importCashbook } from './cashbook.js';
 import { serverReport, serverStatusRoute, saveServerSettings, alertAdminsOnce } from './serverStats.js';
 import { listTickets, ticketsBadge, createTicket, uploadShot, getShot, setTicketStatus, markSeen, deleteTicket } from './tickets.js';
@@ -971,6 +973,9 @@ const ROUTES = {
   'POST /api/staff/discounts/decide': signedIn(discountsDecide),
   'POST /api/staff/settings/discounts': signedIn(discountsSettingsRoute),
   'GET /api/staff/settings': signedIn(settingsRoute),
+  'GET /api/staff/site-contacts': signedIn(siteContactsRoute(jetmobilityDefaults())),
+  'POST /api/staff/site-contacts/save': signedIn(siteContactsSave),
+  'POST /api/staff/site-contacts/resolve': signedIn(siteContactsResolve),
   'POST /api/staff/settings/service': signedIn(settingsService),
   'POST /api/staff/settings/service/delete': signedIn(settingsServiceDelete),
   'POST /api/staff/settings/service/paid': signedIn(settingsPaid),

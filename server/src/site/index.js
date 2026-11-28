@@ -21,6 +21,7 @@ import { translator, SITE_LANGS } from './texts.js';
 import { pagePath, splitLang, TYPE_BY_CATEGORY, TYPE_ORDER } from './urls.js';
 import { siteCatalog, modelTariffs } from './data.js';
 import { catalogVersion } from '../publicApi.js';
+import { contactsVersion } from '../siteContacts.js';
 import { legacyTarget } from './legacy.js';
 import * as modern from './render.js';
 import * as classic from './classic.js';
@@ -203,7 +204,7 @@ export async function handleSite(req, res, url) {
 
   const key = `${brand.host}|${pathname}`;
   const cached = pageCache.get(key);
-  const version = `${data.updatedAt}|${catalogVersion()}`;
+  const version = `${data.updatedAt}|${catalogVersion()}|${contactsVersion()}`;
   if (cached && Date.now() - cached.at < PAGE_CACHE_MS && cached.version === version) {
     sendHtml(req, res, cached.status, cached.html, brand);
     return true;

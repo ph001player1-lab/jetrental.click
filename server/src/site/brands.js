@@ -7,6 +7,7 @@
  */
 
 import { config } from '../config.js';
+import { applySiteContacts } from '../siteContacts.js';
 
 const CONTACTS = {
   whatsapp: '79037965656',
@@ -64,6 +65,10 @@ export function brandForHost(hostHeader) {
     return { ...CONTACTS, ...BRANDS.kokoncar, host, origin: `https://${host}`, indexable: false, theme: 'classic' };
   }
   if (site.kokonHosts.includes(host)) return { ...CONTACTS, ...BRANDS.kokoncar, host, theme: site.kokonTheme };
-  if (site.jetmobilityHosts.includes(host)) return { ...CONTACTS, ...BRANDS.jetmobility, host };
+  // Контакты jetmobility.org — из портала («Настройки» → «Сайт: контакты»), если их там сохранили
+  if (site.jetmobilityHosts.includes(host)) return applySiteContacts({ ...CONTACTS, ...BRANDS.jetmobility, host });
   return null;
 }
+
+/** jetmobility.org как в коде (до правок из портала) — для формы контактов */
+export const jetmobilityDefaults = () => ({ ...CONTACTS, ...BRANDS.jetmobility });

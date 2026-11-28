@@ -1859,3 +1859,12 @@ button.gm-box:hover { background: rgba(40, 50, 66, .9); }
 .ops-danger { color: var(--rent); border-color: var(--rent); }
 .ops-refund { margin: 0 0 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; display: grid; gap: 6px; }
 .ops-refund legend { font-weight: 600; padding: 0 4px; }
+
+/* «Настройки» → «Сайт: контакты» */
+.set-site h4 { margin: 14px 0 6px; }
+.set-phone { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 6px; }
+.set-phone .search { flex: 1 1 200px; max-width: 280px; }
+.set-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px 12px; }
+.set-grid .set-wide { grid-column: 1 / -1; }
+.set-mapbox { margin-top: 10px; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); }
+.set-mapbox iframe { display: block; width: 100%; height: 240px; border: 0; }

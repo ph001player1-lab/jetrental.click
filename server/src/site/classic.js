@@ -14,7 +14,8 @@ import { siteSourceCode } from '../marketing.js';
 import { pagePath, langPrefix, CATEGORY_BY_TYPE } from './urls.js';
 import {
   NAV_KEY, esc, icon, isFullPhoto, waLink, tgLink, head, SPRITE, LOCK, crumbs, search,
-  modelUrl, badge, photoTag, galleryBlock, descOf, REVIEWS, bookingDialog, dayMonth, homeMeta, categoryMeta, modelCrumbs, modelMeta, notFoundMeta
+  modelUrl, badge, photoTag, galleryBlock, descOf, REVIEWS, bookingDialog, dayMonth, homeMeta, categoryMeta, modelCrumbs, modelMeta, notFoundMeta,
+  addressText, routeLink, headerPhones, mapBlock
 } from './common.js';
 
 // Как на старом сайте: меню — авто, мотоциклы, скутеры; на главной — мотоциклы, авто (бордовая полоса), скутеры
@@ -74,7 +75,7 @@ function header(ctx, alternates) {
       <nav class="cl-nav" id="nav" aria-label="Main">
         ${navLinks(ctx).join('\n        ')}
       </nav>
-      <div class="cl-header__phones">${brand.phones.map((p) => `<a href="tel:${p.tel}">${p.short}</a>`).join('')}</div>
+      <div class="cl-header__phones">${headerPhones(brand).map((p) => `<a href="tel:${esc(p.tel)}">${esc(p.short)}</a>`).join('')}</div>
       <div class="cl-header__msg">
         <a class="cl-pill cl-pill--wa" href="${esc(waLink(brand, t('wa.general')))}" target="_blank" rel="noopener">${icon('wa', 18)}<span>What'sApp</span></a>
         <a class="cl-pill cl-pill--tg" href="${tgLink(brand)}" target="_blank" rel="noopener" aria-label="Telegram">${icon('tg', 18)}<span>Telegram</span></a>
@@ -94,8 +95,8 @@ function footer(ctx) {
       <div class="cl-footer__inner">
         <div class="cl-footer__info">
           <p class="cl-footer__name">${esc(brand.wordmark || brand.name)}</p>
-          <p>${esc(t('contact.beach'))}<br>${esc(t('contact.country'))}</p>
-          <p>${brand.phones.map((p) => `<a href="tel:${p.tel}">${p.full}</a>`).join('<br>')}</p>
+          <p>${esc(addressText(ctx))}<br>${esc(t('contact.country'))}</p>
+          <p>${brand.phones.map((p) => `<a href="tel:${esc(p.tel)}">${esc(p.full)}</a>`).join('<br>')}</p>
           ${brand.email ? `<p><a href="mailto:${esc(brand.email)}">${esc(brand.email)}</a></p>` : ''}
           <p class="cl-footer__copy">© ${ctx.year} ${esc(brand.name)}</p>
         </div>
@@ -248,8 +249,8 @@ function contact(ctx) {
       <div class="cl-wrap cl-contact">
         <div class="cl-contact__info" data-reveal>
           <ul>
-            <li><b>${esc(t('contact.beach'))}</b><br>${esc(t('contact.country'))}<br><a href="https://www.google.com/maps/dir/?api=1&amp;destination=Bang+Tao+Beach+Phuket" target="_blank" rel="noopener">${esc(t('contact.route'))}</a></li>
-            <li>${brand.phones.map((p) => `<a href="tel:${p.tel}">${p.full}</a>`).join('<br>')}</li>
+            <li><b>${esc(addressText(ctx))}</b><br>${esc(t('contact.country'))}<br><a href="${esc(routeLink(brand))}" target="_blank" rel="noopener">${esc(t('contact.route'))}</a></li>
+            <li>${brand.phones.map((p) => `<a href="tel:${esc(p.tel)}">${esc(p.full)}</a>`).join('<br>')}</li>
             ${brand.email ? `<li><a href="mailto:${esc(brand.email)}">${esc(brand.email)}</a></li>` : ''}
           </ul>
           <div class="cl-contact__msg">
@@ -268,6 +269,7 @@ function contact(ctx) {
           <p class="form__status" role="status"></p>
         </form>
       </div>
+      ${brand.map ? `<div class="cl-wrap">${mapBlock(ctx, 'cl-map')}</div>` : ''}
     </section>`;
 }
 

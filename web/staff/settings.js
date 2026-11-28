@@ -10,7 +10,7 @@
 (function () {
   'use strict';
 
-  const VIEWS = [['links', '🔌 Связь'], ['pay', '💳 Сервисы и оплаты'], ['domains', '🌐 Домены и сайты'], ['keys', '🔑 Ключи'], ['ai', '🤖 Модель ИИ'], ['disc', '💸 Скидки']];
+  const VIEWS = [['links', '🔌 Связь'], ['pay', '💳 Сервисы и оплаты'], ['domains', '🌐 Домены и сайты'], ['site', '📞 Сайт: контакты'], ['keys', '🔑 Ключи'], ['ai', '🤖 Модель ИИ'], ['disc', '💸 Скидки']];
   const KIND = { server: '🖥 Сервер', domain: '🌐 Домен', subscription: '🔁 Подписка', service: '🧩 Сервис', other: '📦 Другое' };
   const PERIOD = { month: 'в месяц', quarter: 'в квартал', half: 'раз в полгода', year: 'в год', once: 'разово' };
   const AHEAD = { month: 'месяц', quarter: 'квартал', half: 'полгода', year: 'год' };
@@ -27,6 +27,10 @@
   const ERR = {
     name_required: 'Укажите название.', bad_cost: 'Сумма — числом.', bad_amount: 'Сумма оплаты — числом больше нуля.', bad_date: 'Дата — в формате ДД.ММ.ГГГГ.',
     bad_url: 'Ссылка должна начинаться с https://', unknown_service: 'Сервис не найден — обновите страницу.', unknown_payment: 'Оплата не найдена — обновите страницу.',
+    phone_required: 'Нужен хотя бы один телефон.', bad_phone: 'Телефон — от 8 до 15 цифр, с кодом страны.', bad_whatsapp: 'WhatsApp — номер с кодом страны (8–15 цифр).',
+    bad_telegram: 'Telegram — имя без @ (латиница, цифры, _; от 5 символов).', bad_map: 'Точка на карте: широта и долгота числами.',
+    map_not_found: 'Не нашёл точку в ссылке. Откройте место в Google Maps, нажмите «Поделиться» и вставьте ссылку — или впишите широту и долготу.',
+    owner_or_admin_only: 'Только владелец и админ.',
     bad_model: 'Выберите модель из списка.', bad_limit: 'Лимит — числом (0 — без лимита).', admin_only: 'Только для админа.',
     bad_invite: 'Это не ссылка-приглашение WhatsApp (нужна https://chat.whatsapp.com/…) или она уже не действует.',
     join_failed: 'Бот не смог вступить в группу: ссылку сбросили или в группу пускают только по одобрению админа.',
@@ -52,10 +56,19 @@
     const groupName = (list, id) => (list || []).find((g) => g.id === id)?.subject || null;
     const staleNote = (w) => (w?.groupsStale ? '<p class="note">⏳ WhatsApp временно не отдаёт список групп (так бывает после перезапуска). Показан последний известный список — настройки на месте, список обновится сам.</p>' : '');
 
+    // Владелец видит в «Настройках» только контакты сайта; админ — всё
+    const onlySite = () => !ctx.isAdmin();
+
     async function load() {
       try {
-        const [data, wabot, wa] = await Promise.all([api('/settings'), api('/wabot').catch(() => null), api('/wa').catch(() => null)]);
-        Object.assign(st, { data, wabot, wa, failed: false });
+        if (onlySite()) {
+          st.view = 'site';
+          st.site = await api('/site-contacts');
+        } else {
+          const [data, wabot, wa, site] = await Promise.all([api('/settings'), api('/wabot').catch(() => null), api('/wa').catch(() => null), api('/site-contacts').catch(() => null)]);
+          Object.assign(st, { data, wabot, wa, site });
+        }
+        st.failed = false;
       } catch {
         st.failed = true;
       }
@@ -99,6 +112,7 @@
 
     function render() {
       if (st.failed) return '<div class="set"><div class="card empty">Не удалось загрузить настройки. Обновите страницу.</div></div>';
+      if (onlySite()) return st.site ? `<div class="set">${renderSite()}</div>` : '<div class="set"><div class="card empty">Загрузка…</div></div>';
       if (!st.data) return '<div class="set"><div class="card empty">Загрузка…</div></div>';
       const d = st.data;
       const overdue = d.services.filter((s) => s.state === 'overdue').length;
@@ -114,6 +128,7 @@
       if (st.view === 'links') body = renderLinks();
       if (st.view === 'pay') body = renderPay();
       if (st.view === 'domains') body = renderDomains();
+      if (st.view === 'site') body = renderSite();
       if (st.view === 'keys') body = renderKeys();
       if (st.view === 'ai') body = renderAi();
       if (st.view === 'disc') body = renderDiscounts();
@@ -348,6 +363,67 @@
       return cls ? `<span class="set-badge set-badge--${cls}">${esc(text)}</span>` : esc(text);
     }
 
+    /* ------------------------------------------------- Сайт: контакты */
+
+    const LANG_NAMES = { en: 'English', ru: 'Русский', th: 'ไทย', zh: '中文' };
+    const phoneRow = (p, i) => `<div class="set-phone" data-set-phone>
+        <input class="search" name="phone" value="${esc(p.number || '')}" inputmode="tel" placeholder="+66 80 123 45 67" aria-label="Телефон ${i + 1}">
+        <label class="mk-check"><input type="checkbox" name="header"${p.header !== false ? ' checked' : ''}> в шапке</label>
+        <button type="button" class="icon-btn icon-btn--plain" data-set-phonedel aria-label="Убрать телефон">✕</button>
+      </div>`;
+
+    function renderSite() {
+      const d = st.site;
+      if (!d) return '<section class="card set-sec"><p class="muted">Не удалось загрузить контакты сайта.</p></section>';
+      const c = d.contacts;
+      const map = c.map || {};
+      const mapSrc = map.lat ? `https://www.google.com/maps?q=${map.lat},${map.lng}&z=16&output=embed` : '';
+      return `<section class="card set-sec set-site"><h3>📞 Контакты на сайте jetmobility.org</h3>
+        <p class="muted jr-small">Что здесь сохраните — через минуту на сайте: в шапке, в разделе «Контакты» и внизу страницы. kokoncar.com не меняется. ${d.saved ? `Последний раз сохранил(а) ${esc(d.by || '—')}, ${esc(ctx.dateTime(d.at))}.` : 'Пока на сайте то, что было в коде.'}</p>
+        <div data-set-sitemsg>${status(st.siteMsg)}</div>
+        <form data-set-sitecontacts novalidate>
+          <h4>Телефоны</h4>
+          <div data-set-phones>${(c.phones.length ? c.phones : [{ number: '' }]).map(phoneRow).join('')}</div>
+          <button type="button" class="link jr-small" data-set-phoneadd>＋ телефон</button>
+          <h4>Мессенджеры</h4>
+          <div class="set-grid">
+            <label class="field"><span>WhatsApp (номер для кнопок на сайте)</span><input class="search" name="whatsapp" value="${esc(c.whatsapp ? `+${c.whatsapp}` : '')}" inputmode="tel"></label>
+            <label class="field"><span>Telegram (имя, без @)</span><input class="search" name="telegram" value="${esc(c.telegram || '')}" autocomplete="off"></label>
+          </div>
+          <p class="note">⚠️ Кнопки WhatsApp ведут на номер с ботом (+66 98 227 6467): бот отвечает клиентам и знает, с какого сайта они пришли. Если поменять номер, бот перестанет получать клиентов с сайта.</p>
+          <h4>Адрес</h4>
+          <div class="set-grid">${d.langs.map((l) => `<label class="field"><span>${esc(LANG_NAMES[l] || l)}</span><input class="search" name="addr_${l}" value="${esc(c.address?.[l] || '')}" placeholder="${l === 'ru' ? 'Пусто — «Пляж Банг Тао»' : l === 'en' ? 'Empty — «Bang Tao Beach»' : ''}"></label>`).join('')}</div>
+          <p class="muted jr-small">Под адресом на сайте — «Пхукет, Таиланд». Пустой язык — берётся английский.</p>
+          <h4>Точка на карте</h4>
+          <div class="set-grid">
+            <label class="field set-wide"><span>Ссылка Google Maps (кнопка «Поделиться»)</span><input class="search" name="mapLink" value="${esc(map.link || '')}" placeholder="https://maps.app.goo.gl/…"></label>
+            <label class="field"><span>Широта</span><input class="search" name="lat" value="${esc(map.lat ?? '')}" inputmode="decimal"></label>
+            <label class="field"><span>Долгота</span><input class="search" name="lng" value="${esc(map.lng ?? '')}" inputmode="decimal"></label>
+          </div>
+          <button type="button" class="btn btn--small" data-set-resolve>📍 Найти точку по ссылке</button>
+          ${mapSrc ? `<div class="set-mapbox"><iframe src="${esc(mapSrc)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Точка на карте"></iframe></div>` : ''}
+          <div class="dc-actions"><button type="submit" class="btn btn--primary"${st.busy ? ' disabled' : ''}>Сохранить</button>
+            <a class="link jr-small" href="https://jetmobility.org/#contact" target="_blank" rel="noopener">открыть сайт ↗</a></div>
+        </form>
+      </section>`;
+    }
+
+    function showSiteMsg() {
+      const box = document.querySelector('[data-set-sitemsg]');
+      if (box) { box.innerHTML = status(st.siteMsg); box.scrollIntoView({ block: 'nearest' }); }
+    }
+
+    function readSite(form) {
+      const phones = [...form.querySelectorAll('[data-set-phone]')].map((row) => ({ number: row.querySelector('[name="phone"]').value, header: row.querySelector('[name="header"]').checked }))
+        .filter((p) => p.number.trim());
+      const g = (n) => form.elements[n]?.value ?? '';
+      return {
+        phones, whatsapp: g('whatsapp'), telegram: g('telegram'),
+        address: Object.fromEntries((st.site?.langs || []).map((l) => [l, g(`addr_${l}`)])),
+        map: { link: g('mapLink'), lat: g('lat').replace(',', '.'), lng: g('lng').replace(',', '.') }
+      };
+    }
+
     function renderDomains() {
       const v = st.data.domains;
       const domains = v.domains.map((d) => `<tr><td><b>${esc(d.domain)}</b>${d.error ? `<div class="warn jr-small">реестр не ответил: ${esc(d.error)}</div>` : ''}</td>
@@ -497,6 +573,25 @@ bash /opt/kokon/app/deploy/update.sh</pre>
     function onClick(event) {
       const el = event.target;
       if (!el.closest('.set')) return false;
+      if (el.closest('[data-set-phoneadd]')) {
+        const box = document.querySelector('[data-set-phones]');
+        if (box && box.children.length < 6) box.insertAdjacentHTML('beforeend', phoneRow({ number: '', header: true }, box.children.length));
+        return true;
+      }
+      const pdel = el.closest('[data-set-phonedel]');
+      if (pdel) { pdel.closest('[data-set-phone]').remove(); return true; }
+      if (el.closest('[data-set-resolve]')) {
+        const form = el.closest('form');
+        api('/site-contacts/resolve', { body: { link: form.elements.mapLink.value.trim() } })
+          .then((r) => {
+            form.elements.lat.value = r.point.lat;
+            form.elements.lng.value = r.point.lng;
+            st.siteMsg = { kind: 'ok', text: `Точка: ${r.point.lat}, ${r.point.lng}. Нажмите «Сохранить».` };
+          })
+          .catch((err) => { st.siteMsg = { kind: 'error', text: errText(err) }; })
+          .finally(showSiteMsg);
+        return true;
+      }
       const view = el.closest('[data-set-view]');
       if (view) { st.view = view.dataset.setView; st.msg = null; st.editing = null; st.paying = null; ctx.rerender(); return true; }
       const edit = el.closest('[data-set-edit]');
@@ -561,6 +656,16 @@ bash /opt/kokon/app/deploy/update.sh</pre>
       if (!form.closest?.('.set')) return false;
       event.preventDefault();
       const f = new FormData(form);
+      if (form.matches('[data-set-sitecontacts]')) {
+        const body = readSite(form);
+        act(() => api('/site-contacts/save', { body }), 'Сохранено. На сайте — в течение минуты.', 'siteMsg').then(async (ok) => {
+          // Ошибка — форма остаётся с тем, что ввели; сохранили — показываем, что теперь на сайте
+          if (!ok) { showSiteMsg(); return; }
+          st.site = await api('/site-contacts').catch(() => st.site);
+          ctx.rerender();
+        });
+        return true;
+      }
       if (form.matches('[data-set-service]')) {
         const id = form.dataset.setService ? Number(form.dataset.setService) : null;
         const body = {

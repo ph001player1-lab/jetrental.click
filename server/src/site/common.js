@@ -265,9 +265,40 @@ export function organization(ctx) {
     image: `${brand.origin}/${brand.assets}/og-image.jpg`,
     telephone: brand.phones.map((p) => p.tel),
     ...(brand.email ? { email: brand.email } : {}),
-    address: { '@type': 'PostalAddress', streetAddress: 'Bang Tao Beach', addressLocality: 'Phuket', addressCountry: 'TH' },
+    address: { '@type': 'PostalAddress', streetAddress: brand.address?.en || 'Bang Tao Beach', addressLocality: 'Phuket', addressCountry: 'TH' },
+    ...(brand.map ? { geo: { '@type': 'GeoCoordinates', latitude: brand.map.lat, longitude: brand.map.lng }, hasMap: mapOpenLink(brand) } : {}),
     priceRange: '฿฿'
   };
+}
+
+/* ------------------------------------------------ Адрес и карта (контакты) */
+
+/** Адрес на языке страницы: из портала («Сайт: контакты») или прежний текст */
+export const addressText = (ctx) => ctx.brand.address?.[ctx.lang] || ctx.brand.address?.en || ctx.t('contact.beach');
+/** Проложить маршрут — до точки на карте */
+export const routeLink = (brand) => (brand.map
+  ? `https://www.google.com/maps/dir/?api=1&destination=${brand.map.lat},${brand.map.lng}`
+  : 'https://www.google.com/maps/dir/?api=1&destination=Bang+Tao+Beach+Phuket');
+export const mapOpenLink = (brand) => brand.map?.link || `https://www.google.com/maps/search/?api=1&query=${brand.map?.lat},${brand.map?.lng}`;
+/** Телефоны в шапке — те, что отмечены «в шапке» */
+export const headerPhones = (brand) => brand.phones.filter((p) => p.header !== false);
+
+/**
+ * Карта Google с точкой (без ключа), грузится, только когда до неё долистали;
+ * под ней — адрес и кнопки «Проложить маршрут» и «Открыть в Google Maps»
+ */
+export function mapBlock(ctx, cls) {
+  const { brand, t, lang } = ctx;
+  if (!brand.map) return '';
+  const src = `https://www.google.com/maps?q=${brand.map.lat},${brand.map.lng}&z=16&hl=${lang === 'zh' ? 'zh-CN' : lang}&output=embed`;
+  return `<div class="${cls}" id="map">
+          <iframe src="${esc(src)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade" allowfullscreen title="${esc(t('contact.mapTitle'))}"></iframe>
+          <div class="${cls}__bar">
+            <span class="${cls}__addr">📍 ${esc(addressText(ctx))}, ${esc(t('contact.country'))}</span>
+            <a class="${cls}__btn" href="${esc(routeLink(brand))}" target="_blank" rel="noopener">${esc(t('contact.route'))}</a>
+            <a class="${cls}__btn ${cls}__btn--ghost" href="${esc(mapOpenLink(brand))}" target="_blank" rel="noopener">${esc(t('contact.openMap'))}</a>
+          </div>
+        </div>`;
 }
 
 export function breadcrumbLd(ctx, items) {

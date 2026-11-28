@@ -13,7 +13,8 @@ import { siteSourceCode } from '../marketing.js';
 import { pagePath, langPrefix, CATEGORY_BY_TYPE, TYPE_ORDER } from './urls.js';
 import {
   TYPE_ICON, LANG_LABEL, NAV_KEY, esc, money, icon, isFullPhoto, waLink, tgLink, head, SPRITE, LOCK, crumbs, search,
-  modelUrl, badge, photoTag, galleryBlock, descOf, REVIEWS, bookingDialog, dayMonth, homeMeta, categoryMeta, modelCrumbs, modelMeta, notFoundMeta
+  modelUrl, badge, photoTag, galleryBlock, descOf, REVIEWS, bookingDialog, dayMonth, homeMeta, categoryMeta, modelCrumbs, modelMeta, notFoundMeta,
+  addressText, routeLink, headerPhones, mapBlock
 } from './common.js';
 
 const SECTION_ID = { scooter: 'scooters', motorcycle: 'motorbikes', car: 'cars' };
@@ -37,7 +38,7 @@ function topbar(ctx, alternates) {
   <div class="topbar">
     <div class="container topbar__inner">
       <span class="topbar__item topbar__address">📍 ${esc(t('top.address'))}</span>
-      ${brand.phones.map((p) => `<a class="topbar__item topbar__phone" href="tel:${p.tel}">${p.short}</a>`).join('\n      ')}
+      ${headerPhones(brand).map((p) => `<a class="topbar__item topbar__phone" href="tel:${esc(p.tel)}">${esc(p.short)}</a>`).join('\n      ')}
       <nav class="lang" aria-label="Language">
         ${langs}
       </nav>
@@ -286,8 +287,8 @@ function contact(ctx) {
           <h2>${esc(t('contact.title'))}</h2>
           <p class="muted">${esc(t('contact.lead'))}</p>
           <ul class="contact__list">
-            <li><span>📍</span><div><b>${esc(t('contact.beach'))}</b><br><span>${esc(t('contact.country'))}</span><br><a href="https://www.google.com/maps/dir/?api=1&amp;destination=Bang+Tao+Beach+Phuket" target="_blank" rel="noopener">${esc(t('contact.route'))}</a></div></li>
-            <li><span>📞</span><div>${brand.phones.map((p) => `<a href="tel:${p.tel}">${p.full}</a>`).join('<br>')}</div></li>
+            <li><span>📍</span><div><b>${esc(addressText(ctx))}</b><br><span>${esc(t('contact.country'))}</span><br><a href="${esc(routeLink(brand))}" target="_blank" rel="noopener">${esc(t('contact.route'))}</a></div></li>
+            <li><span>📞</span><div>${brand.phones.map((p) => `<a href="tel:${esc(p.tel)}">${esc(p.full)}</a>`).join('<br>')}</div></li>
             ${brand.email ? `<li><span>✉️</span><div><a href="mailto:${esc(brand.email)}">${esc(brand.email)}</a></div></li>` : ''}
           </ul>
           <div class="contact__messengers">
@@ -306,6 +307,7 @@ function contact(ctx) {
           <p class="form__status" role="status"></p>
         </form>
       </div>
+      ${ctx.brand.map ? `<div class="container">${mapBlock(ctx, 'map')}</div>` : ''}
     </section>`;
 }
 
