@@ -414,6 +414,44 @@ function salaryByTimesheet(from, to, phones) {
   return { people: list, total: list.reduce((s, p) => s + p.sum, 0), ratesSet: rates.length };
 }
 
+/* -------------------------------------------------------- Прибыль по дням */
+
+/**
+ * Прибыль по дням периода (для «Игры»): выручка из отчётов группы и «＋ Операция»
+ * (аренда, доплаты, ущерб — как в сводке «Финансов») минус операционные расходы.
+ * Залоги не входят ни в выручку, ни в расходы. Дни после «сейчас» не считаем.
+ */
+export function profitByDay({ from, to }, now = Date.now()) {
+  refreshRates();
+  const { rates } = currentRates();
+  const start = dayStart(from);
+  // Дни — целиком, как в сводке «Финансов» (расходы по чекам стоят на полдень); но не позже сегодняшнего
+  const end = Math.min(dayStart(to) + DAY_MS, dayStart(bangkokIso(now)) + DAY_MS);
+  if (end <= start) return [];
+  const rows = [...withoutRepeats(db.raw.prepare(`
+    SELECT id, ts, kind, author, author_name, text, data FROM wa_messages
+    WHERE kind IN (${MONEY_KINDS.map(() => '?').join(',')}) AND status != 'ignored' AND ts >= ? AND ts < ? AND instr(COALESCE(text, ''), '[portal ') = 0
+    ORDER BY ts`).all(...MONEY_KINDS, isoOf(start), isoOf(end))),
+  ...portalMoneyRows().filter((r) => r.at >= start && r.at < end)];
+  const revenue = new Map();
+  for (const row of rows) {
+    const m = row.m || moneyOf(row, rates);
+    const d = bangkokIso(row.at);
+    revenue.set(d, (revenue.get(d) || 0) + (m.revenue || 0));
+  }
+  const cashMeta = cashbookMeta();
+  const notes = groupCashNotes(rates);
+  const days = [];
+  for (let t = start; t < end; t += DAY_MS) {
+    const d = bangkokIso(t);
+    const exp = expensesFor(t, t + DAY_MS, cashMeta, notes);
+    const rev = revenue.get(d) || 0;
+    days.push({ day: d, revenue: round(rev), expenses: round(exp.total), profit: round(rev - exp.total),
+      expensesKnown: Boolean(exp.cashFrom || exp.groupReports || exp.portalExpenses || exp.portalPayments) });
+  }
+  return days;
+}
+
 /* -------------------------------------------------------------- Отчёт */
 
 const bangkokIso = (ms) => new Date(ms + BANGKOK_MS).toISOString().slice(0, 10);

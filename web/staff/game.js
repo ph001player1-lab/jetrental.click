@@ -609,26 +609,30 @@ for (const id of ['op', 'dep']) {
     }
   });
 }
-// Кошельки сотрудников: столики с монетами (минус — красная расписка), имя и сумма над каждым
-const PEDESTALS = [[25.1, 11.5], [25.1, 12.4], [25.1, 13.3], [25.1, 14.2], [25.1, 15.1], [24.1, 11.5], [24.1, 12.4], [24.1, 13.3], [24.1, 14.2], [24.1, 15.1]]
-  .map(([x, y]) => ({ x, y, w: null, kind: 'wallet' }));
-for (const p of PEDESTALS) addObj({ x: p.x, y: p.y, draw() {
-  if (!p.w) { p.hit = null; return; }
-  isoBox(p.x, p.y, 0.42, 0.34, 7, '#9b7a52', '#84663f', '#6e5534');
-  const t = up(iso(p.x, p.y), 7);
-  const thb = p.w.thb;
-  let top = t[1] - 4;
-  if (thb >= 0) {
-    const n = clamp(Math.round(thb / 2500), 1, 12);
-    for (let i = 0; i < n; i++) px(t[0] - 4, t[1] - 3 - i * 2, 8, 2, i % 2 ? '#d9a92b' : '#f2c94c');
-    top = t[1] - 4 - n * 2;
-  } else {
-    px(t[0] - 4, t[1] - 10, 9, 7, '#fff4f2'); px(t[0] - 3, t[1] - 8, 6, 1, '#e74c3c'); px(t[0] - 3, t[1] - 6, 4, 1, '#e74c3c');
-    top = t[1] - 11;
+// Экран на стене финансовой комнаты: прибыль за сегодня и за месяц (цифры — подписью рядом, ⚠ — если не было сверки)
+const TV = { x0: 23.25, x1: 25.55, hit: null, sx: 0, headY: 0 };
+addObj({
+  x: 24.4, y: 10, depth: 35.6,
+  draw() {
+    const p1 = iso(TV.x0, 10), p2 = iso(TV.x1, 10);
+    poly([up(p1, 9), up(p2, 9), up(p2, 25), up(p1, 25)], '#1c1f24');
+    poly([up(p1, 10.5), up(p2, 10.5), up(p2, 23.5), up(p1, 23.5)], '#0f2f45');
+    // мини-график на экране: столбики прибыли по дням (последние 10)
+    const days = (finInfo && finInfo.profit && finInfo.profit.days) || [];
+    const last = days.slice(-10);
+    const max = Math.max(1, ...last.map((d) => Math.abs(d.profit)));
+    last.forEach((d, k) => {
+      const u = (k + 0.6) / 10.5;
+      const bx = lerp(p1[0], p2[0], u), by = lerp(p1[1], p2[1], u);
+      const h = Math.max(1, Math.round((Math.abs(d.profit) / max) * 9));
+      px(bx, by - 12 - h, 2, h, d.profit >= 0 ? '#4ee07a' : '#ff6b5e');
+    });
+    if (!last.length) { const m = [(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2]; px(m[0] - 4, m[1] - 18, 8, 2, Math.sin(S.rt * 3) > 0 ? '#4ee07a' : '#2f8f55'); }
+    const mid = [(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2];
+    TV.sx = mid[0]; TV.headY = mid[1] - 27;
+    TV.hit = [Math.min(p1[0], p2[0]) - 2, Math.min(p1[1], p2[1]) - 27, Math.max(p1[0], p2[0]) + 2, Math.max(p1[1], p2[1]) - 7];
   }
-  p.hit = [t[0] - 8, top - 4, t[0] + 8, t[1] + 6];
-  p.headY = top; p.sx = t[0];
-} });
+});
 
 // Табло посетителей сайта над входом: сколько сейчас на сайте (наведите — откуда)
 const COUNTER = { n: 0, sources: [], hit: null };
@@ -1565,7 +1569,7 @@ function applyState(st) {
       STAFF.set(s.id, a); homesDirty = true;
     }
     if (a.role !== s.role) { a.role = s.role; a.look = lookFor(s); homesDirty = true; }
-    a.name = s.name; a.roleName = s.roleName; a.since = s.since; a.left = s.left; a.wallet = s.wallet;
+    a.name = s.name; a.roleName = s.roleName; a.since = s.since; a.left = s.left;
     const la = s.lastAction ? Date.parse(s.lastAction) : null;
     if (a.state === 'rest' && la && la > (a.restAt || 0)) a.wanted = true;
     a.lastAction = la;
@@ -1615,7 +1619,7 @@ function applyState(st) {
     }
     if (r.status === 'taken') reqTaken.add(r.id);
   }
-  // 5) деньги: суммы над сейфами и кошельками, монеты при изменении
+  // 5) деньги: два «сейфа» — все операционные и все залоги (офис + на руках у сотрудников), монеты при изменении
   if (st.finance) {
     const was = { ...S.safes };
     S.safes = { op: st.finance.cashToday || 0, dep: st.finance.depositsHeld || 0 };
@@ -1625,19 +1629,8 @@ function applyState(st) {
         if (Math.abs(d) >= 1) { if (d > 0) flyCoins(doorPoint(), anchor(SAFES_OBJ[id], 0), 5); else flyCoins(anchor(SAFES_OBJ[id], 0), doorPoint(), 4); floatText(anchor(SAFES_OBJ[id], 0), `${d > 0 ? '+' : '−'}${money(Math.abs(d))}`, d > 0 ? '#7dff9b' : '#ff8a80'); }
       }
     }
-    const wallets = st.finance.wallets.slice().sort((p, q) => Math.abs(q.thb) - Math.abs(p.thb)).slice(0, PEDESTALS.length);
-    const old = new Map(PEDESTALS.filter((p) => p.w).map((p) => [p.w.name, p.w.thb]));
-    PEDESTALS.forEach((p, i) => { p.w = wallets[i] || null; });
-    if (!silent && finInfo) for (const w of wallets) {
-      const before = old.get(w.name);
-      const p = PEDESTALS.find((x) => x.w === w);
-      if (before !== undefined && before !== w.thb && p) {
-        const a = w.staffId ? STAFF.get(w.staffId) : null;
-        const from = a && a.present && !a.hidden ? anchor(a, 8) : doorPoint();
-        if (w.thb > before) flyCoins(from, anchor(p, 0), 4); else flyCoins(anchor(p, 0), from, 3);
-      }
-    }
     finInfo = st.finance;
+    renderChart();
   }
   // 6) сайт и боты: гости в шоуруме = посетители сайта сейчас
   siteInfo = st.site || siteInfo;
@@ -1912,6 +1905,18 @@ function drawBubble(sx, sy, text, dark) {
   ctx.fillStyle = dark ? '#ffe7b0' : '#1d1b16';
   ctx.fillText(text, x + 7, y + 15);
 }
+// Вращающееся ⚠ поверх подписи (как над машинами), в пикселях экрана
+function warnOverlay(cx, cy) {
+  const z = Math.max(1.5, S.zoom);
+  const w = Math.abs(Math.cos(S.rt * 3)) * 8 + 1;
+  const bob = Math.sin(S.rt * 4) * z;
+  for (let r = 0; r < 8; r++) {
+    const ww = Math.max(1, ((r + 1) / 8) * w);
+    ctx.fillStyle = r === 7 ? '#b38712' : '#ffc21a';
+    ctx.fillRect(Math.round(cx - (ww * z) / 2), Math.round(cy - 9 * z + r * z + bob), Math.ceil(ww * z), Math.ceil(z));
+  }
+  if (w > 4) { ctx.fillStyle = '#2a1a10'; ctx.fillRect(Math.round(cx - z / 2), Math.round(cy - 6 * z + bob), Math.ceil(z), Math.ceil(3 * z)); ctx.fillRect(Math.round(cx - z / 2), Math.round(cy - 2 * z + bob), Math.ceil(z), Math.ceil(z)); }
+}
 // Подписи (имена, суммы) раскладываем без наложений: занятое место поднимает подпись выше
 function layoutLabels(list) {
   const placed = [];
@@ -1930,6 +1935,8 @@ function layoutLabels(list) {
     if (l.shift) { ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(l.x, l.y); ctx.lineTo(l.x, l.y - l.shift); ctx.stroke(); }
     tag(l.x, l.y - l.shift, l.text, l.bg, l.fg, l.font);
     if (l.owner) l.owner.labelTop = l.y - l.shift - 17;
+    if (l.owner === TV) TV.labelRect = [l.x - l.w / 2, l.y - l.shift - 15, l.x + l.w / 2, l.y - l.shift];
+    if (l.warn) warnOverlay(l.x, l.y - l.shift - 19);
   }
 }
 function tag(sx, sy, text, bg, fg = '#fff', font = '700 11px') {
@@ -1960,13 +1967,14 @@ function overlay() {
     for (const id of ['op', 'dep']) {
       const o = SAFES_OBJ[id]; if (!o.hit) continue;
       const [sx, sy] = scr([o.sx, o.headY]);
-      labels.push({ x: sx, y: sy, text: `${id === 'op' ? (finSource() === 'ai' ? '💰 касса' : '💰 сегодня') : '🔒 залоги'} ${money(S.safes[id])}`, bg: 'rgba(20,24,32,.94)', fg: '#ffe7b0', font: small });
+      labels.push({ x: sx, y: sy, text: `${id === 'op' ? (finSource() === 'ai' ? '💰 операционные' : '💰 сегодня') : '🔒 залоги'} ${money(S.safes[id])}`, bg: 'rgba(20,24,32,.94)', fg: '#ffe7b0', font: small });
     }
-    for (const p of PEDESTALS) {
-      if (!p.w || !p.hit) continue;
-      const [sx, sy] = scr([p.sx, p.headY]);
-      const neg = p.w.thb < 0;
-      labels.push({ x: sx, y: sy, text: `${String(p.w.name).split(/\s+/)[0]} ${neg ? '−' : '+'}${money(Math.abs(p.w.thb))}`, bg: neg ? 'rgba(170,40,30,.94)' : 'rgba(25,110,60,.94)', fg: '#fff', font: small });
+    const pf = finInfo && finInfo.profit;
+    if (pf && TV.hit) {
+      const [sx, sy] = scr([TV.sx, TV.headY]);
+      const sign = (n) => `${n < 0 ? '−' : '+'}${money(Math.abs(n))}`;
+      labels.push({ x: sx, y: sy, text: `📺 прибыль: сегодня ${sign(pf.today.profit)} · месяц ${sign(pf.total.profit)}`, bg: 'rgba(10,40,30,.95)', fg: '#9ff0c4', font: small, owner: TV,
+        warn: !(finInfo.audit && finInfo.audit.done) });
     }
     for (const a of staffList()) {
       if (!a.present || a.hidden || !a.hit) continue;
@@ -2090,7 +2098,7 @@ function pickAt(mx, my) {
   for (const v of VEH) if (!v.hidden && inside(v.hit, wx, wy) && v.x + v.y > bd) { best = v.staffOf ? { kind: 'person', e: v.staffOf } : { kind: 'veh', e: v }; bd = v.x + v.y; }
   for (const a of PEOPLE) if (a.present && !a.hidden && inside(a.hit, wx, wy) && a.x + a.y + 0.5 > bd) { best = { kind: 'person', e: a }; bd = a.x + a.y + 0.5; }
   for (const id of ['op', 'dep']) if (inside(SAFES_OBJ[id].hit, wx, wy)) { best = { kind: 'safe', id, e: SAFES_OBJ[id] }; bd = 99; }
-  for (const p of PEDESTALS) if (p.w && inside(p.hit, wx, wy)) { best = { kind: 'wallet', e: p }; bd = 99; }
+  if (inside(TV.hit, wx, wy) || (TV.labelRect && mx >= TV.labelRect[0] && mx <= TV.labelRect[2] && my >= TV.labelRect[1] - 22 && my <= TV.labelRect[3])) { best = { kind: 'profit', e: TV }; bd = 150; }
   for (const a of staffList()) if (a.present && !a.hidden && a.taskHit && inside(a.taskHit, wx, wy)) { best = { kind: 'tasks', e: a }; bd = 199; }
   if (inside(COUNTER.hit, wx, wy)) best = { kind: 'counter', e: COUNTER };
   return best;
@@ -2107,6 +2115,15 @@ function sourcesHtml() {
 }
 function hover(mx, my) {
   const wx = S.camX + mx / S.zoom, wy = S.camY + my / S.zoom;
+  const overTv = inside(TV.hit, wx, wy) || (TV.labelRect && mx >= TV.labelRect[0] && mx <= TV.labelRect[2] && my >= TV.labelRect[1] - 22 && my <= TV.labelRect[3]);
+  if (overTv && finInfo && finInfo.profit) {
+    cv.style.cursor = 'help';
+    tipEl.innerHTML = `<b>Прибыль</b><small>${auditNote()}</small><ul><li><span>сегодня</span><b>${esc(signedMoney(finInfo.profit.today.profit))}</b></li><li><span>${esc(monthRu(finInfo.profit.month))}</span><b>${esc(signedMoney(finInfo.profit.total.profit))}</b></li></ul><small>Без залогов. Нажмите — подробно.</small>`;
+    tipEl.hidden = false;
+    tipEl.style.left = `${Math.min(mx + 14, cssW - 250)}px`;
+    tipEl.style.top = `${Math.max(8, my - 10)}px`;
+    return;
+  }
   if (!inside(COUNTER.hit, wx, wy)) { tipHide(); cv.style.cursor = ''; return; }
   cv.style.cursor = 'help';
   tipEl.innerHTML = `<b>На сайте сейчас: ${COUNTER.n}</b><small>Открывали страницы за последние 5 минут. Откуда пришли:</small><ul>${sourcesHtml()}</ul>`;
@@ -2163,15 +2180,15 @@ function cardHtml(sel) {
   if (sel.kind === 'safe') {
     const s = SAFES[sel.id];
     const ai = finSource() === 'ai';
-    const title = ai ? (sel.id === 'op' ? 'Операционный сейф' : 'Залоговый сейф') : s.title;
-    const note = ai ? 'Остаток по «ИИ-кассе»: ИИ читает сообщения группы про деньги (сдача кассы, закрытие дня, расходы, залоги) плюс «＋ Операция». Это тест — сверяйте с «Финансами».' : `${s.note} Точные остатки появятся, когда в «ИИ-кассе» будут записи.`;
-    return `${x}<div class="gm-sub">Финансы · сейф</div><h2>🔒 ${esc(title)}</h2><dl><dt>Сейчас</dt><dd><b>${money(S.safes[sel.id])}</b></dd></dl><div class="gm-note2">${esc(note)}</div>`;
+    if (!ai) return `${x}<div class="gm-sub">Финансы · сейф</div><h2>🔒 ${esc(s.title)}</h2><dl><dt>Сейчас</dt><dd><b>${money(S.safes[sel.id])}</b></dd></dl><div class="gm-note2">${esc(s.note)}</div>`;
+    const office = finInfo.office ? finInfo.office[sel.id] : null;
+    const hand = finInfo.onHand ? finInfo.onHand[sel.id] : null;
+    const title = sel.id === 'op' ? 'Все операционные деньги' : 'Все залоги';
+    return `${x}<div class="gm-sub">Финансы · сейф</div><h2>${sel.id === 'op' ? '💰' : '🔒'} ${esc(title)}</h2>
+      <dl><dt>Всего</dt><dd><b>${money(S.safes[sel.id])}</b></dd>${office !== null ? `<dt>В сейфе офиса</dt><dd>${money(office)}</dd>` : ''}${hand !== null ? `<dt>На руках у сотрудников</dt><dd>${money(hand)}</dd>` : ''}</dl>
+      <div class="gm-note2">Один «сейф» в игре — это все такие деньги компании: и в офисе, и у сотрудников с собой (у курьера в кармане может быть и аренда, и залог). По «ИИ-кассе» — сообщения группы и «＋ Операция»; это тест, сверяйте с «Финансами».</div>`;
   }
-  if (sel.kind === 'wallet') {
-    const w = e.w;
-    return `${x}<div class="gm-sub">Кошелёк сотрудника</div><h2>👛 ${esc(w.name)}</h2><dl><dt>На руках</dt><dd style="color:${w.thb < 0 ? '#ff8a80' : '#7dff9b'}"><b>${money(w.thb)}</b></dd></dl>
-      <div class="gm-note2">${finSource() === 'ai' ? 'По «ИИ-кассе» (сообщения группы и «＋ Операция»).' : 'Наличные с последней сдачи кассы — как в «Финансах».'} Минус — сотрудник потратил свои: при сдаче кассы ему выдают разницу.</div>`;
-  }
+  if (sel.kind === 'profit') return `${x}<div class="gm-sub">Финансы · экран в бухгалтерии</div><h2>📈 Прибыль</h2>${profitHtml()}`;
   if (sel.kind === 'tasks') {
     const items = e.tasks.map((t) => `<li>${t.icon} ${esc(t.what)}${t.at ? ` · ${Math.max(1, Math.round((nowMs() - Date.parse(t.at)) / 60000))} мин` : ''}${t.late ? ' <span class="gm-pill gm-bad">без ответа 20+ мин</span>' : ''}</li>`).join('');
     return `${x}<div class="gm-sub">Очередь · ${esc(e.name)}</div><h2>📨 Задачи (${e.tasks.length})</h2><ul>${items || '<li>Пусто</li>'}</ul>
@@ -2190,12 +2207,71 @@ function cardHtml(sel) {
     <span class="gm-pill gm-${cls || 'off'}">${esc(st)}</span>
     <dl>${e.since ? `<dt>На месте с</dt><dd>${hm(e.since)}</dd>` : ''}${e.left ? `<dt>Ушёл</dt><dd>${hm(e.left)}</dd>` : ''}
     <dt>Последнее действие</dt><dd>${e.lastAction ? `${timeOf(new Date(e.lastAction).toISOString())}${idle !== null ? ` (${idle} мин назад)` : ''}` : 'сегодня не было'}</dd>
-    ${e.wallet !== null && e.wallet !== undefined ? `<dt>Кошелёк</dt><dd style="color:${e.wallet < 0 ? '#ff8a80' : e.wallet > 0 ? '#7dff9b' : 'inherit'}">${money(e.wallet)}</dd>` : ''}
     <dt>Очередь</dt><dd>${e.tasks.length || 'пусто'}</dd></dl>${tasks ? `<ul>${tasks}</ul>` : ''}
     <div class="gm-note2">Приход и уход — отметки в группе WhatsApp (как табель). Действия — группа, статусы, документы, деньги, «＋ Операция». 30 минут без действий — отдых на пляже.</div>`;
 }
 function openCard(sel) { S.selected = sel; card.innerHTML = cardHtml(sel); card.classList.add('gm-open'); cardTimer = S.rt; tipHide(); }
 function closeCard() { S.selected = null; if (card) card.classList.remove('gm-open'); }
+
+/* ---------- прибыль: экран в бухгалтерии, карточка, график ---------- */
+const MONTHS_RU = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+const MONTHS_GEN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+const monthRu = (ym) => (ym ? `${MONTHS_RU[Number(ym.slice(5, 7)) - 1]} ${ym.slice(0, 4)}` : '');
+const dayRu = (d) => `${Number(d.slice(8, 10))} ${MONTHS_GEN[Number(d.slice(5, 7)) - 1]}`;
+const signedMoney = (n) => `${n < 0 ? '−' : '+'}${money(Math.abs(n))}`;
+function auditNote() {
+  const a = finInfo && finInfo.audit;
+  if (!a) return '';
+  if (a.done) return `✅ Сверено бухгалтерией: ${esc(dayRu(new Date(Date.parse(a.last) + 7 * 3600000).toISOString().slice(0, 10)))}.`;
+  return `⚠ Данные за ${esc(monthRu(a.month))} не прошли проверку бухгалтерией${a.last ? ` (последняя сверка — ${esc(dayRu(new Date(Date.parse(a.last) + 7 * 3600000).toISOString().slice(0, 10)))})` : ' — сверок ещё не было'}. Надо проверить.`;
+}
+function profitHtml() {
+  const p = finInfo && finInfo.profit;
+  if (!p) return '<p>Данных о прибыли пока нет.</p>';
+  const row = (title, v) => `<dt>${title}</dt><dd><b style="color:${v.profit < 0 ? '#ff8a80' : '#7dff9b'}">${signedMoney(v.profit)}</b><br><small>выручка ${money(v.revenue)} − расходы ${money(v.expenses)}${v.expensesKnown ? '' : ' (расходов не внесено)'}</small></dd>`;
+  return `<dl>${row('Сегодня', p.today)}${row(esc(monthRu(p.month)), p.total)}</dl>
+    <div class="gm-note2">${auditNote()}<br>Прибыль = выручка (аренда, доплаты, ущерб) − операционные расходы, как в «Финансах». Залоги не входят.</div>`;
+}
+let chartKey = '';
+function chartOpen() { try { return localStorage.getItem('gm.chart') !== 'closed'; } catch (e) { return true; } }
+function setChartOpen(open) {
+  try { localStorage.setItem('gm.chart', open ? 'open' : 'closed'); } catch (e) { /* без хранилища */ }
+  root.querySelector('[data-gm-chart]').hidden = !open;
+  root.querySelector('[data-gm-act="chart"]').hidden = open;
+}
+function renderChart() {
+  const box = root && root.querySelector('[data-gm-chart]');
+  const p = finInfo && finInfo.profit;
+  if (!box || !p) return;
+  const key = JSON.stringify([p.days, finInfo.audit]);
+  if (key === chartKey) return;
+  chartKey = key;
+  const W = 300, H = 120, pad = 18;
+  const days = p.days;
+  const max = Math.max(1, ...days.map((d) => Math.abs(d.profit)));
+  const hasNeg = days.some((d) => d.profit < 0);
+  const zero = hasNeg ? H / 2 + 6 : H - 14;
+  const scale = (hasNeg ? H / 2 - 14 : H - 30) / max;
+  const step = (W - pad - 4) / Math.max(days.length, 1);
+  const bw = Math.max(2, Math.min(12, step - 2));
+  const bars = days.map((d, i) => {
+    const h = Math.max(1, Math.abs(d.profit) * scale);
+    const x0 = pad + i * step + (step - bw) / 2;
+    const y0 = d.profit >= 0 ? zero - h : zero;
+    const label = Number(d.day.slice(8, 10));
+    return `<rect x="${x0.toFixed(1)}" y="${y0.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="1.5" fill="${d.profit >= 0 ? '#4ee07a' : '#ff6b5e'}"><title>${esc(dayRu(d.day))}: прибыль ${esc(signedMoney(d.profit))} (выручка ${esc(money(d.revenue))}, расходы ${esc(money(d.expenses))})</title></rect>`
+      + (label === 1 || label % 5 === 0 || i === days.length - 1 ? `<text x="${(x0 + bw / 2).toFixed(1)}" y="${H - 2}" text-anchor="middle">${label}</text>` : '');
+  }).join('');
+  const done = finInfo.audit && finInfo.audit.done;
+  box.innerHTML = `<div class="gm-chart-head"><b>📈 Прибыль по дням · ${esc(monthRu(p.month))}</b><button type="button" class="gm-chart-x" data-gm-act="chart-close" aria-label="Свернуть график">–</button></div>
+    <div class="gm-chart-sum">за месяц <b style="color:${p.total.profit < 0 ? '#ff8a80' : '#7dff9b'}">${esc(signedMoney(p.total.profit))}</b> · сегодня ${esc(signedMoney(p.today.profit))}${done ? '' : ' · <span class="gm-chart-warn" title="Данные за месяц не прошли проверку бухгалтерией">⚠ не сверено</span>'}</div>
+    <svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" role="img" aria-label="Прибыль по дням за ${esc(monthRu(p.month))}">
+      <line x1="${pad}" x2="${W - 2}" y1="${zero}" y2="${zero}" stroke="rgba(255,255,255,.25)" />
+      <text x="2" y="${(zero - max * scale + 8).toFixed(1)}">${esc(shortMoney(max))}</text>${hasNeg ? `<text x="2" y="${(zero + max * scale).toFixed(1)}">−${esc(shortMoney(max))}</text>` : ''}
+      ${bars}
+    </svg>`;
+}
+const shortMoney = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}м` : n >= 1000 ? `${Math.round(n / 1000)}к` : String(Math.round(n)));
 
 /* ---------- панель справа: команда, парк, сайт, касса; лента ---------- */
 let panelTab = 'team', panelKey = '';
@@ -2206,7 +2282,7 @@ function teamHtml() {
   const here = list.filter((a) => a.present && a.state !== 'leaving').length;
   const units = list.map((a) => {
     const [st, cls] = unitStatus(a);
-    const extra = [a.tasks.length ? `📨${a.tasks.length}` : '', a.wallet ? `<span style="color:${a.wallet < 0 ? '#ff8a80' : '#7dff9b'}">${money(a.wallet)}</span>` : ''].filter(Boolean).join(' · ');
+    const extra = a.tasks.length ? `📨${a.tasks.length}` : '';
     return `<li class="gm-unit${a.present ? '' : ' gm-away'}" data-gm-unit="${a.sid}"><i style="background:${a.look.shirt}"></i>
       <div><b>${esc(a.name)}</b> <small>${esc(ROLE_RU[a.role] || '')}</small><span class="gm-ust gm-${cls || 'off'}">${esc(st)}${a.since && a.present ? ` · с ${hm(a.since)}` : ''}</span></div>${extra ? `<span class="gm-ux">${extra}</span>` : ''}</li>`;
   }).join('');
@@ -2218,7 +2294,10 @@ function teamHtml() {
     <section><h4>Парк — как в «Обзоре»</h4><table class="gm-fleet"><thead><tr><th></th><th>всего</th><th>своб.</th><th>аренда</th><th>ремонт</th><th>бронь</th></tr></thead>
       <tbody>${rows}</tbody><tfoot><tr><td>Итого</td><td><b>${all()}</b></td><td>${all('free')}</td><td>${all('rent')}</td><td>${all('service')}</td><td>${all('reserve')}</td></tr></tfoot></table></section>
     <section><h4>Сайт и боты</h4><p>🌐 На сайте сейчас: <b>${siteInfo.online || 0}</b>${src ? ` <small>(${src})</small>` : ''}<br>💬 Пишут ботам (10 мин): <b>${chatInfo.active || 0}</b><br>📨 Новых заявок: <b>${REQ.length}</b></p></section>
-    <section><h4>Касса${finSource() === 'ai' ? ' · ИИ-касса (тест)' : ''}</h4><p>${finSource() === 'ai' ? `💰 Операционный сейф: <b>${money(S.safes.op)}</b><br>🔒 Залоговый сейф: <b>${money(S.safes.dep)}</b>` : `💰 Приход наличными сегодня: <b>${money(S.safes.op)}</b><br>🔒 Залоги на руках: <b>${money(S.safes.dep)}</b>`}</p></section>`;
+    <section><h4>Касса${finSource() === 'ai' ? ' · ИИ-касса (тест)' : ''}</h4><p>${finSource() === 'ai'
+      ? `💰 Операционные: <b>${money(S.safes.op)}</b> <small>(в офисе ${money(finInfo.office.op)}, у сотрудников ${money(finInfo.onHand.op)})</small><br>🔒 Залоги: <b>${money(S.safes.dep)}</b> <small>(в офисе ${money(finInfo.office.dep)}, у сотрудников ${money(finInfo.onHand.dep)})</small>`
+      : `💰 Приход наличными сегодня: <b>${money(S.safes.op)}</b><br>🔒 Залоги на руках: <b>${money(S.safes.dep)}</b>`}</p></section>
+    ${finInfo && finInfo.profit ? `<section><h4>Прибыль${finInfo.audit && finInfo.audit.done ? '' : ' · ⚠ не сверено'}</h4><p>📈 Сегодня: <b>${signedMoney(finInfo.profit.today.profit)}</b><br>📅 ${esc(monthRu(finInfo.profit.month))}: <b>${signedMoney(finInfo.profit.total.profit)}</b></p></section>` : ''}`;
 }
 function renderPanel() {
   if (panelTab !== 'team') return;
@@ -2296,8 +2375,10 @@ const TEMPLATE = `
     </aside>
     <div class="gm-hud gm-box gm-card" data-gm-card role="dialog" aria-label="Карточка"></div>
     <div class="gm-tip" data-gm-tip hidden></div>
+    <div class="gm-hud gm-box gm-chart" data-gm-chart hidden></div>
     <div class="gm-hud gm-zoom">
       <button type="button" class="gm-box gm-ptoggle" data-gm-act="panel" aria-label="Команда и лента">👥</button>
+      <button type="button" class="gm-box" data-gm-act="chart" title="График прибыли" aria-label="Показать график прибыли" hidden>📈</button>
       <button type="button" class="gm-box" data-gm-act="zin" aria-label="Крупнее">＋</button>
       <button type="button" class="gm-box" data-gm-act="zout" aria-label="Мельче">－</button>
     </div>
@@ -2336,6 +2417,8 @@ function build() {
     else if (k === 'office') centerOn(16, 14);
     else if (k === 'finance') { if (S.zoom < 2) zoomAt(cssW / 2, cssH / 2, 2); centerOn(23.5, 13.4); }
     else if (k === 'panel') root.querySelector('[data-gm-panel]').classList.toggle('gm-open');
+    else if (k === 'chart') setChartOpen(true);
+    else if (k === 'chart-close') setChartOpen(false);
     else if (k === 'sound') {
       S.sound = !S.sound;
       if (S.sound && !AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (err) { S.sound = false; } }
@@ -2370,6 +2453,7 @@ function mount(view) {
     S.quietSince = nowMs();
   }
   if (!running) { running = true; poll(); }
+  { let saved = null; try { saved = localStorage.getItem('gm.chart'); } catch (e) { /* без хранилища */ } setChartOpen(saved ? saved !== 'closed' : cssW >= 760); }
   if (!looping) { looping = true; last = 0; requestAnimationFrame(frame); }
 }
 // для тестов: где сейчас техника (без личных данных)

@@ -24,7 +24,7 @@ import { staffPhones } from './staffUsers.js';
 import { getPortalSnapshot } from './fleet.js';
 import { listVehicles } from './fleetStore.js';
 import { isSold } from './sold.js';
-import { financeReport } from './finance.js';
+import { financeReport, profitByDay } from './finance.js';
 import { allSources } from './marketing.js';
 import { lidPhones, OPERATION_KINDS } from './journal/journal.js';
 import { siteOnline, botChatsSince, botChatsActive } from './gameLive.js';
@@ -229,22 +229,52 @@ function eventsSince(idx, sinceIso, sinceMs) {
   return out.sort((a, b) => String(a.at).localeCompare(String(b.at)));
 }
 
-/** Сейфы и кошельки: из «ИИ-кассы» (сообщения группы, тест), пока там пусто — из отчёта «Финансов» */
-function gameFinance(finance, idx) {
+/** Прибыль по дням с начала месяца (кэш на минуту) */
+let profitCache = null;
+function profitNow(now) {
+  if (profitCache && now - profitCache.at < FINANCE_CACHE_MS) return profitCache.data;
+  let data = null;
+  try {
+    const today = bangkokDay(now);
+    const days = profitByDay({ from: `${today.slice(0, 8)}01`, to: today }, now);
+    const sum = (k) => days.reduce((s, d) => s + d[k], 0);
+    const last = days[days.length - 1] || { revenue: 0, expenses: 0, profit: 0, expensesKnown: false };
+    data = {
+      month: today.slice(0, 7),
+      today: { revenue: last.revenue, expenses: last.expenses, profit: last.profit, expensesKnown: last.expensesKnown },
+      total: { revenue: sum('revenue'), expenses: sum('expenses'), profit: sum('profit'), expensesKnown: days.some((d) => d.expensesKnown) },
+      days: days.map((d) => ({ day: d.day, profit: d.profit, revenue: d.revenue, expenses: d.expenses }))
+    };
+  } catch (err) {
+    console.error('Game profit failed:', err.message);
+  }
+  profitCache = { at: now, data };
+  return data;
+}
+/** Бухгалтерская сверка: когда была последняя (саму проверку сделаем позже) */
+function auditView(now) {
+  const last = db.getSetting('fin_audit_at') || null;
+  const month = bangkokDay(now).slice(0, 7);
+  return { last, month, done: Boolean(last && bangkokDay(Date.parse(last)).slice(0, 7) === month) };
+}
+/**
+ * Два «сейфа» в игре — это все деньги компании, а не только ящики в офисе:
+ * операционные = операционный сейф офиса + операционные деньги на руках у сотрудников,
+ * залоги = залоговый сейф + залоги на руках (у курьеров и т. п.). Из «ИИ-кассы»;
+ * пока в ней пусто — из отчёта «Финансов» (наличный приход за сегодня и залоги на руках).
+ */
+function gameFinance(finance, now) {
   let ai = null;
   try { ai = ledgerSnapshot(); } catch (err) { console.error('Game ledger failed:', err.message); }
+  const common = { profit: profitNow(now), audit: auditView(now) };
   if (ai?.ready) {
     return {
-      source: 'ai', cashToday: ai.op, depositsHeld: ai.dep, revenueToday: finance?.revenueToday || 0, depositCars: finance?.depositCars || 0,
-      wallets: ai.staff.map((s) => ({ name: s.name, staffId: idx.byWho(null, s.name)?.id || null, thb: s.thb }))
+      source: 'ai', cashToday: ai.totals.op, depositsHeld: ai.totals.dep, office: { op: ai.op, dep: ai.dep },
+      onHand: { op: ai.totals.op - ai.op, dep: ai.totals.dep - ai.dep }, wallets: [], ...common
     };
   }
-  if (!finance) return null;
-  return {
-    source: 'report', cashToday: finance.cashToday, revenueToday: finance.revenueToday, depositsHeld: finance.depositsHeld, depositCars: finance.depositCars,
-    wallets: finance.holders.filter((h) => h.onHand !== null && h.onHand !== undefined && Math.round(h.onHand) !== 0)
-      .map((h) => ({ name: h.name, staffId: idx.byWho(null, h.name)?.id || null, thb: Math.round(h.onHand) }))
-  };
+  if (!finance) return { source: 'none', cashToday: 0, depositsHeld: 0, wallets: [], ...common };
+  return { source: 'report', cashToday: finance.cashToday, depositsHeld: finance.depositsHeld, wallets: [], ...common };
 }
 
 /** GET /api/staff/game/state?since=ISO */
@@ -266,7 +296,7 @@ export async function gameState(staff, req, res, url) {
       id: r.id, at: r.created_at, channel: r.channel, kind: r.kind || null, what: r.model || r.vehicle_type || '',
       from: r.date_from, to: r.date_to, status: r.status, takenBy: r.taken_by_name || null, takenAt: r.taken_at || null, site: r.site_host || null
     })),
-    finance: gameFinance(finance, idx),
+    finance: gameFinance(finance, now),
     site: siteView(now),
     chats: botChatsActive(now),
     events: eventsSince(idx, iso(sinceMs), sinceMs)

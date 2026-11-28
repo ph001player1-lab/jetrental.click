@@ -775,7 +775,7 @@
     if (gameLoading) return;
     gameLoading = true;
     const script = document.createElement('script');
-    script.src = 'game.js?v=4';
+    script.src = 'game.js?v=5';
     script.onload = () => { gameLoading = false; if (state.tab === 'game' && window.STAFF_GAME) window.STAFF_GAME.mount($('#view')); };
     script.onerror = () => { gameLoading = false; if (state.tab === 'game') $('#view').innerHTML = `<div class="empty">${esc(t('app.loadFailed'))}</div>`; };
     document.head.append(script);

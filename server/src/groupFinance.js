@@ -230,36 +230,43 @@ function allMoves(staffNames, rates) {
   return items.sort((a, b) => String(a.at).localeCompare(String(b.at)));
 }
 
-/** Остатки сейфов и сотрудников + расхождения со снимками «закрытия дня» */
+/**
+ * Остатки: сейф в офисе (операционный, залоговый) и наличные у каждого сотрудника, раздельно
+ * «операционные» и «залоги» (у сотрудника в кармане может быть и то, и другое). Итоги:
+ * все операционные = сейф + у сотрудников; все залоги = залоговый сейф + у сотрудников.
+ * Снимок «закрытия дня» ставит остаток и показывает расхождение с посчитанным.
+ */
 function balancesOf(items) {
-  const bal = { op: 0, dep: 0 };
-  const staff = new Map();
-  const last = new Map();
+  const office = { op: 0, dep: 0 };
+  const staff = new Map(); // имя → { op, dep, last }
   const checks = [];
-  const keyOf = (a) => (a.type === 'staff' ? `staff:${a.name}` : a.type);
-  const get = (k) => (k.startsWith('staff:') ? staff.get(k.slice(6)) || 0 : bal[k] ?? null);
-  const set = (k, v, at) => {
-    if (k.startsWith('staff:')) { staff.set(k.slice(6), v); last.set(k.slice(6), at); } else if (k in bal) bal[k] = v;
-  };
+  const person = (name) => staff.get(name) || staff.set(name, { op: 0, dep: 0, last: null }).get(name);
+  const poolOf = (it) => (it.from.type === 'dep' || it.to.type === 'dep' || ['deposit', 'deposit_return'].includes(it.purpose) ? 'dep' : 'op');
   for (const it of items) {
     if (it.balance) {
-      const k = keyOf(it.balance);
-      const was = get(k);
-      if (was === null) continue;
-      if (Math.abs(was - it.thb) >= 1) checks.push({ at: it.at, src: it.src, account: k, counted: Math.round(was), reported: it.thb, diff: Math.round(it.thb - was) });
-      set(k, it.thb, it.at);
+      const a = it.balance;
+      if (a.type === 'op' || a.type === 'dep') {
+        if (Math.abs(office[a.type] - it.thb) >= 1) checks.push({ at: it.at, src: it.src, account: a.type, counted: Math.round(office[a.type]), reported: it.thb, diff: Math.round(it.thb - office[a.type]) });
+        office[a.type] = it.thb;
+      } else if (a.type === 'staff' && a.name) {
+        const p = person(a.name);
+        const was = p.op + p.dep;
+        if (Math.abs(was - it.thb) >= 1) checks.push({ at: it.at, src: it.src, account: `staff:${a.name}`, counted: Math.round(was), reported: it.thb, diff: Math.round(it.thb - was) });
+        p.op = it.thb - p.dep; p.last = it.at;
+      }
       continue;
     }
+    const pool = poolOf(it);
     for (const [side, sign] of [[it.from, -1], [it.to, 1]]) {
-      const k = keyOf(side);
-      const was = get(k);
-      if (was === null) continue;
-      set(k, was + sign * it.thb, it.at);
+      if (side.type === 'op' || side.type === 'dep') office[side.type] += sign * it.thb;
+      else if (side.type === 'staff' && side.name) { const p = person(side.name); p[pool] += sign * it.thb; p.last = it.at; }
     }
   }
+  const people = [...staff].map(([name, p]) => ({ name, op: Math.round(p.op), dep: Math.round(p.dep), thb: Math.round(p.op + p.dep), last: p.last }))
+    .filter((p) => p.op || p.dep).sort((a, b) => b.thb - a.thb);
   return {
-    op: Math.round(bal.op), dep: Math.round(bal.dep),
-    staff: [...staff].map(([name, thb]) => ({ name, thb: Math.round(thb), last: last.get(name) || null })).filter((s) => Math.round(s.thb) !== 0).sort((a, b) => b.thb - a.thb),
+    op: Math.round(office.op), dep: Math.round(office.dep), staff: people,
+    totals: { op: Math.round(office.op + people.reduce((s2, p) => s2 + p.op, 0)), dep: Math.round(office.dep + people.reduce((s2, p) => s2 + p.dep, 0)) },
     checks: checks.slice(-30).reverse()
   };
 }
@@ -269,7 +276,7 @@ export function ledgerSnapshot() {
   const done = q.counts.all(since()).find((c) => c.status === 'done')?.n || 0;
   const staffNames = activeStaff().map((s) => s.name).filter((n) => /\p{L}/u.test(n || ''));
   const b = balancesOf(allMoves(staffNames, currentRates().rates));
-  return { ready: done > 0, op: b.op, dep: b.dep, staff: b.staff };
+  return { ready: done > 0, op: b.op, dep: b.dep, staff: b.staff, totals: b.totals };
 }
 
 const accLabel = (a) => (a.type === 'staff' ? a.name || 'сотрудник' : ACC_RU[a.type] || a.type);

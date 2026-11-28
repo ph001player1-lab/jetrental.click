@@ -524,14 +524,14 @@
       const usd = Object.values(a.counts).reduce((s, x) => s + (x.usd || 0), 0);
       const blocked = a.blocked === 'ai_no_key' ? 'ИИ выключен: нет ключа ANTHROPIC_API_KEY — сообщения ждут в очереди.'
         : a.blocked === 'ai_limit' ? 'Месячный лимит ИИ исчерпан — сообщения ждут в очереди. Поднять лимит: «Настройки» → «Модель ИИ».' : '';
-      const onHand = b.staff.reduce((s, x) => s + x.thb, 0);
+      const t = b.totals || { op: b.op, dep: b.dep };
       const tiles = `<div class="stats fin-tiles">
-        ${tile('Операционный сейф', baht(b.op), 'по сообщениям и «＋ Операция»')}
-        ${tile('Залоговый сейф', baht(b.dep), 'по сообщениям и «＋ Операция»')}
-        ${tile('На руках у сотрудников', baht(onHand), `${b.staff.length} чел.`)}
+        ${tile('Операционные — всего', baht(t.op), `в сейфе офиса ${baht(b.op)}, у сотрудников ${baht(t.op - b.op)}`)}
+        ${tile('Залоги — всего', baht(t.dep), `в залоговом сейфе ${baht(b.dep)}, у сотрудников ${baht(t.dep - b.dep)}`)}
       </div>`;
-      const people = b.staff.length ? `<div class="table-wrap"><table class="fin-table"><thead><tr><th>Сотрудник</th><th class="fin-num">На руках</th><th>Последнее движение</th></tr></thead>
-        <tbody>${b.staff.map((s) => `<tr><td>${esc(s.name)}</td><td class="fin-num ${s.thb < 0 ? 'fin-less' : ''}">${esc(baht(s.thb))}</td><td>${esc(when(s.last))}</td></tr>`).join('')}</tbody></table></div>`
+      const cell = (n) => `<td class="fin-num ${n < 0 ? 'fin-less' : ''}">${esc(baht(n))}</td>`;
+      const people = b.staff.length ? `<div class="table-wrap"><table class="fin-table"><thead><tr><th>Сотрудник</th><th class="fin-num">Операционные</th><th class="fin-num">Залоги</th><th class="fin-num">Всего на руках</th><th>Последнее движение</th></tr></thead>
+        <tbody>${b.staff.map((s) => `<tr><td>${esc(s.name)}</td>${cell(s.op ?? s.thb)}${cell(s.dep ?? 0)}${cell(s.thb)}<td>${esc(when(s.last))}</td></tr>`).join('')}</tbody></table></div>`
         : '<p class="muted">Пока ни у кого.</p>';
       const checks = b.checks.length ? `<h4>Сверка с «закрытием дня»</h4><ul class="fin-list">${b.checks.map((x) => `<li>${esc(when(x.at))} · ${esc(aiAccount(x.account))}: посчитано ${esc(baht(x.counted))}, в сообщении ${esc(baht(x.reported))} — <b class="${Math.abs(x.diff) >= 1 ? 'fin-less' : 'fin-ok'}">${esc(signed(x.diff))} ฿</b></li>`).join('')}</ul>` : '';
       const STATUS = { queued: '⏳ в очереди', error: '⚠ ИИ не смог разобрать', ignored: '🚫 не учитывается' };
@@ -555,7 +555,7 @@
       }).join('');
       const portalItems = (st.aiPortalAll ? a.portal : a.portal.slice(0, 10)).map((l) => `<li><span class="muted">${esc(when(l.at))}</span> ${aiLine(l).replace(/^<li>|<\/li>$/g, '')}</li>`).join('');
       const intro = 'ИИ читает в рабочей группе сообщения про деньги — сдачу кассы, закрытие дня, расходы, залоги, оплаты, выплаты — и записывает каждое как движение «откуда → куда». '
-        + 'Деньги из «＋ Операция» добавляются как есть. Из этого считаются остатки сейфов и наличные у сотрудников. Это тест: в общие цифры «Финансов» пока не входит — копим данные несколько дней.';
+        + 'Деньги из «＋ Операция» добавляются как есть. Из этого считаются остатки сейфов и наличные у сотрудников — отдельно операционные и залоги (у сотрудника в кармане может быть и то, и другое). «Всего» — сейф офиса плюс деньги на руках. Это тест: в общие цифры «Финансов» пока не входит — копим данные несколько дней.';
       return section('ai', 'ИИ-касса — сообщения группы про деньги (тест)', `
         ${blocked ? `<p class="md-status is-error" role="status">${esc(blocked)}</p>` : ''}
         ${tiles}

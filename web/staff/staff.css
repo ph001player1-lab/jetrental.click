@@ -1813,3 +1813,11 @@ button.gm-box:hover { background: rgba(40, 50, 66, .9); }
 .fin-ai-moves { margin: 2px 0; padding-left: 18px; font-size: 14px; display: grid; gap: 2px; }
 .fin-ai-src > summary { cursor: pointer; font-size: 12px; color: var(--muted); }
 .fin-ops .fin-ai-moves li { display: block; border: 0; padding: 0; }
+/* «Игра»: график прибыли по дням */
+.gm-chart { left: 10px; bottom: 54px; width: 330px; padding: 8px 10px 6px; }
+.gm-chart-head { display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; gap: 8px; }
+.gm-chart-x { border: 0; background: none; font-size: 18px; line-height: 1; padding: 0 6px; }
+.gm-chart-sum { font-size: 12px; color: var(--gm-muted); margin: 2px 0 4px; }
+.gm-chart svg text { fill: #b9b2a5; font-size: 9px; font-family: system-ui, sans-serif; }
+.gm-chart-warn { color: #ffc21a; }
+@media (max-width: 760px) { .gm-chart { left: 8px; right: 8px; width: auto; z-index: 3; } }
